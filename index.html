@@ -505,6 +505,7 @@
   }
   .detail-body {
     display: flex;
+    align-items: flex-start;
     gap: 18px;
   }
   .detail-body img {
@@ -565,7 +566,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.2.0</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.2.2</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -690,6 +691,18 @@
             </tr>
           </tbody>
         </table>
+      </div>
+
+      <div class="db-section">
+        <h3>生データ確認(調査用)</h3>
+        <p class="placeholder" style="margin-top:0;">
+          カード番号を指定して、heroi.ccの生JSONをそのまま確認できます。新種のカード(デュアルカード等)の対応検討に使います。
+        </p>
+        <div class="db-actions">
+          <input type="text" id="rawLookupNumber" placeholder="例: BT21-047" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 10px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:13px;">
+          <button class="btn" id="rawLookupBtn">生データ取得</button>
+        </div>
+        <div class="log-console mono" id="rawLookupLog" style="margin-top:12px;"></div>
       </div>
     </div>
   </section>
@@ -882,6 +895,7 @@
   // ---------- Phase 2: Card search ----------
   const CATEGORY_LABEL = { digimon: 'D', 'digi-egg': 'Egg', tamer: 'T', option: 'O' };
   const COLOR_VAR = { red: '--c-red', blue: '--c-blue', yellow: '--c-yellow', green: '--c-green', black: '--c-black', purple: '--c-purple', white: '--c-white' };
+  const COLOR_JA = { red: '赤', blue: '青', yellow: '黄', green: '緑', black: '黒', purple: '紫', white: '白' };
 
   const searchTextInput = document.getElementById('searchText');
   const filterCategory = document.getElementById('filterCategory');
@@ -1015,6 +1029,7 @@
   function openCardDetail(card) {
     const tags = [];
     if (card.category) tags.push(cardTileLabel(card));
+    if (card.color && card.color.length) tags.push(card.color.map(c => COLOR_JA[c] || c).join('/'));
     if (card.attribute) tags.push(card.attribute);
     if (card.type) tags.push(card.type);
     if (card.rarity) tags.push(card.rarity);
@@ -1023,7 +1038,10 @@
 
     let evoHtml = '';
     if (Array.isArray(card.evo) && card.evo.length > 0) {
-      const lines = card.evo.map(e => `Lv.${e.level ?? '?'} ${(e.color || []).join('/')} コスト${e.cost ?? '?'}`);
+      const lines = card.evo.map(e => {
+        const colorsJa = (e.color || []).map(c => COLOR_JA[c] || c).join('/');
+        return `Lv.${e.level ?? '?'} ${colorsJa} コスト${e.cost ?? '?'}`;
+      });
       evoHtml = `<div class="detail-effect"><span class="label">進化条件</span>${escapeHtml(lines.join(' / '))}</div>`;
     }
 
@@ -1034,7 +1052,7 @@
         <div class="d-number mono">${escapeHtml(card.number)}</div>
         <div class="detail-tags">${tags.map(t => `<span>${escapeHtml(t)}</span>`).join('')}</div>
         ${evoHtml}
-        ${card.inherited ? `<div class="detail-effect"><span class="label">進化元効果</span>${escapeHtml(card.inherited)}</div>` : ''}
+        ${card.inherited ? `<div class="detail-effect"><span class="label">${card.inherited.includes('リンク') ? 'リンク効果' : '進化元効果'}</span>${escapeHtml(card.inherited)}</div>` : ''}
         ${card.effect ? `<div class="detail-effect"><span class="label">効果</span>${escapeHtml(card.effect)}</div>` : ''}
         ${card.security_effect ? `<div class="detail-effect"><span class="label">セキュリティ効果</span>${escapeHtml(card.security_effect)}</div>` : ''}
       </div>
@@ -1133,7 +1151,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.2.0`);
+    log(`DigiCA Tool build v0.2.2`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -1240,6 +1258,41 @@
       commitBtn.disabled = false;
     }
   });
+  // ---------- Debug tool: raw card JSON lookup ----------
+  const rawLookupNumber = document.getElementById('rawLookupNumber');
+  const rawLookupBtn = document.getElementById('rawLookupBtn');
+  const rawLookupLog = document.getElementById('rawLookupLog');
+
+  function rawLog(msg, cls) {
+    rawLookupLog.classList.add('active');
+    const line = document.createElement('div');
+    if (cls) line.className = cls;
+    line.textContent = msg;
+    rawLookupLog.appendChild(line);
+    rawLookupLog.scrollTop = rawLookupLog.scrollHeight;
+  }
+
+  rawLookupBtn.addEventListener('click', async () => {
+    const number = rawLookupNumber.value.trim();
+    if (!number) return;
+    rawLookupLog.innerHTML = '';
+    rawLog(`> ${number} の生データを取得中...`);
+    try {
+      const res = await fetch(`https://api.heroi.cc/cards/ja/${encodeURIComponent(number)}`, {
+        headers: { 'Accept': 'application/vnd.api+json' },
+      });
+      if (!res.ok) throw new Error(`取得失敗: HTTP ${res.status}`);
+      const json = await res.json();
+      const pre = document.createElement('pre');
+      pre.style.whiteSpace = 'pre-wrap';
+      pre.style.margin = '4px 0 0';
+      pre.textContent = JSON.stringify(json.data ? json.data.attributes : json, null, 2);
+      rawLookupLog.appendChild(pre);
+    } catch (e) {
+      rawLog(`> エラー: ${e.message}`, 'err');
+    }
+  });
+
 })();
 </script>
 
