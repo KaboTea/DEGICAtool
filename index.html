@@ -694,6 +694,23 @@
   }
   .my-deck-item .mdi-delete:hover { color: var(--danger); border-color: var(--danger); }
 
+  .deck-hover-preview {
+    position: fixed;
+    display: none;
+    z-index: 250;
+    pointer-events: none;
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    border: 1px solid var(--border);
+  }
+  .deck-hover-preview img {
+    width: 160px;
+    aspect-ratio: 43 / 60;
+    object-fit: cover;
+    display: block;
+    border-radius: 8px;
+  }
+
   .deck-section-title {
     font-size: 12px;
     color: var(--text-dim);
@@ -810,7 +827,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.5.0</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.5.1</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -991,6 +1008,11 @@
   Card data provided by <a href="https://heroi.cc" target="_blank" rel="noopener">Heroicc</a> under CC BY-NC-SA 4.0.
   Card imagery &amp; text © Akiyoshi Hongo, Toei Animation © BANDAI.
 </footer>
+
+<!-- Deck hover preview (shows a representative card image when hovering a deck in the list) -->
+<div class="deck-hover-preview" id="deckHoverPreview">
+  <img id="deckHoverPreviewImg" src="" alt="">
+</div>
 
 <!-- Toast notification -->
 <div class="toast" id="toast"></div>
@@ -1442,6 +1464,38 @@
   let cardIndexByNumber = new Map();
   let deckState = { id: null, eggs: {}, main: {} };
 
+  const deckHoverPreview = document.getElementById('deckHoverPreview');
+  const deckHoverPreviewImg = document.getElementById('deckHoverPreviewImg');
+
+  function getDeckRepresentativeImage(d) {
+    const mainEntries = (d.main || []).slice().sort((a, b) => a.number.localeCompare(b.number));
+    const eggEntries = (d.eggs || []).slice().sort((a, b) => a.number.localeCompare(b.number));
+    for (const c of [...mainEntries, ...eggEntries]) {
+      const card = cardIndexByNumber.get(c.number);
+      if (card && card.img) return card.img;
+    }
+    return null;
+  }
+
+  function showDeckPreview(e, imgUrl) {
+    if (!imgUrl) return;
+    deckHoverPreviewImg.src = imgUrl;
+    deckHoverPreview.style.display = 'block';
+    positionDeckPreview(e);
+  }
+  function positionDeckPreview(e) {
+    const offset = 16;
+    let x = e.clientX + offset;
+    let y = e.clientY + offset;
+    if (x > window.innerWidth - 180) x = e.clientX - 180 - offset;
+    if (y > window.innerHeight - 240) y = window.innerHeight - 240;
+    deckHoverPreview.style.left = `${x}px`;
+    deckHoverPreview.style.top = `${y}px`;
+  }
+  function hideDeckPreview() {
+    deckHoverPreview.style.display = 'none';
+  }
+
   const deckSearchText = document.getElementById('deckSearchText');
   const deckSearchGrid = document.getElementById('deckSearchGrid');
   const deckNameInput = document.getElementById('deckNameInput');
@@ -1604,6 +1658,10 @@
         e.stopPropagation();
         deleteDeckById(d.id, d.name);
       });
+      const repImg = getDeckRepresentativeImage(d);
+      row.addEventListener('mouseenter', (e) => showDeckPreview(e, repImg));
+      row.addEventListener('mousemove', (e) => positionDeckPreview(e));
+      row.addEventListener('mouseleave', hideDeckPreview);
       frag.appendChild(row);
     });
     myDeckList.appendChild(frag);
@@ -1740,6 +1798,7 @@
     renderGrid();
     renderDeckSearchGrid();
     renderDeckLists();
+    renderMyDeckList();
   };
   renderGrid();
   renderDeckSearchGrid();
@@ -1837,7 +1896,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.5.0`);
+    log(`DigiCA Tool build v0.5.1`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
