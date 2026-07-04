@@ -645,15 +645,54 @@
     color: var(--text);
     font-size: 13px;
   }
-  .deck-header-row select {
-    background: var(--bg);
+
+  .deck-list-col {
+    flex: 0 0 190px;
+  }
+  .my-deck-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 640px;
+    overflow-y: auto;
+  }
+  .my-deck-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--panel-raised);
     border: 1px solid var(--border);
+    border-left: 3px solid var(--border);
     border-radius: 6px;
     padding: 8px 10px;
-    color: var(--text);
-    font-size: 12px;
-    max-width: 180px;
+    cursor: pointer;
   }
+  .my-deck-item:hover { border-color: var(--accent-dim); }
+  .my-deck-item.active { border-left-color: var(--accent); background: var(--panel); }
+  .my-deck-item .mdi-main { flex: 1; min-width: 0; }
+  .my-deck-item .mdi-name {
+    font-size: 13px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .my-deck-item .mdi-meta {
+    font-size: 10px;
+    color: var(--text-dim);
+    margin-top: 2px;
+  }
+  .my-deck-item .mdi-delete {
+    flex-shrink: 0;
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+    border: 1px solid transparent;
+    background: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 12px;
+  }
+  .my-deck-item .mdi-delete:hover { color: var(--danger); border-color: var(--danger); }
 
   .deck-section-title {
     font-size: 12px;
@@ -736,6 +775,8 @@
 
   @media (max-width: 720px) {
     .deck-layout { flex-direction: column; }
+    .deck-list-col { flex-basis: auto; }
+    .my-deck-list { max-height: 200px; }
   }
 
   /* ---- Toast (transient notifications, visible regardless of active tab) ---- */
@@ -769,7 +810,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.4.1</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.5.0</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -849,6 +890,11 @@
   <section id="tab-deck" class="tab-panel" style="display:none;">
     <div class="panel">
       <div class="deck-layout">
+        <div class="deck-col deck-list-col">
+          <h3 style="font-size:12px;color:var(--text-dim);margin:0 0 10px;">マイデッキ</h3>
+          <div class="my-deck-list" id="myDeckList"></div>
+        </div>
+
         <div class="deck-col deck-search-col">
           <input type="text" id="deckSearchText" placeholder="カード名で検索して追加...">
           <div class="card-grid" id="deckSearchGrid"></div>
@@ -857,9 +903,6 @@
         <div class="deck-col deck-build-col">
           <div class="deck-header-row">
             <input type="text" id="deckNameInput" placeholder="デッキ名">
-            <select id="deckLoadSelect">
-              <option value="">-- 保存済みデッキを読込 --</option>
-            </select>
           </div>
 
           <div class="deck-section-title">
@@ -1402,7 +1445,7 @@
   const deckSearchText = document.getElementById('deckSearchText');
   const deckSearchGrid = document.getElementById('deckSearchGrid');
   const deckNameInput = document.getElementById('deckNameInput');
-  const deckLoadSelect = document.getElementById('deckLoadSelect');
+  const myDeckList = document.getElementById('myDeckList');
   const eggList = document.getElementById('eggList');
   const mainList = document.getElementById('mainList');
   const eggCountLabel = document.getElementById('eggCountLabel');
@@ -1535,16 +1578,42 @@
     }
   }
 
-  async function refreshDeckSelect() {
+  let cachedDecks = [];
+
+  function renderMyDeckList() {
+    if (cachedDecks.length === 0) {
+      myDeckList.innerHTML = '<div class="empty-state" style="padding:8px 0;">保存済みデッキはありません</div>';
+      return;
+    }
+    myDeckList.innerHTML = '';
+    const frag = document.createDocumentFragment();
+    cachedDecks.forEach(d => {
+      const eggCount = (d.eggs || []).reduce((s, c) => s + c.count, 0);
+      const mainCount = (d.main || []).reduce((s, c) => s + c.count, 0);
+      const row = document.createElement('div');
+      row.className = 'my-deck-item' + (d.id === deckState.id ? ' active' : '');
+      row.innerHTML = `
+        <div class="mdi-main">
+          <div class="mdi-name">${escapeHtml(d.name || '無題')}</div>
+          <div class="mdi-meta mono">${mainCount}/50・${eggCount}/5・${escapeHtml(d.updated || '')}</div>
+        </div>
+        <button type="button" class="mdi-delete" title="削除">✕</button>
+      `;
+      row.querySelector('.mdi-main').addEventListener('click', () => loadDeckById(d.id));
+      row.querySelector('.mdi-delete').addEventListener('click', (e) => {
+        e.stopPropagation();
+        deleteDeckById(d.id, d.name);
+      });
+      frag.appendChild(row);
+    });
+    myDeckList.appendChild(frag);
+  }
+
+  async function refreshMyDeckList() {
     try {
       const { data } = await loadDecksFile();
-      deckLoadSelect.innerHTML = '<option value="">-- 保存済みデッキを読込 --</option>';
-      (data.decks || []).forEach(d => {
-        const opt = document.createElement('option');
-        opt.value = d.id;
-        opt.textContent = `${d.name || '無題'} (${d.updated || ''})`;
-        deckLoadSelect.appendChild(opt);
-      });
+      cachedDecks = data.decks || [];
+      renderMyDeckList();
     } catch (e) {
       console.error(e);
     }
@@ -1558,15 +1627,13 @@
   newDeckBtn.addEventListener('click', () => {
     deckState = { id: null, eggs: {}, main: {} };
     deckNameInput.value = '';
-    deckLoadSelect.value = '';
     deckValidation.textContent = '';
     renderDeckLists();
+    renderMyDeckList();
     flashDeckStatus('新規デッキを作成しました');
   });
 
-  deckLoadSelect.addEventListener('change', async () => {
-    const id = deckLoadSelect.value;
-    if (!id) return;
+  async function loadDeckById(id) {
     try {
       const { data } = await loadDecksFile();
       const found = (data.decks || []).find(d => d.id === id);
@@ -1578,11 +1645,42 @@
       };
       deckNameInput.value = found.name || '';
       renderDeckLists();
+      renderMyDeckList();
       flashDeckStatus('読み込みました');
     } catch (e) {
       deckValidation.textContent = `読込エラー: ${e.message}`;
     }
-  });
+  }
+
+  async function deleteDeckById(id, name) {
+    if (!confirm(`「${name || '無題'}」を削除しますか?この操作は取り消せません。`)) return;
+    try {
+      const { data, sha } = await loadDecksFile();
+      data.decks = (data.decks || []).filter(d => d.id !== id);
+      const content = JSON.stringify(data);
+      const message = `デッキ削除: ${name || id}`;
+      try {
+        await window.DigicaGitHub.putFile('decks/decks.json', content, message, sha);
+      } catch (e) {
+        if (e.message.includes('409')) {
+          const retry = await loadDecksFile();
+          await window.DigicaGitHub.putFile('decks/decks.json', content, message, retry.sha);
+        } else {
+          throw e;
+        }
+      }
+      if (deckState.id === id) {
+        deckState = { id: null, eggs: {}, main: {} };
+        deckNameInput.value = '';
+        renderDeckLists();
+      }
+      await refreshMyDeckList();
+      flashDeckStatus('削除しました');
+    } catch (e) {
+      deckValidation.textContent = `削除エラー: ${e.message}`;
+      console.error(e);
+    }
+  }
 
   saveDeckBtn.addEventListener('click', async () => {
     saveDeckBtn.disabled = true;
@@ -1614,8 +1712,7 @@
         }
       }
       flashDeckStatus('保存しました');
-      await refreshDeckSelect();
-      deckLoadSelect.value = deckObj.id;
+      await refreshMyDeckList();
     } catch (e) {
       deckValidation.textContent = `保存エラー: ${e.message}`;
       console.error(e);
@@ -1624,42 +1721,15 @@
     }
   });
 
-  deleteDeckBtn.addEventListener('click', async () => {
+  deleteDeckBtn.addEventListener('click', () => {
     if (!deckState.id) {
       flashDeckStatus('保存済みのデッキを選択してください');
       return;
     }
-    if (!confirm('このデッキを削除しますか?この操作は取り消せません。')) return;
-    deleteDeckBtn.disabled = true;
-    try {
-      const { data, sha } = await loadDecksFile();
-      data.decks = (data.decks || []).filter(d => d.id !== deckState.id);
-      const content = JSON.stringify(data);
-      const message = `デッキ削除: ${deckNameInput.value || deckState.id}`;
-      try {
-        await window.DigicaGitHub.putFile('decks/decks.json', content, message, sha);
-      } catch (e) {
-        if (e.message.includes('409')) {
-          const retry = await loadDecksFile();
-          await window.DigicaGitHub.putFile('decks/decks.json', content, message, retry.sha);
-        } else {
-          throw e;
-        }
-      }
-      deckState = { id: null, eggs: {}, main: {} };
-      deckNameInput.value = '';
-      renderDeckLists();
-      await refreshDeckSelect();
-      flashDeckStatus('削除しました');
-    } catch (e) {
-      deckValidation.textContent = `削除エラー: ${e.message}`;
-      console.error(e);
-    } finally {
-      deleteDeckBtn.disabled = false;
-    }
+    deleteDeckById(deckState.id, deckNameInput.value);
   });
 
-  refreshDeckSelect();
+  refreshMyDeckList();
   renderDeckLists();
 
   // Re-render search grid once DB status finishes loading (currentDb may be populated asynchronously)
@@ -1767,7 +1837,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.4.1`);
+    log(`DigiCA Tool build v0.5.0`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
