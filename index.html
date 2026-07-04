@@ -554,6 +554,30 @@
     color: var(--accent);
     margin-bottom: 3px;
   }
+  .detail-body img {
+    cursor: zoom-in;
+  }
+
+  /* ---- Image lightbox (click-to-enlarge) ---- */
+  .image-lightbox {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.85);
+    z-index: 200;
+    align-items: center;
+    justify-content: center;
+    cursor: zoom-out;
+    padding: 20px;
+  }
+  .image-lightbox.open { display: flex; }
+  .image-lightbox img {
+    max-width: 92vw;
+    max-height: 92vh;
+    border-radius: 8px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+  }
+
   @media (max-width: 480px) {
     .detail-body { flex-direction: column; }
     .detail-body img { width: 140px; margin: 0 auto; }
@@ -566,7 +590,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.2.2</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.2.3</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -712,6 +736,11 @@
   Card data provided by <a href="https://heroi.cc" target="_blank" rel="noopener">Heroicc</a> under CC BY-NC-SA 4.0.
   Card imagery &amp; text © Akiyoshi Hongo, Toei Animation © BANDAI.
 </footer>
+
+<!-- Image Lightbox (click-to-enlarge) -->
+<div class="image-lightbox" id="imageLightbox">
+  <img id="lightboxImg" src="" alt="">
+</div>
 
 <!-- Card Detail Modal -->
 <div class="modal-backdrop detail-modal" id="cardDetailModal">
@@ -1058,7 +1087,33 @@
       </div>
     `;
     cardDetailModal.classList.add('open');
+
+    const detailImg = detailBody.querySelector('img');
+    if (detailImg && card.img) {
+      detailImg.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openLightbox(card.img, card.name);
+      });
+    }
   }
+
+  // ---------- Image lightbox (click-to-enlarge) ----------
+  const imageLightbox = document.getElementById('imageLightbox');
+  const lightboxImg = document.getElementById('lightboxImg');
+
+  function openLightbox(src, alt) {
+    lightboxImg.src = src;
+    lightboxImg.alt = alt || '';
+    imageLightbox.classList.add('open');
+  }
+  imageLightbox.addEventListener('click', () => imageLightbox.classList.remove('open'));
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    if (imageLightbox.classList.contains('open')) { imageLightbox.classList.remove('open'); return; }
+    if (cardDetailModal.classList.contains('open')) { cardDetailModal.classList.remove('open'); return; }
+    if (modal.classList.contains('open')) modal.classList.remove('open');
+  });
 
   // Re-render search grid once DB status finishes loading (currentDb may be populated asynchronously)
   const originalLoadStatus = loadStatus;
@@ -1151,7 +1206,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.2.2`);
+    log(`DigiCA Tool build v0.2.3`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
