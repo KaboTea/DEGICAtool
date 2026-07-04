@@ -370,6 +370,193 @@
     opacity: 0.4;
     cursor: not-allowed;
   }
+
+  /* ---- Search tab ---- */
+  .search-bar {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+  .search-bar input[type="text"] {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    color: var(--text);
+    font-size: 14px;
+  }
+  .search-bar input[type="text"]:focus {
+    outline: none;
+    border-color: var(--accent-dim);
+  }
+
+  .filter-row {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    align-items: center;
+    margin-bottom: 16px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .filter-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .filter-group label {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-right: 2px;
+  }
+  .filter-group select, .filter-group input[type="number"] {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 12px;
+    padding: 6px 8px;
+  }
+  .filter-group input[type="number"] {
+    width: 56px;
+  }
+
+  .color-chip {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    border: 2px solid var(--border);
+    cursor: pointer;
+    padding: 0;
+    opacity: 0.45;
+  }
+  .color-chip.active {
+    opacity: 1;
+    border-color: var(--text);
+    box-shadow: 0 0 0 2px var(--bg), 0 0 0 3px var(--accent);
+  }
+
+  .result-count {
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-bottom: 12px;
+  }
+
+  .card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 12px;
+  }
+
+  .card-tile {
+    background: var(--panel-raised);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: transform 0.1s ease, border-color 0.15s ease;
+  }
+  .card-tile:hover {
+    transform: translateY(-2px);
+    border-color: var(--accent-dim);
+  }
+  .card-tile img {
+    width: 100%;
+    aspect-ratio: 43 / 60;
+    object-fit: cover;
+    display: block;
+    background: var(--bg);
+  }
+  .card-tile .tile-info {
+    padding: 6px 8px;
+  }
+  .card-tile .tile-number {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+  .card-tile .tile-name {
+    font-size: 12px;
+    color: var(--text);
+    line-height: 1.3;
+    margin-top: 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+
+  .empty-state {
+    text-align: center;
+    color: var(--text-dim);
+    font-size: 13px;
+    padding: 40px 0;
+  }
+
+  /* ---- Card detail modal ---- */
+  .detail-modal .modal {
+    width: min(640px, 94vw);
+    max-height: 88vh;
+    overflow-y: auto;
+  }
+  .detail-body {
+    display: flex;
+    gap: 18px;
+  }
+  .detail-body img {
+    width: 200px;
+    border-radius: 8px;
+    flex-shrink: 0;
+  }
+  .detail-info {
+    flex: 1;
+    min-width: 0;
+    font-size: 13px;
+  }
+  .detail-info .d-title {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 2px;
+  }
+  .detail-info .d-number {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-bottom: 10px;
+  }
+  .detail-tags {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+  }
+  .detail-tags span {
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+  }
+  .detail-effect {
+    white-space: pre-wrap;
+    line-height: 1.6;
+    margin-bottom: 10px;
+  }
+  .detail-effect .label {
+    display: block;
+    font-size: 11px;
+    color: var(--accent);
+    margin-bottom: 3px;
+  }
+  @media (max-width: 480px) {
+    .detail-body { flex-direction: column; }
+    .detail-body img { width: 140px; margin: 0 auto; }
+  }
 </style>
 </head>
 <body>
@@ -378,7 +565,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.1.5</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.2.0</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -397,10 +584,61 @@
 
 <main>
   <section id="tab-search" class="tab-panel">
-    <div class="panel placeholder">
-      <span class="phase-tag">PHASE 2 未実装</span><br>
-      カード検索はここに実装予定です。<br>
-      現在は Phase 1(DB管理タブでのDB構築)から着手中です。
+    <div class="panel">
+      <div class="search-bar">
+        <input type="text" id="searchText" placeholder="カード名・効果テキストで検索...">
+      </div>
+
+      <div class="filter-row">
+        <div class="filter-group">
+          <label>色</label>
+          <button class="color-chip" data-color="red" style="background:var(--c-red)" title="赤"></button>
+          <button class="color-chip" data-color="blue" style="background:var(--c-blue)" title="青"></button>
+          <button class="color-chip" data-color="yellow" style="background:var(--c-yellow)" title="黄"></button>
+          <button class="color-chip" data-color="green" style="background:var(--c-green)" title="緑"></button>
+          <button class="color-chip" data-color="black" style="background:var(--c-black)" title="黒"></button>
+          <button class="color-chip" data-color="purple" style="background:var(--c-purple)" title="紫"></button>
+          <button class="color-chip" data-color="white" style="background:var(--c-white)" title="白"></button>
+        </div>
+
+        <div class="filter-group">
+          <label for="filterCategory">種別</label>
+          <select id="filterCategory">
+            <option value="">すべて</option>
+            <option value="digimon">デジモン</option>
+            <option value="digi-egg">デジタマ</option>
+            <option value="tamer">テイマー</option>
+            <option value="option">オプション</option>
+          </select>
+        </div>
+
+        <div class="filter-group">
+          <label for="filterLevel">Lv</label>
+          <select id="filterLevel">
+            <option value="">すべて</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="5">5</option>
+            <option value="6">6</option>
+            <option value="7">7</option>
+          </select>
+        </div>
+
+        <div class="filter-group">
+          <label>コスト</label>
+          <input type="number" id="filterCostMin" placeholder="下限" min="0">
+          <span style="color:var(--text-dim);">-</span>
+          <input type="number" id="filterCostMax" placeholder="上限" min="0">
+        </div>
+
+        <div class="filter-group">
+          <button class="btn" id="clearFilters">クリア</button>
+        </div>
+      </div>
+
+      <div class="result-count" id="resultCount"></div>
+      <div class="card-grid" id="cardGrid"></div>
     </div>
   </section>
 
@@ -461,6 +699,16 @@
   Card data provided by <a href="https://heroi.cc" target="_blank" rel="noopener">Heroicc</a> under CC BY-NC-SA 4.0.
   Card imagery &amp; text © Akiyoshi Hongo, Toei Animation © BANDAI.
 </footer>
+
+<!-- Card Detail Modal -->
+<div class="modal-backdrop detail-modal" id="cardDetailModal">
+  <div class="modal">
+    <div class="detail-body" id="detailBody"></div>
+    <div class="modal-actions">
+      <button class="btn" id="closeDetail">閉じる</button>
+    </div>
+  </div>
+</div>
 
 <!-- Settings Modal -->
 <div class="modal-backdrop" id="settingsModal">
@@ -627,7 +875,181 @@
       document.getElementById('dbCurrentSourceDate').textContent = '--';
     }
   }
-  loadStatus();
+  // NOTE: loadStatus() is called once, further below, after Phase 2's renderGrid
+  // is defined — this avoids a race where the initial DB load finishes before
+  // the search grid is wired up to react to it.
+
+  // ---------- Phase 2: Card search ----------
+  const CATEGORY_LABEL = { digimon: 'D', 'digi-egg': 'Egg', tamer: 'T', option: 'O' };
+  const COLOR_VAR = { red: '--c-red', blue: '--c-blue', yellow: '--c-yellow', green: '--c-green', black: '--c-black', purple: '--c-purple', white: '--c-white' };
+
+  const searchTextInput = document.getElementById('searchText');
+  const filterCategory = document.getElementById('filterCategory');
+  const filterLevel = document.getElementById('filterLevel');
+  const filterCostMin = document.getElementById('filterCostMin');
+  const filterCostMax = document.getElementById('filterCostMax');
+  const clearFiltersBtn = document.getElementById('clearFilters');
+  const colorChips = document.querySelectorAll('.color-chip');
+  const cardGrid = document.getElementById('cardGrid');
+  const resultCountEl = document.getElementById('resultCount');
+
+  let activeColors = new Set();
+
+  function cardTileLabel(card) {
+    const base = CATEGORY_LABEL[card.category] || '?';
+    if (card.category === 'digimon' && card.level) return `${base}・Lv${card.level}`;
+    if (card.category === 'digi-egg' && card.level) return `${base}・Lv${card.level}`;
+    return base;
+  }
+
+  function matchesFilters(card, query) {
+    if (query) {
+      const haystack = `${card.name || ''} ${card.effect || ''} ${card.inherited || ''} ${card.security_effect || ''}`.toLowerCase();
+      if (!haystack.includes(query)) return false;
+    }
+    if (activeColors.size > 0) {
+      const cardColors = card.color || [];
+      const hasMatch = cardColors.some(c => activeColors.has(c));
+      if (!hasMatch) return false;
+    }
+    if (filterCategory.value && card.category !== filterCategory.value) return false;
+    if (filterLevel.value && String(card.level) !== filterLevel.value) return false;
+    const costMin = filterCostMin.value !== '' ? parseInt(filterCostMin.value, 10) : null;
+    const costMax = filterCostMax.value !== '' ? parseInt(filterCostMax.value, 10) : null;
+    if (costMin !== null && (card.play_cost === null || card.play_cost < costMin)) return false;
+    if (costMax !== null && (card.play_cost === null || card.play_cost > costMax)) return false;
+    return true;
+  }
+
+  function renderGrid() {
+    if (!currentDb || !Array.isArray(currentDb.cards)) {
+      cardGrid.innerHTML = '<div class="empty-state">DBが未生成です。DB管理タブから更新してください。</div>';
+      resultCountEl.textContent = '';
+      return;
+    }
+    const query = searchTextInput.value.trim().toLowerCase();
+    const results = currentDb.cards.filter(c => matchesFilters(c, query));
+
+    resultCountEl.textContent = `${results.length}件 / 全${currentDb.cards.length}枚`;
+
+    if (results.length === 0) {
+      cardGrid.innerHTML = '<div class="empty-state">条件に一致するカードが見つかりません。</div>';
+      return;
+    }
+
+    // Cap rendering for performance on very broad queries
+    const MAX_RENDER = 300;
+    const toRender = results.slice(0, MAX_RENDER);
+
+    cardGrid.innerHTML = '';
+    const frag = document.createDocumentFragment();
+    toRender.forEach(card => {
+      const tile = document.createElement('div');
+      tile.className = 'card-tile';
+      const borderColor = card.color && card.color[0] && COLOR_VAR[card.color[0]]
+        ? `var(${COLOR_VAR[card.color[0]]})` : 'var(--border)';
+      tile.style.borderLeftColor = borderColor;
+      tile.innerHTML = `
+        <img src="${card.img || ''}" alt="${card.name || ''}" loading="lazy" onerror="this.style.opacity=0">
+        <div class="tile-info">
+          <div class="tile-number mono">${card.number || ''} ${cardTileLabel(card)}</div>
+          <div class="tile-name">${card.name || ''}</div>
+        </div>
+      `;
+      tile.addEventListener('click', () => openCardDetail(card));
+      frag.appendChild(tile);
+    });
+    cardGrid.appendChild(frag);
+
+    if (results.length > MAX_RENDER) {
+      const note = document.createElement('div');
+      note.className = 'empty-state';
+      note.style.gridColumn = '1 / -1';
+      note.textContent = `${results.length}件中${MAX_RENDER}件を表示中。絞り込みを追加してください。`;
+      cardGrid.appendChild(note);
+    }
+  }
+
+  colorChips.forEach(chip => {
+    chip.addEventListener('click', () => {
+      const c = chip.dataset.color;
+      if (activeColors.has(c)) { activeColors.delete(c); chip.classList.remove('active'); }
+      else { activeColors.add(c); chip.classList.add('active'); }
+      renderGrid();
+    });
+  });
+
+  let searchDebounce;
+  searchTextInput.addEventListener('input', () => {
+    clearTimeout(searchDebounce);
+    searchDebounce = setTimeout(renderGrid, 150);
+  });
+  filterCategory.addEventListener('change', renderGrid);
+  filterLevel.addEventListener('change', renderGrid);
+  filterCostMin.addEventListener('input', renderGrid);
+  filterCostMax.addEventListener('input', renderGrid);
+
+  clearFiltersBtn.addEventListener('click', () => {
+    searchTextInput.value = '';
+    filterCategory.value = '';
+    filterLevel.value = '';
+    filterCostMin.value = '';
+    filterCostMax.value = '';
+    activeColors.clear();
+    colorChips.forEach(c => c.classList.remove('active'));
+    renderGrid();
+  });
+
+  // ---------- Card detail modal ----------
+  const cardDetailModal = document.getElementById('cardDetailModal');
+  const detailBody = document.getElementById('detailBody');
+  document.getElementById('closeDetail').addEventListener('click', () => cardDetailModal.classList.remove('open'));
+  cardDetailModal.addEventListener('click', (e) => { if (e.target === cardDetailModal) cardDetailModal.classList.remove('open'); });
+
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str ?? '';
+    return div.innerHTML;
+  }
+
+  function openCardDetail(card) {
+    const tags = [];
+    if (card.category) tags.push(cardTileLabel(card));
+    if (card.attribute) tags.push(card.attribute);
+    if (card.type) tags.push(card.type);
+    if (card.rarity) tags.push(card.rarity);
+    if (card.dp) tags.push(`DP${card.dp}`);
+    if (card.play_cost !== null && card.play_cost !== undefined) tags.push(`コスト${card.play_cost}`);
+
+    let evoHtml = '';
+    if (Array.isArray(card.evo) && card.evo.length > 0) {
+      const lines = card.evo.map(e => `Lv.${e.level ?? '?'} ${(e.color || []).join('/')} コスト${e.cost ?? '?'}`);
+      evoHtml = `<div class="detail-effect"><span class="label">進化条件</span>${escapeHtml(lines.join(' / '))}</div>`;
+    }
+
+    detailBody.innerHTML = `
+      <img src="${card.img || ''}" alt="${escapeHtml(card.name)}" onerror="this.style.display='none'">
+      <div class="detail-info">
+        <div class="d-title">${escapeHtml(card.name)}</div>
+        <div class="d-number mono">${escapeHtml(card.number)}</div>
+        <div class="detail-tags">${tags.map(t => `<span>${escapeHtml(t)}</span>`).join('')}</div>
+        ${evoHtml}
+        ${card.inherited ? `<div class="detail-effect"><span class="label">進化元効果</span>${escapeHtml(card.inherited)}</div>` : ''}
+        ${card.effect ? `<div class="detail-effect"><span class="label">効果</span>${escapeHtml(card.effect)}</div>` : ''}
+        ${card.security_effect ? `<div class="detail-effect"><span class="label">セキュリティ効果</span>${escapeHtml(card.security_effect)}</div>` : ''}
+      </div>
+    `;
+    cardDetailModal.classList.add('open');
+  }
+
+  // Re-render search grid once DB status finishes loading (currentDb may be populated asynchronously)
+  const originalLoadStatus = loadStatus;
+  loadStatus = async function () {
+    await originalLoadStatus();
+    renderGrid();
+  };
+  renderGrid();
+  loadStatus(); // initial load (wrapped version re-renders the grid once data arrives)
 
   // ---------- Phase 1: DB build from heroi.cc bulk-data ----------
   const logEl = document.getElementById('logConsole');
@@ -711,7 +1133,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.1.5`);
+    log(`DigiCA Tool build v0.2.0`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
