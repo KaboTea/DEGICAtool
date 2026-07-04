@@ -590,7 +590,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.3.1</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.3.2</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -1085,13 +1085,11 @@
     if (card.dual) {
       const dualColorsJa = (card.dual.color || []).map(c => COLOR_JA[c] || c).join('/');
       const dualTags = [dualColorsJa, card.dual.rarity, `使用コスト${card.dual.use_cost ?? '?'}`].filter(Boolean);
-      dualHtml = `
-        <div class="detail-effect" style="border-top:1px solid var(--border);padding-top:10px;margin-top:4px;">
-          <span class="label">オプション側(${escapeHtml(card.dual.name || card.name)})</span>
-          <div class="detail-tags" style="margin-bottom:8px;">${dualTags.map(t => `<span>${escapeHtml(t)}</span>`).join('')}</div>
-          ${escapeHtml(card.dual.effect || '')}
-        </div>
-      `;
+      dualHtml = '<div class="detail-effect" style="border-top:1px solid var(--border);padding-top:10px;margin-top:4px;">'
+        + `<span class="label">オプション側(${escapeHtml(card.dual.name || card.name)})</span>`
+        + `<div class="detail-tags" style="margin-bottom:8px;">${dualTags.map(t => `<span>${escapeHtml(t)}</span>`).join('')}</div>`
+        + escapeHtml(card.dual.effect || '')
+        + '</div>';
     }
 
     detailBody.innerHTML = `
@@ -1237,7 +1235,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.3.1`);
+    log(`DigiCA Tool build v0.3.2`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
