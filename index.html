@@ -590,7 +590,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.3.2</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.3.3</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -962,8 +962,13 @@
     if (filterLevel.value && String(card.level) !== filterLevel.value) return false;
     const costMin = filterCostMin.value !== '' ? parseInt(filterCostMin.value, 10) : null;
     const costMax = filterCostMax.value !== '' ? parseInt(filterCostMax.value, 10) : null;
-    if (costMin !== null && (card.play_cost === null || card.play_cost < costMin)) return false;
-    if (costMax !== null && (card.play_cost === null || card.play_cost > costMax)) return false;
+    if (costMin !== null || costMax !== null) {
+      // デュアルカードはplay_costを持たないため、オプション側の使用コストで判定する
+      const effCost = card.play_cost ?? (card.dual ? card.dual.use_cost : null);
+      if (effCost === null || effCost === undefined) return false;
+      if (costMin !== null && effCost < costMin) return false;
+      if (costMax !== null && effCost > costMax) return false;
+    }
     return true;
   }
 
@@ -996,10 +1001,10 @@
         ? `var(${COLOR_VAR[card.color[0]]})` : 'var(--border)';
       tile.style.borderLeftColor = borderColor;
       tile.innerHTML = `
-        <img src="${card.img || ''}" alt="${card.name || ''}" loading="lazy" onerror="this.style.opacity=0">
+        <img src="${escapeHtml(card.img || '')}" alt="${escapeHtml(card.name || '')}" loading="lazy" onerror="this.style.opacity=0">
         <div class="tile-info">
-          <div class="tile-number mono">${card.number || ''} ${cardTileLabel(card)}${card.dual ? ' <span style="color:var(--accent);">D/O</span>' : ''}</div>
-          <div class="tile-name">${card.name || ''}</div>
+          <div class="tile-number mono">${escapeHtml(card.number || '')} ${escapeHtml(cardTileLabel(card))}${card.dual ? ' <span style="color:var(--accent);">D/O</span>' : ''}</div>
+          <div class="tile-name">${escapeHtml(card.name || '')}</div>
         </div>
       `;
       tile.addEventListener('click', () => openCardDetail(card));
@@ -1235,7 +1240,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.3.2`);
+    log(`DigiCA Tool build v0.3.3`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
