@@ -697,26 +697,50 @@
       if (!idxRes.ok) throw new Error(`bulk-data一覧の取得に失敗しました: HTTP ${idxRes.status}`);
       const idx = await idxRes.json();
 
-      const jaEntry = idx.data.find(d => d.attributes && d.attributes.name === 'Japanese Cards');
-      if (!jaEntry) throw new Error('日本語カードのbulk-dataエントリが見つかりませんでした');
+      const idxList = Array.isArray(idx) ? idx : (Array.isArray(idx.data) ? idx.data : null);
+      if (!idxList) {
+        log(`[デバッグ] bulk-data一覧のキー: ${Object.keys(idx).join(', ')}`, 'err');
+        throw new Error('bulk-data一覧の形式が想定と異なります(上のデバッグ行を確認してください)');
+      }
 
-      const sizeMb = (jaEntry.attributes.size / 1024 / 1024).toFixed(1);
-      log(`日本語カードデータを検出: ${sizeMb}MB (データ元更新日: ${jaEntry.attributes['updated-at']})`, 'ok');
+      const jaEntry = idxList.find(d => (d.attributes && d.attributes.name === 'Japanese Cards') || d.name === 'Japanese Cards');
+      if (!jaEntry) {
+        log(`[デバッグ] 一覧の中身: ${JSON.stringify(idxList).slice(0, 500)}`, 'err');
+        throw new Error('日本語カードのbulk-dataエントリが見つかりませんでした(上のデバッグ行を確認してください)');
+      }
 
-      const raw = await downloadWithProgress(jaEntry.links.download);
+      const attrs = jaEntry.attributes || jaEntry;
+      const sizeMb = attrs.size ? (attrs.size / 1024 / 1024).toFixed(1) : '?';
+      const downloadUrl = (jaEntry.links && jaEntry.links.download) || attrs.download || attrs.url;
+      if (!downloadUrl) {
+        log(`[デバッグ] エントリの中身: ${JSON.stringify(jaEntry).slice(0, 500)}`, 'err');
+        throw new Error('ダウンロードURLが見つかりませんでした(上のデバッグ行を確認してください)');
+      }
+      log(`日本語カードデータを検出: ${sizeMb}MB (データ元更新日: ${attrs['updated-at'] || '?'})`, 'ok');
+
+      const raw = await downloadWithProgress(downloadUrl);
       progressFill.style.width = '100%';
-      log(`ダウンロード完了。${raw.data.length}件のレコードを解析します`, 'ok');
 
-      const cards = raw.data
-        .filter(item => item.type === 'card' && item.attributes && item.attributes['parallel-id'] === 0)
-        .map(item => mapCardAttributes(item.attributes));
+      const cardList = Array.isArray(raw) ? raw : (Array.isArray(raw.data) ? raw.data : null);
+      if (!cardList) {
+        log(`[デバッグ] ダウンロードしたJSONのキー: ${Object.keys(raw).join(', ')}`, 'err');
+        throw new Error('カードデータの形式が想定と異なります(上のデバッグ行を確認してください)');
+      }
+      log(`ダウンロード完了。${cardList.length}件のレコードを解析します`, 'ok');
+
+      const cards = cardList
+        .filter(item => {
+          const a = item.attributes || item;
+          return (item.type === 'card' || a.number) && (a['parallel-id'] === 0 || a['parallel-id'] === undefined);
+        })
+        .map(item => mapCardAttributes(item.attributes || item));
 
       log(`パラレル版を除外し、${cards.length}枚のカードを収録対象にしました`, 'ok');
 
       pendingDb = {
         generated_at: new Date().toISOString().slice(0, 10),
         source: 'heroi.cc bulk-data (ja)',
-        source_updated_at: jaEntry.attributes['updated-at'],
+        source_updated_at: attrs['updated-at'] || null,
         cards,
       };
 
