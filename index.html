@@ -582,6 +582,134 @@
     .detail-body { flex-direction: column; }
     .detail-body img { width: 140px; margin: 0 auto; }
   }
+
+  /* ---- Deck building tab ---- */
+  .deck-layout {
+    display: flex;
+    gap: 20px;
+    align-items: flex-start;
+  }
+  .deck-col {
+    flex: 1;
+    min-width: 0;
+  }
+  .deck-search-col .card-grid {
+    grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+    max-height: 560px;
+    overflow-y: auto;
+    padding-right: 4px;
+  }
+  .deck-search-col .card-tile { cursor: pointer; }
+  .deck-search-col .card-tile:hover { border-color: var(--accent); }
+
+  .deck-header-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+  }
+  .deck-header-row input[type="text"] {
+    flex: 1;
+    min-width: 140px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    color: var(--text);
+    font-size: 13px;
+  }
+  .deck-header-row select {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    color: var(--text);
+    font-size: 12px;
+    max-width: 180px;
+  }
+
+  .deck-section-title {
+    font-size: 12px;
+    color: var(--text-dim);
+    margin: 14px 0 8px;
+    display: flex;
+    justify-content: space-between;
+  }
+  .deck-section-title .count.over { color: var(--danger); }
+
+  .deck-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-height: 24px;
+  }
+  .deck-list-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--panel-raised);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 8px;
+    font-size: 12px;
+  }
+  .deck-list-item .dli-number {
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--text-dim);
+    font-size: 10px;
+    flex-shrink: 0;
+  }
+  .deck-list-item .dli-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .deck-list-item .dli-stepper {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+  .deck-list-item .dli-stepper button {
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+    cursor: pointer;
+    font-size: 12px;
+    line-height: 1;
+  }
+  .deck-list-item .dli-stepper button:hover { border-color: var(--accent-dim); }
+  .deck-list-item .dli-stepper .dli-count { font-family: 'JetBrains Mono', monospace; width: 14px; text-align: center; }
+
+  .deck-actions-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 16px;
+    flex-wrap: wrap;
+  }
+
+  .deck-validation {
+    font-size: 12px;
+    color: var(--danger);
+    margin-top: 8px;
+    min-height: 16px;
+  }
+
+  .deck-status-msg {
+    font-size: 12px;
+    color: var(--accent);
+    margin-top: 8px;
+    min-height: 16px;
+  }
+
+  @media (max-width: 720px) {
+    .deck-layout { flex-direction: column; }
+  }
 </style>
 </head>
 <body>
@@ -590,7 +718,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.3.3</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.4.0</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -668,9 +796,42 @@
   </section>
 
   <section id="tab-deck" class="tab-panel" style="display:none;">
-    <div class="panel placeholder">
-      <span class="phase-tag">PHASE 3 未実装</span><br>
-      デッキ構築・保存はここに実装予定です。
+    <div class="panel">
+      <div class="deck-layout">
+        <div class="deck-col deck-search-col">
+          <input type="text" id="deckSearchText" placeholder="カード名で検索して追加...">
+          <div class="card-grid" id="deckSearchGrid"></div>
+        </div>
+
+        <div class="deck-col deck-build-col">
+          <div class="deck-header-row">
+            <input type="text" id="deckNameInput" placeholder="デッキ名">
+            <select id="deckLoadSelect">
+              <option value="">-- 保存済みデッキを読込 --</option>
+            </select>
+          </div>
+
+          <div class="deck-section-title">
+            <span>デジタマ</span>
+            <span class="count mono" id="eggCountLabel">0 / 5</span>
+          </div>
+          <div class="deck-list" id="eggList"></div>
+
+          <div class="deck-section-title">
+            <span>メイン</span>
+            <span class="count mono" id="mainCountLabel">0 / 50</span>
+          </div>
+          <div class="deck-list" id="mainList"></div>
+
+          <div class="deck-actions-row">
+            <button class="btn" id="newDeckBtn">新規</button>
+            <button class="btn primary" id="saveDeckBtn">保存</button>
+            <button class="btn" id="deleteDeckBtn">削除</button>
+          </div>
+          <div class="deck-validation" id="deckValidation"></div>
+          <div class="deck-status-msg" id="deckStatusMsg"></div>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -947,29 +1108,47 @@
     return base;
   }
 
-  function matchesFilters(card, query) {
+  function matchesFilters(card, opts) {
+    const { query, colors, category, level, costMin, costMax } = opts;
     if (query) {
       const dualText = card.dual ? `${card.dual.name || ''} ${card.dual.effect || ''}` : '';
       const haystack = `${card.name || ''} ${card.effect || ''} ${card.inherited || ''} ${card.security_effect || ''} ${dualText}`.toLowerCase();
       if (!haystack.includes(query)) return false;
     }
-    if (activeColors.size > 0) {
+    if (colors && colors.size > 0) {
       const cardColors = card.color || [];
-      const hasMatch = cardColors.some(c => activeColors.has(c));
+      const hasMatch = cardColors.some(c => colors.has(c));
       if (!hasMatch) return false;
     }
-    if (filterCategory.value && card.category !== filterCategory.value && !(filterCategory.value === 'option' && card.dual)) return false;
-    if (filterLevel.value && String(card.level) !== filterLevel.value) return false;
-    const costMin = filterCostMin.value !== '' ? parseInt(filterCostMin.value, 10) : null;
-    const costMax = filterCostMax.value !== '' ? parseInt(filterCostMax.value, 10) : null;
-    if (costMin !== null || costMax !== null) {
+    if (category && card.category !== category && !(category === 'option' && card.dual)) return false;
+    if (level && String(card.level) !== level) return false;
+    if (costMin != null || costMax != null) {
       // デュアルカードはplay_costを持たないため、オプション側の使用コストで判定する
       const effCost = card.play_cost ?? (card.dual ? card.dual.use_cost : null);
       if (effCost === null || effCost === undefined) return false;
-      if (costMin !== null && effCost < costMin) return false;
-      if (costMax !== null && effCost > costMax) return false;
+      if (costMin != null && effCost < costMin) return false;
+      if (costMax != null && effCost > costMax) return false;
     }
     return true;
+  }
+
+  // Builds a card-tile element; shared between the search tab and deck-building tab.
+  // onClick receives the card object when the tile is clicked.
+  function buildCardTile(card, onClick) {
+    const tile = document.createElement('div');
+    tile.className = 'card-tile';
+    const borderColor = card.color && card.color[0] && COLOR_VAR[card.color[0]]
+      ? `var(${COLOR_VAR[card.color[0]]})` : 'var(--border)';
+    tile.style.borderLeftColor = borderColor;
+    tile.innerHTML = `
+      <img src="${escapeHtml(card.img || '')}" alt="${escapeHtml(card.name || '')}" loading="lazy" onerror="this.style.opacity=0">
+      <div class="tile-info">
+        <div class="tile-number mono">${escapeHtml(card.number || '')} ${escapeHtml(cardTileLabel(card))}${card.dual ? ' <span style="color:var(--accent);">D/O</span>' : ''}</div>
+        <div class="tile-name">${escapeHtml(card.name || '')}</div>
+      </div>
+    `;
+    if (onClick) tile.addEventListener('click', () => onClick(card));
+    return tile;
   }
 
   function renderGrid() {
@@ -979,7 +1158,14 @@
       return;
     }
     const query = searchTextInput.value.trim().toLowerCase();
-    const results = currentDb.cards.filter(c => matchesFilters(c, query));
+    const results = currentDb.cards.filter(c => matchesFilters(c, {
+      query,
+      colors: activeColors,
+      category: filterCategory.value,
+      level: filterLevel.value,
+      costMin: filterCostMin.value !== '' ? parseInt(filterCostMin.value, 10) : null,
+      costMax: filterCostMax.value !== '' ? parseInt(filterCostMax.value, 10) : null,
+    }));
 
     resultCountEl.textContent = `${results.length}件 / 全${currentDb.cards.length}枚`;
 
@@ -995,20 +1181,7 @@
     cardGrid.innerHTML = '';
     const frag = document.createDocumentFragment();
     toRender.forEach(card => {
-      const tile = document.createElement('div');
-      tile.className = 'card-tile';
-      const borderColor = card.color && card.color[0] && COLOR_VAR[card.color[0]]
-        ? `var(${COLOR_VAR[card.color[0]]})` : 'var(--border)';
-      tile.style.borderLeftColor = borderColor;
-      tile.innerHTML = `
-        <img src="${escapeHtml(card.img || '')}" alt="${escapeHtml(card.name || '')}" loading="lazy" onerror="this.style.opacity=0">
-        <div class="tile-info">
-          <div class="tile-number mono">${escapeHtml(card.number || '')} ${escapeHtml(cardTileLabel(card))}${card.dual ? ' <span style="color:var(--accent);">D/O</span>' : ''}</div>
-          <div class="tile-name">${escapeHtml(card.name || '')}</div>
-        </div>
-      `;
-      tile.addEventListener('click', () => openCardDetail(card));
-      frag.appendChild(tile);
+      frag.appendChild(buildCardTile(card, openCardDetail));
     });
     cardGrid.appendChild(frag);
 
@@ -1139,14 +1312,280 @@
     if (modal.classList.contains('open')) modal.classList.remove('open');
   });
 
+  // ---------- Phase 3: Deck building & saving ----------
+  let cardIndexByNumber = new Map();
+  let deckState = { id: null, eggs: {}, main: {} };
+
+  const deckSearchText = document.getElementById('deckSearchText');
+  const deckSearchGrid = document.getElementById('deckSearchGrid');
+  const deckNameInput = document.getElementById('deckNameInput');
+  const deckLoadSelect = document.getElementById('deckLoadSelect');
+  const eggList = document.getElementById('eggList');
+  const mainList = document.getElementById('mainList');
+  const eggCountLabel = document.getElementById('eggCountLabel');
+  const mainCountLabel = document.getElementById('mainCountLabel');
+  const newDeckBtn = document.getElementById('newDeckBtn');
+  const saveDeckBtn = document.getElementById('saveDeckBtn');
+  const deleteDeckBtn = document.getElementById('deleteDeckBtn');
+  const deckValidation = document.getElementById('deckValidation');
+  const deckStatusMsg = document.getElementById('deckStatusMsg');
+
+  const sumMap = (m) => Object.values(m).reduce((s, c) => s + c, 0);
+
+  function adjustDeckCount(card, delta) {
+    const target = card.category === 'digi-egg' ? 'eggs' : 'main';
+    const map = deckState[target];
+    const current = map[card.number] || 0;
+    const next = current + delta;
+    if (next < 0) return;
+
+    if (next > 4) {
+      deckValidation.textContent = `「${card.name}」は同名カード4枚までです。`;
+      return;
+    }
+    if (delta > 0) {
+      const totalOthers = Object.entries(map).reduce((s, [num, c]) => s + (num === card.number ? 0 : c), 0);
+      const limit = target === 'eggs' ? 5 : 50;
+      if (totalOthers + next > limit) {
+        deckValidation.textContent = `${target === 'eggs' ? 'デジタマ' : 'メイン'}デッキの上限(${limit}枚)を超えます。`;
+        return;
+      }
+    }
+
+    if (next === 0) delete map[card.number]; else map[card.number] = next;
+    renderDeckLists();
+  }
+
+  function renderOneDeckList(target, listEl, labelEl, limit) {
+    const map = deckState[target];
+    const entries = Object.entries(map);
+    const total = sumMap(map);
+    labelEl.textContent = `${total} / ${limit}`;
+    labelEl.classList.toggle('over', total > limit);
+
+    listEl.innerHTML = '';
+    if (entries.length === 0) {
+      listEl.innerHTML = '<div class="empty-state" style="padding:6px 0;">カードがありません</div>';
+      return;
+    }
+    entries.sort((a, b) => a[0].localeCompare(b[0]));
+    const frag = document.createDocumentFragment();
+    entries.forEach(([number, count]) => {
+      const card = cardIndexByNumber.get(number);
+      const row = document.createElement('div');
+      row.className = 'deck-list-item';
+      row.innerHTML = `
+        <span class="dli-number mono">${escapeHtml(number)}</span>
+        <span class="dli-name">${escapeHtml(card ? card.name : '(不明なカード)')}</span>
+        <span class="dli-stepper">
+          <button type="button" class="dli-minus">−</button>
+          <span class="dli-count mono">${count}</span>
+          <button type="button" class="dli-plus">＋</button>
+        </span>
+      `;
+      row.querySelector('.dli-minus').addEventListener('click', () => card && adjustDeckCount(card, -1));
+      row.querySelector('.dli-plus').addEventListener('click', () => card && adjustDeckCount(card, 1));
+      frag.appendChild(row);
+    });
+    listEl.appendChild(frag);
+  }
+
+  function renderDeckLists() {
+    renderOneDeckList('eggs', eggList, eggCountLabel, 5);
+    renderOneDeckList('main', mainList, mainCountLabel, 50);
+    const eggTotal = sumMap(deckState.eggs);
+    const mainTotal = sumMap(deckState.main);
+    const msgs = [];
+    if (eggTotal > 5) msgs.push(`デジタマが上限(5枚)を超えています(${eggTotal}枚)`);
+    if (mainTotal > 50) msgs.push(`メインが上限(50枚)を超えています(${mainTotal}枚)`);
+    deckValidation.textContent = msgs.join(' / ');
+  }
+
+  function renderDeckSearchGrid() {
+    if (!currentDb || !Array.isArray(currentDb.cards)) {
+      deckSearchGrid.innerHTML = '<div class="empty-state">DBが未生成です。DB管理タブから更新してください。</div>';
+      return;
+    }
+    const query = deckSearchText.value.trim().toLowerCase();
+    if (!query) {
+      deckSearchGrid.innerHTML = '<div class="empty-state">カード名を入力すると候補が表示されます。クリックでデッキに追加します。</div>';
+      return;
+    }
+    const results = currentDb.cards.filter(c => matchesFilters(c, { query }));
+    if (results.length === 0) {
+      deckSearchGrid.innerHTML = '<div class="empty-state">見つかりません</div>';
+      return;
+    }
+    const MAX_RENDER = 60;
+    const toRender = results.slice(0, MAX_RENDER);
+    deckSearchGrid.innerHTML = '';
+    const frag = document.createDocumentFragment();
+    toRender.forEach(card => frag.appendChild(buildCardTile(card, c => adjustDeckCount(c, 1))));
+    deckSearchGrid.appendChild(frag);
+    if (results.length > MAX_RENDER) {
+      const note = document.createElement('div');
+      note.className = 'empty-state';
+      note.style.gridColumn = '1 / -1';
+      note.textContent = `${results.length}件中${MAX_RENDER}件を表示中。絞り込みを追加してください。`;
+      deckSearchGrid.appendChild(note);
+    }
+  }
+
+  let deckSearchDebounce;
+  deckSearchText.addEventListener('input', () => {
+    clearTimeout(deckSearchDebounce);
+    deckSearchDebounce = setTimeout(renderDeckSearchGrid, 150);
+  });
+
+  async function loadDecksFile() {
+    const existing = await window.DigicaGitHub.getFile('decks/decks.json');
+    if (!existing) return { data: { decks: [] }, sha: undefined };
+    try {
+      return { data: JSON.parse(existing.content), sha: existing.sha };
+    } catch (e) {
+      return { data: { decks: [] }, sha: existing.sha };
+    }
+  }
+
+  async function refreshDeckSelect() {
+    try {
+      const { data } = await loadDecksFile();
+      deckLoadSelect.innerHTML = '<option value="">-- 保存済みデッキを読込 --</option>';
+      (data.decks || []).forEach(d => {
+        const opt = document.createElement('option');
+        opt.value = d.id;
+        opt.textContent = `${d.name || '無題'} (${d.updated || ''})`;
+        deckLoadSelect.appendChild(opt);
+      });
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  function flashDeckStatus(msg) {
+    deckStatusMsg.textContent = msg;
+    setTimeout(() => { deckStatusMsg.textContent = ''; }, 2200);
+  }
+
+  newDeckBtn.addEventListener('click', () => {
+    deckState = { id: null, eggs: {}, main: {} };
+    deckNameInput.value = '';
+    deckLoadSelect.value = '';
+    deckValidation.textContent = '';
+    renderDeckLists();
+    flashDeckStatus('新規デッキを作成しました');
+  });
+
+  deckLoadSelect.addEventListener('change', async () => {
+    const id = deckLoadSelect.value;
+    if (!id) return;
+    try {
+      const { data } = await loadDecksFile();
+      const found = (data.decks || []).find(d => d.id === id);
+      if (!found) return;
+      deckState = {
+        id: found.id,
+        eggs: Object.fromEntries((found.eggs || []).map(e => [e.number, e.count])),
+        main: Object.fromEntries((found.main || []).map(e => [e.number, e.count])),
+      };
+      deckNameInput.value = found.name || '';
+      renderDeckLists();
+      flashDeckStatus('読み込みました');
+    } catch (e) {
+      deckValidation.textContent = `読込エラー: ${e.message}`;
+    }
+  });
+
+  saveDeckBtn.addEventListener('click', async () => {
+    saveDeckBtn.disabled = true;
+    try {
+      const { data, sha } = await loadDecksFile();
+      const name = deckNameInput.value.trim() || '無題のデッキ';
+      const deckObj = {
+        id: deckState.id || (window.crypto && crypto.randomUUID ? crypto.randomUUID() : `deck_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`),
+        name,
+        updated: new Date().toISOString().slice(0, 10),
+        eggs: Object.entries(deckState.eggs).map(([number, count]) => ({ number, count })),
+        main: Object.entries(deckState.main).map(([number, count]) => ({ number, count })),
+      };
+      data.decks = data.decks || [];
+      const idx = data.decks.findIndex(d => d.id === deckObj.id);
+      if (idx >= 0) data.decks[idx] = deckObj; else data.decks.push(deckObj);
+      deckState.id = deckObj.id;
+
+      const content = JSON.stringify(data);
+      const message = `デッキ保存: ${name}`;
+      try {
+        await window.DigicaGitHub.putFile('decks/decks.json', content, message, sha);
+      } catch (e) {
+        if (e.message.includes('409')) {
+          const retry = await loadDecksFile();
+          await window.DigicaGitHub.putFile('decks/decks.json', content, message, retry.sha);
+        } else {
+          throw e;
+        }
+      }
+      flashDeckStatus('保存しました');
+      await refreshDeckSelect();
+      deckLoadSelect.value = deckObj.id;
+    } catch (e) {
+      deckValidation.textContent = `保存エラー: ${e.message}`;
+      console.error(e);
+    } finally {
+      saveDeckBtn.disabled = false;
+    }
+  });
+
+  deleteDeckBtn.addEventListener('click', async () => {
+    if (!deckState.id) {
+      flashDeckStatus('保存済みのデッキを選択してください');
+      return;
+    }
+    if (!confirm('このデッキを削除しますか?この操作は取り消せません。')) return;
+    deleteDeckBtn.disabled = true;
+    try {
+      const { data, sha } = await loadDecksFile();
+      data.decks = (data.decks || []).filter(d => d.id !== deckState.id);
+      const content = JSON.stringify(data);
+      const message = `デッキ削除: ${deckNameInput.value || deckState.id}`;
+      try {
+        await window.DigicaGitHub.putFile('decks/decks.json', content, message, sha);
+      } catch (e) {
+        if (e.message.includes('409')) {
+          const retry = await loadDecksFile();
+          await window.DigicaGitHub.putFile('decks/decks.json', content, message, retry.sha);
+        } else {
+          throw e;
+        }
+      }
+      deckState = { id: null, eggs: {}, main: {} };
+      deckNameInput.value = '';
+      renderDeckLists();
+      await refreshDeckSelect();
+      flashDeckStatus('削除しました');
+    } catch (e) {
+      deckValidation.textContent = `削除エラー: ${e.message}`;
+      console.error(e);
+    } finally {
+      deleteDeckBtn.disabled = false;
+    }
+  });
+
+  refreshDeckSelect();
+  renderDeckLists();
+
   // Re-render search grid once DB status finishes loading (currentDb may be populated asynchronously)
   const originalLoadStatus = loadStatus;
   loadStatus = async function () {
     await originalLoadStatus();
+    cardIndexByNumber = new Map((currentDb && Array.isArray(currentDb.cards) ? currentDb.cards : []).map(c => [c.number, c]));
     renderGrid();
+    renderDeckSearchGrid();
+    renderDeckLists();
   };
   renderGrid();
-  loadStatus(); // initial load (wrapped version re-renders the grid once data arrives)
+  renderDeckSearchGrid();
+  loadStatus(); // initial load (wrapped version re-renders both grids once data arrives)
 
   // ---------- Phase 1: DB build from heroi.cc bulk-data ----------
   const logEl = document.getElementById('logConsole');
@@ -1240,7 +1679,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.3.3`);
+    log(`DigiCA Tool build v0.4.0`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
