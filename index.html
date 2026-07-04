@@ -378,7 +378,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.1.4</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.1.5</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -557,6 +557,28 @@
       return { content, sha: data.sha };
     },
 
+    // ファイルサイズに関係なくSHAを取得する(Contents APIは1MB超のファイル本体を返せないため、
+    // 親ディレクトリの一覧からSHAだけを取る)
+    async getFileSha(path) {
+      const { token, repo } = this.config();
+      if (!token || !repo) throw new Error('GitHub設定(トークン/リポジトリ)が未設定です');
+      const lastSlash = path.lastIndexOf('/');
+      const dir = lastSlash >= 0 ? path.slice(0, lastSlash) : '';
+      const fileName = lastSlash >= 0 ? path.slice(lastSlash + 1) : path;
+      const res = await fetch(`https://api.github.com/repos/${repo}/contents/${dir}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/vnd.github+json',
+        },
+      });
+      if (res.status === 404) return null; // directory doesn't exist yet
+      if (!res.ok) throw new Error(`GitHub取得エラー: ${res.status}`);
+      const entries = await res.json();
+      if (!Array.isArray(entries)) return null;
+      const entry = entries.find(e => e.name === fileName);
+      return entry ? entry.sha : null;
+    },
+
     async putFile(path, contentStr, message, sha) {
       const { token, repo } = this.config();
       if (!token || !repo) throw new Error('GitHub設定(トークン/リポジトリ)が未設定です');
@@ -689,7 +711,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.1.4`);
+    log(`DigiCA Tool build v0.1.5`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -776,13 +798,13 @@
     commitBtn.disabled = true;
     try {
       log('現在のcards/db.jsonを確認中...');
-      const existing = await window.DigicaGitHub.getFile('cards/db.json');
+      const existingSha = await window.DigicaGitHub.getFileSha('cards/db.json');
       log('GitHubへコミット中...');
       await window.DigicaGitHub.putFile(
         'cards/db.json',
         JSON.stringify(pendingDb),
         `DB更新: ${pendingDb.cards.length}枚 (${pendingDb.source_updated_at})`,
-        existing ? existing.sha : undefined
+        existingSha || undefined
       );
       log(`コミット完了。${pendingDb.cards.length}枚のカードデータベースを保存しました`, 'ok');
       currentDb = pendingDb;
