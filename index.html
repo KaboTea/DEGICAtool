@@ -590,7 +590,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.3.0</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.3.1</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -835,6 +835,7 @@
       const { token, repo } = this.config();
       if (!token || !repo) throw new Error('GitHub設定(トークン/リポジトリ)が未設定です');
       const res = await fetch(`https://api.github.com/repos/${repo}/contents/${path}`, {
+        cache: 'no-store',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Accept': 'application/vnd.github+json',
@@ -856,6 +857,7 @@
       const dir = lastSlash >= 0 ? path.slice(0, lastSlash) : '';
       const fileName = lastSlash >= 0 ? path.slice(lastSlash + 1) : path;
       const res = await fetch(`https://api.github.com/repos/${repo}/contents/${dir}`, {
+        cache: 'no-store',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Accept': 'application/vnd.github+json',
@@ -1235,7 +1237,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.3.0`);
+    log(`DigiCA Tool build v0.3.1`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -1322,14 +1324,23 @@
     commitBtn.disabled = true;
     try {
       log('現在のcards/db.jsonを確認中...');
-      const existingSha = await window.DigicaGitHub.getFileSha('cards/db.json');
+      let existingSha = await window.DigicaGitHub.getFileSha('cards/db.json');
+      const content = JSON.stringify(pendingDb);
+      const message = `DB更新: ${pendingDb.cards.length}枚 (${pendingDb.source_updated_at})`;
+
       log('GitHubへコミット中...');
-      await window.DigicaGitHub.putFile(
-        'cards/db.json',
-        JSON.stringify(pendingDb),
-        `DB更新: ${pendingDb.cards.length}枚 (${pendingDb.source_updated_at})`,
-        existingSha || undefined
-      );
+      try {
+        await window.DigicaGitHub.putFile('cards/db.json', content, message, existingSha || undefined);
+      } catch (e) {
+        if (e.message.includes('409')) {
+          log('SHAが古かったため再取得して再試行します...');
+          existingSha = await window.DigicaGitHub.getFileSha('cards/db.json');
+          await window.DigicaGitHub.putFile('cards/db.json', content, message, existingSha || undefined);
+        } else {
+          throw e;
+        }
+      }
+
       log(`コミット完了。${pendingDb.cards.length}枚のカードデータベースを保存しました`, 'ok');
       currentDb = pendingDb;
       pendingDb = null;
