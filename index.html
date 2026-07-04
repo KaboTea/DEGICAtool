@@ -590,7 +590,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.2.3</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.3.0</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -947,7 +947,8 @@
 
   function matchesFilters(card, query) {
     if (query) {
-      const haystack = `${card.name || ''} ${card.effect || ''} ${card.inherited || ''} ${card.security_effect || ''}`.toLowerCase();
+      const dualText = card.dual ? `${card.dual.name || ''} ${card.dual.effect || ''}` : '';
+      const haystack = `${card.name || ''} ${card.effect || ''} ${card.inherited || ''} ${card.security_effect || ''} ${dualText}`.toLowerCase();
       if (!haystack.includes(query)) return false;
     }
     if (activeColors.size > 0) {
@@ -955,7 +956,7 @@
       const hasMatch = cardColors.some(c => activeColors.has(c));
       if (!hasMatch) return false;
     }
-    if (filterCategory.value && card.category !== filterCategory.value) return false;
+    if (filterCategory.value && card.category !== filterCategory.value && !(filterCategory.value === 'option' && card.dual)) return false;
     if (filterLevel.value && String(card.level) !== filterLevel.value) return false;
     const costMin = filterCostMin.value !== '' ? parseInt(filterCostMin.value, 10) : null;
     const costMax = filterCostMax.value !== '' ? parseInt(filterCostMax.value, 10) : null;
@@ -995,7 +996,7 @@
       tile.innerHTML = `
         <img src="${card.img || ''}" alt="${card.name || ''}" loading="lazy" onerror="this.style.opacity=0">
         <div class="tile-info">
-          <div class="tile-number mono">${card.number || ''} ${cardTileLabel(card)}</div>
+          <div class="tile-number mono">${card.number || ''} ${cardTileLabel(card)}${card.dual ? ' <span style="color:var(--accent);">D/O</span>' : ''}</div>
           <div class="tile-name">${card.name || ''}</div>
         </div>
       `;
@@ -1063,7 +1064,11 @@
     if (card.type) tags.push(card.type);
     if (card.rarity) tags.push(card.rarity);
     if (card.dp) tags.push(`DP${card.dp}`);
-    if (card.play_cost !== null && card.play_cost !== undefined) tags.push(`コスト${card.play_cost}`);
+    if (card.dual) {
+      tags.push('デュアルカード');
+    } else if (card.play_cost !== null && card.play_cost !== undefined) {
+      tags.push(`コスト${card.play_cost}`);
+    }
 
     let evoHtml = '';
     if (Array.isArray(card.evo) && card.evo.length > 0) {
@@ -1072,6 +1077,19 @@
         return `Lv.${e.level ?? '?'} ${colorsJa} コスト${e.cost ?? '?'}`;
       });
       evoHtml = `<div class="detail-effect"><span class="label">進化条件</span>${escapeHtml(lines.join(' / '))}</div>`;
+    }
+
+    let dualHtml = '';
+    if (card.dual) {
+      const dualColorsJa = (card.dual.color || []).map(c => COLOR_JA[c] || c).join('/');
+      const dualTags = [dualColorsJa, card.dual.rarity, `使用コスト${card.dual.use_cost ?? '?'}`].filter(Boolean);
+      dualHtml = `
+        <div class="detail-effect" style="border-top:1px solid var(--border);padding-top:10px;margin-top:4px;">
+          <span class="label">オプション側(${escapeHtml(card.dual.name || card.name)})</span>
+          <div class="detail-tags" style="margin-bottom:8px;">${dualTags.map(t => `<span>${escapeHtml(t)}</span>`).join('')}</div>
+          ${escapeHtml(card.dual.effect || '')}
+        </div>
+      `;
     }
 
     detailBody.innerHTML = `
@@ -1084,6 +1102,7 @@
         ${card.inherited ? `<div class="detail-effect"><span class="label">${card.inherited.includes('リンク') ? 'リンク効果' : '進化元効果'}</span>${escapeHtml(card.inherited)}</div>` : ''}
         ${card.effect ? `<div class="detail-effect"><span class="label">効果</span>${escapeHtml(card.effect)}</div>` : ''}
         ${card.security_effect ? `<div class="detail-effect"><span class="label">セキュリティ効果</span>${escapeHtml(card.security_effect)}</div>` : ''}
+        ${dualHtml}
       </div>
     `;
     cardDetailModal.classList.add('open');
@@ -1195,6 +1214,16 @@
       inherited: attrs['inherited-effect'] ?? null,
       evo: attrs['digivolution-requirements'] || [],
       img: attrs.image || null,
+      // DUAL cards (Digimon/Option combined, introduced 2026-05): the option side
+      // is stored in a nested "dual" object with its own cost/effect/color/rarity.
+      // These cards have no top-level play-cost (shown as "D" on the physical card).
+      dual: attrs.dual ? {
+        use_cost: attrs.dual['use-cost'] ?? null,
+        effect: attrs.dual.effect ?? null,
+        color: (attrs.dual.color || []).map(c => (c && c.color) ? c.color : c),
+        rarity: attrs.dual.rarity ?? null,
+        name: attrs.dual.name ?? null,
+      } : null,
     };
   }
 
@@ -1206,7 +1235,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.2.3`);
+    log(`DigiCA Tool build v0.3.0`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
