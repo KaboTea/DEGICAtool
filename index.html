@@ -727,6 +727,8 @@
         throw new Error('カードデータの形式が想定と異なります(上のデバッグ行を確認してください)');
       }
       log(`ダウンロード完了。${cardList.length}件のレコードを解析します`, 'ok');
+      log(`[デバッグ] 1件目のキー: ${Object.keys(cardList[0]).join(', ')}`, 'err');
+      log(`[デバッグ] 1件目の内容: ${JSON.stringify(cardList[0]).slice(0, 400)}`, 'err');
 
       const cards = cardList
         .filter(item => {
