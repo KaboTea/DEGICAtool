@@ -451,6 +451,7 @@
   }
 
   .card-tile {
+    position: relative;
     background: var(--panel-raised);
     border: 1px solid var(--border);
     border-left: 3px solid var(--border);
@@ -463,6 +464,32 @@
     transform: translateY(-2px);
     border-color: var(--accent-dim);
   }
+  .tile-quickadd {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    border: none;
+    background: var(--accent);
+    color: #0b1210;
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+    opacity: 0;
+    transform: scale(0.85);
+    transition: opacity 0.12s ease, transform 0.12s ease;
+    z-index: 2;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+  }
+  .card-tile:hover .tile-quickadd,
+  .tile-quickadd:focus {
+    opacity: 1;
+    transform: scale(1);
+  }
+  .tile-quickadd:hover { background: var(--accent-dim); color: var(--text); }
   .card-tile img {
     width: 100%;
     aspect-ratio: 43 / 60;
@@ -710,6 +737,30 @@
   @media (max-width: 720px) {
     .deck-layout { flex-direction: column; }
   }
+
+  /* ---- Toast (transient notifications, visible regardless of active tab) ---- */
+  .toast {
+    position: fixed;
+    left: 50%;
+    bottom: 24px;
+    transform: translateX(-50%) translateY(10px);
+    background: var(--panel-raised);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 10px 18px;
+    border-radius: 8px;
+    font-size: 13px;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+    z-index: 300;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s ease, transform 0.15s ease;
+  }
+  .toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+  .toast.error { border-color: var(--danger); color: var(--danger); }
 </style>
 </head>
 <body>
@@ -718,7 +769,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.4.0</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.4.1</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -898,6 +949,9 @@
   Card imagery &amp; text © Akiyoshi Hongo, Toei Animation © BANDAI.
 </footer>
 
+<!-- Toast notification -->
+<div class="toast" id="toast"></div>
+
 <!-- Image Lightbox (click-to-enlarge) -->
 <div class="image-lightbox" id="imageLightbox">
   <img id="lightboxImg" src="" alt="">
@@ -908,6 +962,7 @@
   <div class="modal">
     <div class="detail-body" id="detailBody"></div>
     <div class="modal-actions">
+      <button class="btn" id="addToDeckFromDetail">＋ デッキに追加</button>
       <button class="btn" id="closeDetail">閉じる</button>
     </div>
   </div>
@@ -1112,7 +1167,7 @@
     const { query, colors, category, level, costMin, costMax } = opts;
     if (query) {
       const dualText = card.dual ? `${card.dual.name || ''} ${card.dual.effect || ''}` : '';
-      const haystack = `${card.name || ''} ${card.effect || ''} ${card.inherited || ''} ${card.security_effect || ''} ${dualText}`.toLowerCase();
+      const haystack = `${card.number || ''} ${card.name || ''} ${card.effect || ''} ${card.inherited || ''} ${card.security_effect || ''} ${dualText}`.toLowerCase();
       if (!haystack.includes(query)) return false;
     }
     if (colors && colors.size > 0) {
@@ -1134,13 +1189,16 @@
 
   // Builds a card-tile element; shared between the search tab and deck-building tab.
   // onClick receives the card object when the tile is clicked.
-  function buildCardTile(card, onClick) {
+  // onQuickAdd (optional) renders a small "+" overlay button that adds the card to the
+  // current deck without opening the detail modal (used on the main search tab).
+  function buildCardTile(card, onClick, onQuickAdd) {
     const tile = document.createElement('div');
     tile.className = 'card-tile';
     const borderColor = card.color && card.color[0] && COLOR_VAR[card.color[0]]
       ? `var(${COLOR_VAR[card.color[0]]})` : 'var(--border)';
     tile.style.borderLeftColor = borderColor;
     tile.innerHTML = `
+      ${onQuickAdd ? '<button type="button" class="tile-quickadd" title="デッキに追加">＋</button>' : ''}
       <img src="${escapeHtml(card.img || '')}" alt="${escapeHtml(card.name || '')}" loading="lazy" onerror="this.style.opacity=0">
       <div class="tile-info">
         <div class="tile-number mono">${escapeHtml(card.number || '')} ${escapeHtml(cardTileLabel(card))}${card.dual ? ' <span style="color:var(--accent);">D/O</span>' : ''}</div>
@@ -1148,6 +1206,15 @@
       </div>
     `;
     if (onClick) tile.addEventListener('click', () => onClick(card));
+    if (onQuickAdd) {
+      const btn = tile.querySelector('.tile-quickadd');
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        onQuickAdd(card);
+        btn.textContent = '✓';
+        setTimeout(() => { btn.textContent = '＋'; }, 600);
+      });
+    }
     return tile;
   }
 
@@ -1181,7 +1248,7 @@
     cardGrid.innerHTML = '';
     const frag = document.createDocumentFragment();
     toRender.forEach(card => {
-      frag.appendChild(buildCardTile(card, openCardDetail));
+      frag.appendChild(buildCardTile(card, openCardDetail, c => adjustDeckCount(c, 1)));
     });
     cardGrid.appendChild(frag);
 
@@ -1230,6 +1297,11 @@
   document.getElementById('closeDetail').addEventListener('click', () => cardDetailModal.classList.remove('open'));
   cardDetailModal.addEventListener('click', (e) => { if (e.target === cardDetailModal) cardDetailModal.classList.remove('open'); });
 
+  let currentDetailCard = null;
+  document.getElementById('addToDeckFromDetail').addEventListener('click', () => {
+    if (currentDetailCard) adjustDeckCount(currentDetailCard, 1);
+  });
+
   function escapeHtml(str) {
     const div = document.createElement('div');
     div.textContent = str ?? '';
@@ -1237,6 +1309,7 @@
   }
 
   function openCardDetail(card) {
+    currentDetailCard = card;
     const tags = [];
     if (card.category) tags.push(cardTileLabel(card));
     if (card.color && card.color.length) tags.push(card.color.map(c => COLOR_JA[c] || c).join('/'));
@@ -1313,6 +1386,16 @@
   });
 
   // ---------- Phase 3: Deck building & saving ----------
+  const toastEl = document.getElementById('toast');
+  let toastTimeout;
+  function showToast(msg, isError) {
+    clearTimeout(toastTimeout);
+    toastEl.textContent = msg;
+    toastEl.classList.toggle('error', !!isError);
+    toastEl.classList.add('show');
+    toastTimeout = setTimeout(() => toastEl.classList.remove('show'), 2200);
+  }
+
   let cardIndexByNumber = new Map();
   let deckState = { id: null, eggs: {}, main: {} };
 
@@ -1340,20 +1423,25 @@
     if (next < 0) return;
 
     if (next > 4) {
-      deckValidation.textContent = `「${card.name}」は同名カード4枚までです。`;
+      const msg = `「${card.name}」は同名カード4枚までです。`;
+      deckValidation.textContent = msg;
+      showToast(msg, true);
       return;
     }
     if (delta > 0) {
       const totalOthers = Object.entries(map).reduce((s, [num, c]) => s + (num === card.number ? 0 : c), 0);
       const limit = target === 'eggs' ? 5 : 50;
       if (totalOthers + next > limit) {
-        deckValidation.textContent = `${target === 'eggs' ? 'デジタマ' : 'メイン'}デッキの上限(${limit}枚)を超えます。`;
+        const msg = `${target === 'eggs' ? 'デジタマ' : 'メイン'}デッキの上限(${limit}枚)を超えます。`;
+        deckValidation.textContent = msg;
+        showToast(msg, true);
         return;
       }
     }
 
     if (next === 0) delete map[card.number]; else map[card.number] = next;
     renderDeckLists();
+    if (delta > 0) showToast(`「${card.name}」をデッキに追加しました`);
   }
 
   function renderOneDeckList(target, listEl, labelEl, limit) {
@@ -1679,7 +1767,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.4.0`);
+    log(`DigiCA Tool build v0.4.1`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
