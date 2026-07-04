@@ -727,15 +727,17 @@
         throw new Error('カードデータの形式が想定と異なります(上のデバッグ行を確認してください)');
       }
       log(`ダウンロード完了。${cardList.length}件のレコードを解析します`, 'ok');
-      log(`[デバッグ] 1件目のキー: ${Object.keys(cardList[0]).join(', ')}`, 'err');
-      log(`[デバッグ] 1件目の内容: ${JSON.stringify(cardList[0]).slice(0, 400)}`, 'err');
 
       const cards = cardList
         .filter(item => {
-          const a = item.attributes || item;
-          return (item.type === 'card' || a.number) && (a['parallel-id'] === 0 || a['parallel-id'] === undefined);
+          const d = item.data || item; // 各要素は {data:{type,id,attributes}, included, links} という入れ子構造
+          const a = d.attributes || d;
+          return !!a.number && (a['parallel-id'] === 0 || a['parallel-id'] === undefined);
         })
-        .map(item => mapCardAttributes(item.attributes || item));
+        .map(item => {
+          const d = item.data || item;
+          return mapCardAttributes(d.attributes || d);
+        });
 
       log(`パラレル版を除外し、${cards.length}枚のカードを収録対象にしました`, 'ok');
 
