@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DigiCA Tool</title>
+<style>
+  :root {
+    --bg: #14151a;
+    --panel: #1c1e26;
+    --panel-raised: #22242e;
+    --border: #2a2d38;
+    --text: #e8e9ed;
+    --text-dim: #8b8d98;
+    --accent: #4fd8c4;
+    --accent-dim: #2d7d72;
+    --danger: #e85d5d;
+
+    /* Digimon card colors (established reference values) */
+    --c-red: #c0302a;
+    --c-blue: #2a6fb0;
+    --c-yellow: #d4a017;
+    --c-green: #3a8a4a;
+    --c-black: #3a3a3e;
+    --c-purple: #7a4a9a;
+    --c-white: #d8d4c8;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Hiragino Sans', 'Noto Sans JP', system-ui, -apple-system, sans-serif;
+    min-height: 100vh;
+  }
+
+  .mono {
+    font-family: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+  }
+
+  /* ---- Header / status bar (signature element) ---- */
+  header {
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .brand .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 6px var(--accent);
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
+  }
+
+  .brand h1 {
+    font-size: 15px;
+    letter-spacing: 0.06em;
+    margin: 0;
+    font-weight: 600;
+  }
+
+  .status-readout {
+    font-size: 11px;
+    color: var(--text-dim);
+    display: flex;
+    gap: 14px;
+    align-items: center;
+  }
+
+  .status-readout span.val {
+    color: var(--accent);
+  }
+
+  .settings-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .settings-btn:hover { color: var(--text); border-color: var(--accent-dim); }
+
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .db-admin-btn {
+    background: none;
+    border: 1px solid transparent;
+    color: var(--text-dim);
+    border-radius: 6px;
+    padding: 6px 8px;
+    font-size: 11px;
+    cursor: pointer;
+    opacity: 0.6;
+  }
+  .db-admin-btn:hover { opacity: 1; color: var(--text); border-color: var(--border); }
+
+  /* ---- Tabs ---- */
+  nav.tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg);
+    padding: 0 16px;
+    gap: 2px;
+    overflow-x: auto;
+  }
+
+  nav.tabs button {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    padding: 12px 16px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    white-space: nowrap;
+  }
+
+  nav.tabs button:hover { color: var(--text); }
+
+  nav.tabs button.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+
+  main {
+    padding: 20px 16px 60px;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+  }
+
+  .placeholder {
+    color: var(--text-dim);
+    font-size: 13px;
+    line-height: 1.8;
+  }
+
+  .placeholder .phase-tag {
+    display: inline-block;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    background: var(--panel-raised);
+    border: 1px solid var(--border);
+    color: var(--accent);
+    padding: 2px 8px;
+    border-radius: 4px;
+    margin-bottom: 10px;
+  }
+
+  /* ---- Modal (settings) ---- */
+  .modal-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+  }
+  .modal-backdrop.open { display: flex; }
+
+  .modal {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    width: min(440px, 92vw);
+    padding: 20px;
+  }
+
+  .modal h2 {
+    font-size: 14px;
+    margin: 0 0 14px;
+    color: var(--text);
+  }
+
+  .field {
+    margin-bottom: 14px;
+  }
+
+  .field label {
+    display: block;
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-bottom: 6px;
+  }
+
+  .field input {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 9px 10px;
+    color: var(--text);
+    font-size: 13px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .field input:focus {
+    outline: none;
+    border-color: var(--accent-dim);
+  }
+
+  .field .hint {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-top: 5px;
+  }
+
+  .modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 16px;
+  }
+
+  button.btn {
+    border: 1px solid var(--border);
+    background: var(--panel-raised);
+    color: var(--text);
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  button.btn:hover { border-color: var(--accent-dim); }
+
+  button.btn.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #0b1210;
+    font-weight: 600;
+  }
+  button.btn.primary:hover { background: var(--accent-dim); border-color: var(--accent-dim); color: var(--text); }
+
+  .save-msg {
+    font-size: 12px;
+    color: var(--accent);
+    margin-left: auto;
+    align-self: center;
+    display: none;
+  }
+
+  footer {
+    text-align: center;
+    font-size: 11px;
+    color: var(--text-dim);
+    padding: 20px 16px 30px;
+  }
+  footer a { color: var(--text-dim); }
+
+  /* ---- DB management tab ---- */
+  .db-section {
+    margin-bottom: 20px;
+  }
+  .db-section h3 {
+    font-size: 12px;
+    color: var(--text-dim);
+    margin: 0 0 10px;
+    letter-spacing: 0.04em;
+  }
+
+  .db-current {
+    display: flex;
+    gap: 24px;
+    font-size: 13px;
+    margin-bottom: 16px;
+  }
+  .db-current .kv { color: var(--text-dim); }
+  .db-current .kv .v { color: var(--accent); font-family: 'JetBrains Mono', monospace; }
+
+  .progress-track {
+    width: 100%;
+    height: 6px;
+    background: var(--bg);
+    border-radius: 4px;
+    overflow: hidden;
+    margin: 10px 0;
+    display: none;
+    border: 1px solid var(--border);
+  }
+  .progress-track.active { display: block; }
+  .progress-fill {
+    height: 100%;
+    width: 0%;
+    background: var(--accent);
+    transition: width 0.15s ease;
+  }
+
+  .log-console {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    font-family: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.7;
+    color: var(--text-dim);
+    max-height: 220px;
+    overflow-y: auto;
+    display: none;
+    margin-bottom: 16px;
+    white-space: pre-wrap;
+  }
+  .log-console.active { display: block; }
+  .log-console .ok { color: var(--accent); }
+  .log-console .err { color: var(--danger); }
+
+  .diff-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    margin-bottom: 16px;
+    display: none;
+  }
+  .diff-table.active { display: table; }
+  .diff-table th, .diff-table td {
+    text-align: left;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  .diff-table th {
+    color: var(--text-dim);
+    font-weight: 500;
+    font-size: 12px;
+  }
+  .diff-table td.num { font-family: 'JetBrains Mono', monospace; color: var(--accent); }
+  .diff-table td.num.neg { color: var(--danger); }
+
+  .db-actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  button.btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <span class="dot"></span>
+    <h1 class="mono">DIGICA TOOL</h1>
+  </div>
+  <div class="status-readout mono">
+    <span>DB: <span class="val" id="statDbCount">未取得</span></span>
+    <span>更新: <span class="val" id="statDbUpdated">--</span></span>
+  </div>
+  <div class="header-actions">
+    <button class="db-admin-btn mono" id="openDbTab" title="カードデータベースの更新(たまに使う管理機能)">DB管理</button>
+    <button class="settings-btn" id="openSettings">⚙ 設定</button>
+  </div>
+</header>
+
+<nav class="tabs">
+  <button class="tab-btn active" data-tab="search">🔍 カード検索</button>
+  <button class="tab-btn" data-tab="deck">🃏 デッキ構築</button>
+</nav>
+
+<main>
+  <section id="tab-search" class="tab-panel">
+    <div class="panel placeholder">
+      <span class="phase-tag">PHASE 2 未実装</span><br>
+      カード検索はここに実装予定です。<br>
+      現在は Phase 1(DB管理タブでのDB構築)から着手中です。
+    </div>
+  </section>
+
+  <section id="tab-deck" class="tab-panel" style="display:none;">
+    <div class="panel placeholder">
+      <span class="phase-tag">PHASE 3 未実装</span><br>
+      デッキ構築・保存はここに実装予定です。
+    </div>
+  </section>
+
+  <section id="tab-db" class="tab-panel" style="display:none;">
+    <div class="panel">
+      <div class="db-section">
+        <h3>現在のデータベース</h3>
+        <div class="db-current mono">
+          <span class="kv">枚数: <span class="v" id="dbCurrentCount">--</span></span>
+          <span class="kv">最終更新: <span class="v" id="dbCurrentUpdated">--</span></span>
+          <span class="kv">データ元更新日: <span class="v" id="dbCurrentSourceDate">--</span></span>
+        </div>
+      </div>
+
+      <div class="db-section">
+        <h3>DB更新(heroi.ccから日本語カードデータを取得)</h3>
+        <p class="placeholder" style="margin-top:0;">
+          新しいパックが発売されたときに実行してください。処理はブラウザ内で完結し、確認後にGitHubへコミットします。
+        </p>
+
+        <div class="db-actions">
+          <button class="btn primary" id="startDbUpdate">DB更新を開始</button>
+          <button class="btn" id="commitDb" style="display:none;">この内容でコミット</button>
+        </div>
+
+        <div class="progress-track" id="progressTrack">
+          <div class="progress-fill" id="progressFill"></div>
+        </div>
+
+        <div class="log-console mono" id="logConsole"></div>
+
+        <table class="diff-table" id="diffTable">
+          <thead>
+            <tr><th></th><th>現在</th><th>更新後</th><th>差分</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>収録枚数</td>
+              <td class="num" id="diffOldCount">--</td>
+              <td class="num" id="diffNewCount">--</td>
+              <td class="num" id="diffDelta">--</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  Card data provided by <a href="https://heroi.cc" target="_blank" rel="noopener">Heroicc</a> under CC BY-NC-SA 4.0.
+  Card imagery &amp; text © Akiyoshi Hongo, Toei Animation © BANDAI.
+</footer>
+
+<!-- Settings Modal -->
+<div class="modal-backdrop" id="settingsModal">
+  <div class="modal">
+    <h2 class="mono">⚙ 設定</h2>
+    <div class="field">
+      <label for="ghToken">GitHub Personal Access Token</label>
+      <input type="password" id="ghToken" placeholder="ghp_xxxxxxxxxxxx" autocomplete="off">
+      <div class="hint">db.json / decks.json の読み書きに使用します。ブラウザのlocalStorageに保存され、外部には送信されません。</div>
+    </div>
+    <div class="field">
+      <label for="ghRepo">リポジトリ(owner/repo)</label>
+      <input type="text" id="ghRepo" placeholder="KaboTea/digica-tool" autocomplete="off">
+    </div>
+    <div class="modal-actions">
+      <span class="save-msg" id="saveMsg">保存しました</span>
+      <button class="btn" id="closeSettings">閉じる</button>
+      <button class="btn primary" id="saveSettings">保存</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  // ---------- Tab switching ----------
+  const tabButtons = document.querySelectorAll('.tab-btn');
+  const tabPanels = {
+    search: document.getElementById('tab-search'),
+    deck: document.getElementById('tab-deck'),
+    db: document.getElementById('tab-db'),
+  };
+  function showTab(tabKey) {
+    tabButtons.forEach(b => b.classList.toggle('active', b.dataset.tab === tabKey));
+    Object.entries(tabPanels).forEach(([key, el]) => {
+      el.style.display = (key === tabKey) ? '' : 'none';
+    });
+  }
+
+  tabButtons.forEach(btn => {
+    btn.addEventListener('click', () => showTab(btn.dataset.tab));
+  });
+
+  // DB管理は主要タブと並べず、ヘッダーの控えめなリンクから開く
+  document.getElementById('openDbTab').addEventListener('click', () => showTab('db'));
+
+  // ---------- Settings modal ----------
+  const modal = document.getElementById('settingsModal');
+  const openBtn = document.getElementById('openSettings');
+  const closeBtn = document.getElementById('closeSettings');
+  const saveBtn = document.getElementById('saveSettings');
+  const tokenInput = document.getElementById('ghToken');
+  const repoInput = document.getElementById('ghRepo');
+  const saveMsg = document.getElementById('saveMsg');
+
+  function loadSettings() {
+    tokenInput.value = localStorage.getItem('digica_gh_token') || '';
+    repoInput.value = localStorage.getItem('digica_gh_repo') || 'KaboTea/digica-tool';
+  }
+
+  openBtn.addEventListener('click', () => { loadSettings(); modal.classList.add('open'); });
+  closeBtn.addEventListener('click', () => modal.classList.remove('open'));
+  modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.remove('open'); });
+
+  saveBtn.addEventListener('click', () => {
+    localStorage.setItem('digica_gh_token', tokenInput.value.trim());
+    localStorage.setItem('digica_gh_repo', repoInput.value.trim());
+    saveMsg.style.display = 'inline';
+    setTimeout(() => { saveMsg.style.display = 'none'; }, 1800);
+  });
+
+  // ---------- GitHub API helpers (common, used by later phases) ----------
+  // Exposed on window.DigicaGitHub so Phase 1/3 code can reuse them.
+  window.DigicaGitHub = {
+    config() {
+      return {
+        token: localStorage.getItem('digica_gh_token') || '',
+        repo: localStorage.getItem('digica_gh_repo') || '',
+      };
+    },
+
+    async getFile(path) {
+      const { token, repo } = this.config();
+      if (!token || !repo) throw new Error('GitHub設定(トークン/リポジトリ)が未設定です');
+      const res = await fetch(`https://api.github.com/repos/${repo}/contents/${path}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/vnd.github+json',
+        },
+      });
+      if (res.status === 404) return null; // file doesn't exist yet
+      if (!res.ok) throw new Error(`GitHub取得エラー: ${res.status}`);
+      const data = await res.json();
+      const content = decodeURIComponent(escape(atob(data.content.replace(/\n/g, ''))));
+      return { content, sha: data.sha };
+    },
+
+    async putFile(path, contentStr, message, sha) {
+      const { token, repo } = this.config();
+      if (!token || !repo) throw new Error('GitHub設定(トークン/リポジトリ)が未設定です');
+      const body = {
+        message,
+        content: btoa(unescape(encodeURIComponent(contentStr))),
+      };
+      if (sha) body.sha = sha;
+      const res = await fetch(`https://api.github.com/repos/${repo}/contents/${path}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/vnd.github+json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(`GitHub保存エラー: ${res.status} ${err.message || ''}`);
+      }
+      return res.json();
+    },
+  };
+
+  // ---------- Status readout: try loading cards/db.json for header stats ----------
+  let currentDb = null; // { generated_at, source_updated_at, cards: [...] }
+
+  async function loadStatus() {
+    try {
+      const res = await fetch('cards/db.json', { cache: 'no-store' });
+      if (!res.ok) throw new Error('not found');
+      const json = await res.json();
+      currentDb = json;
+      const count = Array.isArray(json.cards) ? json.cards.length : (Array.isArray(json) ? json.length : '?');
+      document.getElementById('statDbCount').textContent = `${count}枚`;
+      document.getElementById('statDbUpdated').textContent = json.generated_at || '?';
+      document.getElementById('dbCurrentCount').textContent = `${count}枚`;
+      document.getElementById('dbCurrentUpdated').textContent = json.generated_at || '--';
+      document.getElementById('dbCurrentSourceDate').textContent = json.source_updated_at || '--';
+    } catch (e) {
+      document.getElementById('statDbCount').textContent = '未生成';
+      document.getElementById('statDbUpdated').textContent = '--';
+      document.getElementById('dbCurrentCount').textContent = '0枚';
+      document.getElementById('dbCurrentUpdated').textContent = '--';
+      document.getElementById('dbCurrentSourceDate').textContent = '--';
+    }
+  }
+  loadStatus();
+
+  // ---------- Phase 1: DB build from heroi.cc bulk-data ----------
+  const logEl = document.getElementById('logConsole');
+  const progressTrack = document.getElementById('progressTrack');
+  const progressFill = document.getElementById('progressFill');
+  const startBtn = document.getElementById('startDbUpdate');
+  const commitBtn = document.getElementById('commitDb');
+  const diffTable = document.getElementById('diffTable');
+
+  function log(msg, cls) {
+    logEl.classList.add('active');
+    const line = document.createElement('div');
+    if (cls) line.className = cls;
+    line.textContent = `> ${msg}`;
+    logEl.appendChild(line);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  function setProgress(received, total) {
+    progressTrack.classList.add('active');
+    if (total > 0) {
+      progressFill.style.width = `${Math.min(100, (received / total) * 100)}%`;
+    }
+  }
+
+  async function downloadWithProgress(url) {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`ダウンロード失敗: HTTP ${res.status}`);
+    const total = parseInt(res.headers.get('content-length') || '0', 10);
+    const reader = res.body.getReader();
+    let received = 0;
+    const chunks = [];
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      received += value.length;
+      setProgress(received, total);
+      if (total > 0) {
+        log(`ダウンロード中... ${(received / 1024 / 1024).toFixed(1)}MB / ${(total / 1024 / 1024).toFixed(1)}MB`);
+        // keep log from growing unbounded: replace last progress line instead of appending repeatedly
+        const lines = logEl.querySelectorAll('div');
+        if (lines.length > 1) {
+          const prev = lines[lines.length - 2];
+          if (prev.textContent.startsWith('> ダウンロード中')) prev.remove();
+        }
+      }
+    }
+    const blob = new Blob(chunks);
+    const text = await blob.text();
+    return JSON.parse(text);
+  }
+
+  function mapCardAttributes(attrs) {
+    return {
+      number: attrs.number,
+      name: attrs.name,
+      category: attrs.category,
+      level: attrs.level ?? null,
+      color: attrs.color || [],
+      play_cost: attrs['play-cost'] ?? attrs['use-cost'] ?? null,
+      dp: attrs.dp ?? null,
+      form: attrs.form ?? null,
+      attribute: attrs.attribute ?? null,
+      type: attrs.type ?? null,
+      rarity: attrs.rarity ?? null,
+      block: attrs['block-icon'] ?? null,
+      effect: attrs.effect ?? null,
+      security_effect: attrs['security-effect'] ?? null,
+      inherited: attrs['inherited-effect'] ?? null,
+      evo: attrs['digivolution-requirements'] || [],
+      img: attrs.image || null,
+    };
+  }
+
+  let pendingDb = null; // built but not yet committed
+
+  startBtn.addEventListener('click', async () => {
+    startBtn.disabled = true;
+    commitBtn.style.display = 'none';
+    diffTable.classList.remove('active');
+    logEl.innerHTML = '';
+    progressFill.style.width = '0%';
+
+    try {
+      log('heroi.cc の bulk-data 一覧を取得中...');
+      const idxRes = await fetch('https://api.heroi.cc/bulk-data', {
+        headers: { 'Accept': 'application/vnd.api+json' },
+      });
+      if (!idxRes.ok) throw new Error(`bulk-data一覧の取得に失敗しました: HTTP ${idxRes.status}`);
+      const idx = await idxRes.json();
+
+      const jaEntry = idx.data.find(d => d.attributes && d.attributes.name === 'Japanese Cards');
+      if (!jaEntry) throw new Error('日本語カードのbulk-dataエントリが見つかりませんでした');
+
+      const sizeMb = (jaEntry.attributes.size / 1024 / 1024).toFixed(1);
+      log(`日本語カードデータを検出: ${sizeMb}MB (データ元更新日: ${jaEntry.attributes['updated-at']})`, 'ok');
+
+      const raw = await downloadWithProgress(jaEntry.links.download);
+      progressFill.style.width = '100%';
+      log(`ダウンロード完了。${raw.data.length}件のレコードを解析します`, 'ok');
+
+      const cards = raw.data
+        .filter(item => item.type === 'card' && item.attributes && item.attributes['parallel-id'] === 0)
+        .map(item => mapCardAttributes(item.attributes));
+
+      log(`パラレル版を除外し、${cards.length}枚のカードを収録対象にしました`, 'ok');
+
+      pendingDb = {
+        generated_at: new Date().toISOString().slice(0, 10),
+        source: 'heroi.cc bulk-data (ja)',
+        source_updated_at: jaEntry.attributes['updated-at'],
+        cards,
+      };
+
+      const oldCount = currentDb && Array.isArray(currentDb.cards) ? currentDb.cards.length : 0;
+      const newCount = cards.length;
+      const delta = newCount - oldCount;
+
+      document.getElementById('diffOldCount').textContent = `${oldCount}枚`;
+      document.getElementById('diffNewCount').textContent = `${newCount}枚`;
+      const deltaEl = document.getElementById('diffDelta');
+      deltaEl.textContent = `${delta >= 0 ? '+' : ''}${delta}枚`;
+      deltaEl.classList.toggle('neg', delta < 0);
+      diffTable.classList.add('active');
+
+      log('プレビューの準備ができました。内容を確認してコミットしてください。', 'ok');
+      commitBtn.style.display = '';
+    } catch (e) {
+      log(`エラー: ${e.message}`, 'err');
+      console.error(e);
+    } finally {
+      startBtn.disabled = false;
+    }
+  });
+
+  commitBtn.addEventListener('click', async () => {
+    if (!pendingDb) return;
+    commitBtn.disabled = true;
+    try {
+      log('現在のcards/db.jsonを確認中...');
+      const existing = await window.DigicaGitHub.getFile('cards/db.json');
+      log('GitHubへコミット中...');
+      await window.DigicaGitHub.putFile(
+        'cards/db.json',
+        JSON.stringify(pendingDb),
+        `DB更新: ${pendingDb.cards.length}枚 (${pendingDb.source_updated_at})`,
+        existing ? existing.sha : undefined
+      );
+      log(`コミット完了。${pendingDb.cards.length}枚のカードデータベースを保存しました`, 'ok');
+      currentDb = pendingDb;
+      pendingDb = null;
+      commitBtn.style.display = 'none';
+      loadStatus();
+    } catch (e) {
+      log(`コミットエラー: ${e.message}`, 'err');
+      console.error(e);
+    } finally {
+      commitBtn.disabled = false;
+    }
+  });
+})();
+</script>
+
+</body>
+</html>
