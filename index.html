@@ -1161,7 +1161,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.6.2</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.6.3</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -2329,7 +2329,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.6.2`);
+    log(`DigiCA Tool build v0.6.3`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -2626,6 +2626,7 @@
 
   practiceStartBtn.addEventListener('click', () => {
     practiceSetupError.textContent = '';
+    practiceMulliganArea.innerHTML = '';
     const idA = practiceDeckA.value;
     const idB = practiceDeckB.value;
     if (!idA || !idB) {
@@ -2638,6 +2639,19 @@
       practiceSetupError.textContent = 'デッキの読込に失敗しました。';
       return;
     }
+
+    // Guard: hand(5) + security(5) require at least 10 main-deck cards.
+    const countMain = d => (d.main || []).reduce((s, c) => s + c.count, 0);
+    const shortDeck = [deckA, deckB].find(d => countMain(d) < 10);
+    if (shortDeck) {
+      practiceSetupError.textContent = `「${shortDeck.name || '無題'}」はメイン${countMain(shortDeck)}枚です。手札5枚+セキュリティ5枚に足りないため開始できません(最低10枚)。`;
+      return;
+    }
+    const underDeck = [deckA, deckB].find(d => countMain(d) < 50);
+    if (underDeck && !confirm(`「${underDeck.name || '無題'}」はメイン${countMain(underDeck)}枚で、正規の50枚に足りていません。このまま練習を開始しますか?`)) {
+      return;
+    }
+
     const pA = buildPracticePlayer(deckA);
     const pB = buildPracticePlayer(deckB);
     pA.hand = pA.library.splice(0, 5);
@@ -2661,8 +2675,37 @@
   }
 
   function openStackDetail(stack) {
-    const card = cardIndexByNumber.get(stack.cards[stack.cards.length - 1]);
-    if (card) openCardDetail(card, true);
+    if (stack.cards.length <= 1) {
+      const card = cardIndexByNumber.get(stack.cards[stack.cards.length - 1]);
+      if (card) openCardDetail(card, true);
+      return;
+    }
+    // Multi-card stack: show contents from top to bottom; click any card for its detail.
+    currentDetailCard = null;
+    document.getElementById('addToDeckFromDetail').style.display = 'none';
+    const rows = stack.cards.slice().reverse().map((number, i) => {
+      const label = i === 0 ? '一番上' : `進化元${i}`;
+      return `
+        <div class="deck-list-item stack-view-row" data-number="${escapeHtml(number)}" style="cursor:pointer;">
+          <img src="${escapeHtml(miniCardImg(number))}" alt="" style="width:34px;border-radius:3px;" onerror="this.style.opacity=0">
+          <span class="dli-number mono">${escapeHtml(label)}</span>
+          <span class="dli-name">${escapeHtml(miniCardName(number))}</span>
+        </div>`;
+    }).join('');
+    detailBody.innerHTML = `
+      <div class="detail-info" style="width:100%;">
+        <div class="d-title">スタックの中身(上から順)</div>
+        <div class="d-number mono">${stack.cards.length}枚${stack.rested ? '・レスト中' : ''}</div>
+        <div class="deck-list" style="margin-top:8px;">${rows}</div>
+      </div>
+    `;
+    detailBody.querySelectorAll('.stack-view-row').forEach(row => {
+      row.addEventListener('click', () => {
+        const card = cardIndexByNumber.get(row.dataset.number);
+        if (card) openCardDetail(card, true);
+      });
+    });
+    cardDetailModal.classList.add('open');
   }
 
   // A face-down pile (deck, digi-egg deck, security, opponent's hand): shows an
@@ -2694,12 +2737,11 @@
   }
 
   function renderPlayerZones(player, { handClusterEl, eggClusterEl, sideClusterEl, battleAreaEl, isSelf }) {
-    // Hand: face-down for opponent (count only), face-up for self (actual cards, clickable)
-    handClusterEl.innerHTML = '';
-    if (isSelf) {
-      // Self's hand is rendered separately below the mat (selfHandRow), not as a pile here.
-    } else {
-      handClusterEl.appendChild(buildFaceDownPile('手札', player.hand.length));
+    // Hand: opponent's hand shows as a face-down pile (count only).
+    // Self's hand is rendered separately below the mat (selfHandRow), so handClusterEl may be null.
+    if (handClusterEl) {
+      handClusterEl.innerHTML = '';
+      if (!isSelf) handClusterEl.appendChild(buildFaceDownPile('手札', player.hand.length));
     }
 
     // Digi-egg deck: always face-down
@@ -2770,7 +2812,7 @@
     });
 
     renderPlayerZones(self, {
-      handClusterEl: document.getElementById('selfEggCluster'), // unused for self (hand rendered separately)
+      handClusterEl: null, // self's hand is rendered separately in selfHandRow
       eggClusterEl: document.getElementById('selfEggCluster'),
       sideClusterEl: document.getElementById('selfSideCluster'),
       battleAreaEl: document.getElementById('selfRaisingAndBattle'),
@@ -2810,7 +2852,12 @@
   });
 
   // Refresh the deck pickers whenever the practice tab becomes visible
-  document.querySelector('.tab-btn[data-tab="practice"]').addEventListener('click', populatePracticeDeckSelects);
+  document.querySelector('.tab-btn[data-tab="practice"]').addEventListener('click', async () => {
+    if (cachedDecks.length === 0) {
+      await refreshMyDeckList(); // may still be loading from GitHub on first visit
+    }
+    populatePracticeDeckSelects();
+  });
 
 })();
 </script>
