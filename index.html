@@ -1012,6 +1012,124 @@
     cursor: pointer;
   }
 
+  /* ---- Card back (original design, not the official artwork) ---- */
+  .card-back {
+    width: 100%;
+    aspect-ratio: 43 / 60;
+    border-radius: 6px;
+    border: 1px solid var(--accent-dim);
+    background:
+      radial-gradient(circle at 50% 42%, rgba(79,216,196,0.35) 0%, transparent 60%),
+      linear-gradient(160deg, #16323a, #0d1418 70%);
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+  .card-back::before {
+    content: '';
+    position: absolute;
+    inset: 6px;
+    border: 1px solid rgba(79,216,196,0.35);
+    border-radius: 4px;
+  }
+  .card-back::after {
+    content: '';
+    position: absolute;
+    width: 60%;
+    aspect-ratio: 1;
+    border: 1px solid rgba(79,216,196,0.5);
+    border-radius: 50%;
+  }
+  .card-back .cb-count {
+    position: relative;
+    z-index: 1;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--accent);
+    background: rgba(0,0,0,0.55);
+    padding: 2px 7px;
+    border-radius: 4px;
+  }
+
+  /* ---- Practice mat layout ---- */
+  .mat-block {
+    background: var(--panel-raised);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px;
+    margin-bottom: 10px;
+  }
+  .mat-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .mat-cluster {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .mat-pile {
+    width: 60px;
+    flex-shrink: 0;
+    text-align: center;
+  }
+  .mat-pile .mp-label {
+    font-size: 10px;
+    color: var(--text-dim);
+    margin-top: 3px;
+  }
+  .mat-battle-area {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-content: flex-start;
+    min-height: 90px;
+  }
+  .mat-label {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-bottom: 6px;
+  }
+
+  .memory-line {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 3px;
+    padding: 10px 0;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+  .memory-line .ml-slot {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .memory-line .ml-slot:hover { border-color: var(--accent-dim); }
+  .memory-line .ml-slot.zero { border-color: var(--text-dim); font-weight: 700; color: var(--text); }
+  .memory-line .ml-slot.current {
+    background: var(--accent);
+    color: #0b1210;
+    border-color: var(--accent);
+    font-weight: 700;
+    transform: scale(1.15);
+  }
+
   /* ---- Toast (transient notifications, visible regardless of active tab) ---- */
   .toast {
     position: fixed;
@@ -1043,7 +1161,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.6.0</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.6.2</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -1187,30 +1305,41 @@
         <span class="mono" id="practiceHeaderLabel" style="font-size:12px;color:var(--text-dim);"></span>
         <button class="btn" id="practiceSwitchViewBtn" style="margin-left:8px;">🔄 視点を切り替え</button>
         <button class="btn" id="practiceEndGameBtn">練習を終了</button>
-        <div class="memory-gauge" id="memoryGauge">
-          <button type="button" id="memoryMinusBtn">−</button>
-          <span class="mg-value zero" id="memoryValue">0</span>
-          <button type="button" id="memoryPlusBtn">＋</button>
+      </div>
+
+      <!-- 相手側(奥) -->
+      <div class="mat-block">
+        <div class="mat-label">相手(<span id="opponentNameLabel"></span>)</div>
+        <div class="mat-row" style="margin-bottom:10px;">
+          <div class="mat-cluster" id="opponentHandCluster"></div>
+          <div style="flex:1;"></div>
+          <div class="mat-cluster" id="opponentEggCluster"></div>
+        </div>
+        <div class="mat-row">
+          <div class="mat-battle-area" id="opponentRaisingAndBattle"></div>
+          <div class="mat-cluster" id="opponentSideCluster"></div>
         </div>
       </div>
 
-      <div class="practice-section-title">相手(<span id="opponentNameLabel"></span>)</div>
-      <div class="practice-zones-row" id="opponentMiniStrip"></div>
-      <div class="stack-row" id="opponentBattleStrip"></div>
+      <!-- メモリーゲージ(数直線) -->
+      <div class="memory-line" id="memoryLine"></div>
 
-      <div class="practice-section-title" style="margin-top:18px;">自分(<span id="selfNameLabel"></span>)</div>
-      <div class="practice-zones-row" id="selfZonesRow"></div>
-
-      <div class="practice-section-title">育成エリア</div>
-      <div class="stack-row" id="selfRaisingRow"></div>
-
-      <div class="practice-section-title">バトルエリア</div>
-      <div class="stack-row" id="selfBattleRow"></div>
-
-      <div class="practice-section-title">手札</div>
-      <div class="hand-row" id="selfHandRow"></div>
+      <!-- 自分側(手前) -->
+      <div class="mat-block">
+        <div class="mat-row">
+          <div class="mat-cluster" id="selfSideCluster"></div>
+          <div class="mat-battle-area" id="selfRaisingAndBattle"></div>
+        </div>
+        <div class="mat-row" style="margin-top:10px;">
+          <div class="mat-cluster" id="selfEggCluster"></div>
+          <div style="flex:1;"></div>
+        </div>
+        <div class="mat-label" style="margin-top:14px;">自分(<span id="selfNameLabel"></span>) の手札</div>
+        <div class="hand-row" id="selfHandRow"></div>
+      </div>
     </div>
   </section>
+
 
   <section id="tab-db" class="tab-panel" style="display:none;">
     <div class="panel">
@@ -1640,8 +1769,9 @@
     return div.innerHTML;
   }
 
-  function openCardDetail(card) {
+  function openCardDetail(card, hideAddButton) {
     currentDetailCard = card;
+    document.getElementById('addToDeckFromDetail').style.display = hideAddButton ? 'none' : '';
     const tags = [];
     if (card.category) tags.push(cardTileLabel(card));
     if (card.color && card.color.length) tags.push(card.color.map(c => COLOR_JA[c] || c).join('/'));
@@ -2199,7 +2329,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.6.0`);
+    log(`DigiCA Tool build v0.6.2`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -2428,7 +2558,9 @@
     wrap.style.marginTop = '10px';
     const title = document.createElement('div');
     title.className = 'zb-label';
-    title.textContent = `${p.deckName} の初手(${stepIndex === 0 ? '先攻' : '後攻'}) — マリガンしますか?`;
+    title.textContent = p.mulliganUsed
+      ? `${p.deckName} の初手(${stepIndex === 0 ? '先攻' : '後攻'}) — マリガン後の手札`
+      : `${p.deckName} の初手(${stepIndex === 0 ? '先攻' : '後攻'}) — マリガンしますか?`;
     wrap.appendChild(title);
 
     const row = document.createElement('div');
@@ -2457,13 +2589,14 @@
     const mulliganBtn = document.createElement('button');
     mulliganBtn.className = 'btn';
     mulliganBtn.textContent = 'マリガンする';
+    mulliganBtn.disabled = !!p.mulliganUsed;
     mulliganBtn.addEventListener('click', () => {
       p.library.push(...p.hand);
       p.hand = [];
       p.library = shuffleArray(p.library);
       p.hand = p.library.splice(0, 5);
-      practiceSetup.stepIndex++;
-      renderMulliganStep();
+      p.mulliganUsed = true;
+      renderMulliganStep(); // show the redrawn hand; stepIndex does NOT advance yet
     });
     actions.appendChild(keepBtn);
     actions.appendChild(mulliganBtn);
@@ -2529,7 +2662,89 @@
 
   function openStackDetail(stack) {
     const card = cardIndexByNumber.get(stack.cards[stack.cards.length - 1]);
-    if (card) openCardDetail(card);
+    if (card) openCardDetail(card, true);
+  }
+
+  // A face-down pile (deck, digi-egg deck, security, opponent's hand): shows an
+  // original card-back design with a count badge, not the real card contents.
+  function buildFaceDownPile(label, count) {
+    const wrap = document.createElement('div');
+    wrap.className = 'mat-pile';
+    wrap.innerHTML = `
+      <div class="card-back">${count > 0 ? `<span class="cb-count">${count}</span>` : ''}</div>
+      <div class="mp-label">${escapeHtml(label)}</div>
+    `;
+    return wrap;
+  }
+
+  // A face-up pile showing just the top card (trash): public info.
+  function buildFaceUpPile(label, cards, onClick) {
+    const wrap = document.createElement('div');
+    wrap.className = 'mat-pile';
+    const top = cards.length > 0 ? cards[cards.length - 1] : null;
+    wrap.innerHTML = `
+      <div class="stack-tile" style="width:100%;">
+        ${top ? `<img src="${escapeHtml(miniCardImg(top))}" alt="" onerror="this.style.opacity=0">` : '<div class="card-back" style="opacity:0.25;"></div>'}
+        ${cards.length > 1 ? `<span class="st-count mono">${cards.length}</span>` : ''}
+      </div>
+      <div class="mp-label">${escapeHtml(label)}(${cards.length})</div>
+    `;
+    if (top && onClick) wrap.querySelector('.stack-tile').addEventListener('click', onClick);
+    return wrap;
+  }
+
+  function renderPlayerZones(player, { handClusterEl, eggClusterEl, sideClusterEl, battleAreaEl, isSelf }) {
+    // Hand: face-down for opponent (count only), face-up for self (actual cards, clickable)
+    handClusterEl.innerHTML = '';
+    if (isSelf) {
+      // Self's hand is rendered separately below the mat (selfHandRow), not as a pile here.
+    } else {
+      handClusterEl.appendChild(buildFaceDownPile('手札', player.hand.length));
+    }
+
+    // Digi-egg deck: always face-down
+    eggClusterEl.innerHTML = '';
+    eggClusterEl.appendChild(buildFaceDownPile('デジタマ', player.eggLibrary.length));
+
+    // Side cluster: security (face-down) + deck (face-down) + trash (face-up top card)
+    sideClusterEl.innerHTML = '';
+    sideClusterEl.appendChild(buildFaceDownPile('セキュリティ', player.security.length));
+    sideClusterEl.appendChild(buildFaceDownPile('デッキ', player.library.length));
+    sideClusterEl.appendChild(buildFaceUpPile('トラッシュ', player.trash, () => {
+      if (player.trash.length > 0) {
+        const card = cardIndexByNumber.get(player.trash[player.trash.length - 1]);
+        if (card) openCardDetail(card, true);
+      }
+    }));
+
+    // Battle + raising area (face-up, public)
+    battleAreaEl.innerHTML = '';
+    if (player.raising) {
+      battleAreaEl.appendChild(buildStackTile(player.raising, () => openStackDetail(player.raising)));
+    }
+    player.battle.forEach(stack => battleAreaEl.appendChild(buildStackTile(stack, () => openStackDetail(stack))));
+    if (!player.raising && player.battle.length === 0) {
+      battleAreaEl.innerHTML = '<div class="empty-state" style="padding:6px 0;">(場にカードがいません)</div>';
+    }
+  }
+
+  function renderMemoryLine() {
+    const line = document.getElementById('memoryLine');
+    line.innerHTML = '';
+    const memoryFromSelfView = practiceState.viewingIndex === 0 ? practiceState.memory : -practiceState.memory;
+    // Slots go from -10 (leftmost, deep in self's favor) to +10 (rightmost, deep in opponent's favor)
+    for (let v = -10; v <= 10; v++) {
+      const slot = document.createElement('div');
+      slot.className = 'ml-slot mono' + (v === 0 ? ' zero' : '') + (v === memoryFromSelfView ? ' current' : '');
+      slot.textContent = v === 0 ? '0' : Math.abs(v);
+      slot.title = `メモリーを${v >= 0 ? '+' : ''}${v}にする`;
+      slot.addEventListener('click', () => {
+        const actual = practiceState.viewingIndex === 0 ? v : -v;
+        practiceState.memory = actual;
+        renderPracticeBoard();
+      });
+      line.appendChild(slot);
+    }
   }
 
   function renderPracticeBoard() {
@@ -2544,50 +2759,23 @@
     document.getElementById('opponentNameLabel').textContent = opp.deckName;
     document.getElementById('selfNameLabel').textContent = self.deckName;
 
-    // Memory gauge (always shown from the viewing player's perspective: left = self)
-    const memEl = document.getElementById('memoryValue');
-    const memoryFromSelfView = practiceState.viewingIndex === 0 ? practiceState.memory : -practiceState.memory;
-    memEl.textContent = memoryFromSelfView > 0 ? `+${memoryFromSelfView}` : `${memoryFromSelfView}`;
-    memEl.className = 'mg-value mono ' + (memoryFromSelfView > 0 ? 'pos' : memoryFromSelfView < 0 ? 'neg' : 'zero');
+    renderMemoryLine();
 
-    // Opponent mini strip (read-only counts)
-    const oppStrip = document.getElementById('opponentMiniStrip');
-    oppStrip.innerHTML = `
-      <div class="zone-box"><div class="zb-label">山札</div><div class="zb-count mono">${opp.library.length}</div></div>
-      <div class="zone-box"><div class="zb-label">デジタマ</div><div class="zb-count mono">${opp.eggLibrary.length}</div></div>
-      <div class="zone-box"><div class="zb-label">セキュリティ</div><div class="zb-count mono">${opp.security.length}</div></div>
-      <div class="zone-box"><div class="zb-label">トラッシュ</div><div class="zb-count mono">${opp.trash.length}</div></div>
-      <div class="zone-box"><div class="zb-label">手札</div><div class="zb-count mono">${opp.hand.length}</div></div>
-    `;
-    const oppBattleStrip = document.getElementById('opponentBattleStrip');
-    oppBattleStrip.innerHTML = '';
-    if (opp.raising) oppBattleStrip.appendChild(buildStackTile(opp.raising, () => openStackDetail(opp.raising)));
-    opp.battle.forEach(stack => oppBattleStrip.appendChild(buildStackTile(stack, () => openStackDetail(stack))));
+    renderPlayerZones(opp, {
+      handClusterEl: document.getElementById('opponentHandCluster'),
+      eggClusterEl: document.getElementById('opponentEggCluster'),
+      sideClusterEl: document.getElementById('opponentSideCluster'),
+      battleAreaEl: document.getElementById('opponentRaisingAndBattle'),
+      isSelf: false,
+    });
 
-    // Self zones row
-    const selfZones = document.getElementById('selfZonesRow');
-    selfZones.innerHTML = `
-      <div class="zone-box"><div class="zb-label">山札</div><div class="zb-count mono">${self.library.length}</div></div>
-      <div class="zone-box"><div class="zb-label">デジタマ</div><div class="zb-count mono">${self.eggLibrary.length}</div></div>
-      <div class="zone-box"><div class="zb-label">セキュリティ</div><div class="zb-count mono">${self.security.length}</div></div>
-      <div class="zone-box"><div class="zb-label">トラッシュ</div><div class="zb-count mono">${self.trash.length}</div></div>
-    `;
-
-    const raisingRow = document.getElementById('selfRaisingRow');
-    raisingRow.innerHTML = '';
-    if (self.raising) {
-      raisingRow.appendChild(buildStackTile(self.raising, () => openStackDetail(self.raising)));
-    } else {
-      raisingRow.innerHTML = '<div class="empty-state" style="padding:6px 0;">(空)</div>';
-    }
-
-    const battleRow = document.getElementById('selfBattleRow');
-    battleRow.innerHTML = '';
-    if (self.battle.length === 0) {
-      battleRow.innerHTML = '<div class="empty-state" style="padding:6px 0;">(場にデジモンがいません)</div>';
-    } else {
-      self.battle.forEach(stack => battleRow.appendChild(buildStackTile(stack, () => openStackDetail(stack))));
-    }
+    renderPlayerZones(self, {
+      handClusterEl: document.getElementById('selfEggCluster'), // unused for self (hand rendered separately)
+      eggClusterEl: document.getElementById('selfEggCluster'),
+      sideClusterEl: document.getElementById('selfSideCluster'),
+      battleAreaEl: document.getElementById('selfRaisingAndBattle'),
+      isSelf: true,
+    });
 
     const handRow = document.getElementById('selfHandRow');
     handRow.innerHTML = '';
@@ -2600,7 +2788,7 @@
       `;
       c.addEventListener('click', () => {
         const card = cardIndexByNumber.get(number);
-        if (card) openCardDetail(card);
+        if (card) openCardDetail(card, true);
       });
       handRow.appendChild(c);
     });
@@ -2609,19 +2797,6 @@
   document.getElementById('practiceSwitchViewBtn').addEventListener('click', () => {
     if (!practiceState) return;
     practiceState.viewingIndex = 1 - practiceState.viewingIndex;
-    renderPracticeBoard();
-  });
-
-  document.getElementById('memoryPlusBtn').addEventListener('click', () => {
-    if (!practiceState) return;
-    const delta = practiceState.viewingIndex === 0 ? 1 : -1;
-    practiceState.memory = Math.max(-10, Math.min(10, practiceState.memory + delta));
-    renderPracticeBoard();
-  });
-  document.getElementById('memoryMinusBtn').addEventListener('click', () => {
-    if (!practiceState) return;
-    const delta = practiceState.viewingIndex === 0 ? -1 : 1;
-    practiceState.memory = Math.max(-10, Math.min(10, practiceState.memory + delta));
     renderPracticeBoard();
   });
 
