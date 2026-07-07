@@ -1043,7 +1043,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.5.4</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.6.0</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -1165,9 +1165,50 @@
   </section>
 
   <section id="tab-practice" class="tab-panel" style="display:none;">
-    <div class="panel placeholder">
-      <span class="phase-tag">設計中</span><br>
-      ソロ練習(1人回し)機能は設計を詰めてから実装します。
+    <div class="panel" id="practiceSetupPanel">
+      <div class="practice-section-title">対戦カードにする2つのデッキを選んでください</div>
+      <div class="practice-topbar" style="border:none;padding:0;margin:0 0 14px;">
+        <div class="filter-group">
+          <label>デッキA</label>
+          <select id="practiceDeckA"><option value="">-- 選択 --</option></select>
+        </div>
+        <div class="filter-group">
+          <label>デッキB</label>
+          <select id="practiceDeckB"><option value="">-- 選択 --</option></select>
+        </div>
+        <button class="btn primary" id="practiceStartBtn">先攻をランダムで決めて開始</button>
+      </div>
+      <div id="practiceMulliganArea"></div>
+      <div class="deck-validation" id="practiceSetupError"></div>
+    </div>
+
+    <div class="panel" id="practiceBoardPanel" style="display:none;">
+      <div class="practice-topbar">
+        <span class="mono" id="practiceHeaderLabel" style="font-size:12px;color:var(--text-dim);"></span>
+        <button class="btn" id="practiceSwitchViewBtn" style="margin-left:8px;">🔄 視点を切り替え</button>
+        <button class="btn" id="practiceEndGameBtn">練習を終了</button>
+        <div class="memory-gauge" id="memoryGauge">
+          <button type="button" id="memoryMinusBtn">−</button>
+          <span class="mg-value zero" id="memoryValue">0</span>
+          <button type="button" id="memoryPlusBtn">＋</button>
+        </div>
+      </div>
+
+      <div class="practice-section-title">相手(<span id="opponentNameLabel"></span>)</div>
+      <div class="practice-zones-row" id="opponentMiniStrip"></div>
+      <div class="stack-row" id="opponentBattleStrip"></div>
+
+      <div class="practice-section-title" style="margin-top:18px;">自分(<span id="selfNameLabel"></span>)</div>
+      <div class="practice-zones-row" id="selfZonesRow"></div>
+
+      <div class="practice-section-title">育成エリア</div>
+      <div class="stack-row" id="selfRaisingRow"></div>
+
+      <div class="practice-section-title">バトルエリア</div>
+      <div class="stack-row" id="selfBattleRow"></div>
+
+      <div class="practice-section-title">手札</div>
+      <div class="hand-row" id="selfHandRow"></div>
     </div>
   </section>
 
@@ -2158,7 +2199,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.5.4`);
+    log(`DigiCA Tool build v0.6.0`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -2308,6 +2349,293 @@
       rawLog(`> エラー: ${e.message}`, 'err');
     }
   });
+
+  // ---------- Practice tab (Phase P0: setup + static board) ----------
+  function shuffleArray(arr) {
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  function expandCounts(entries) {
+    const out = [];
+    (entries || []).forEach(e => { for (let i = 0; i < e.count; i++) out.push(e.number); });
+    return out;
+  }
+
+  function buildPracticePlayer(deckObj) {
+    return {
+      deckName: deckObj.name || '無題のデッキ',
+      library: shuffleArray(expandCounts(deckObj.main)),
+      eggLibrary: shuffleArray(expandCounts(deckObj.eggs)),
+      hand: [],
+      trash: [],
+      security: [], // index 0 = top (checked first)
+      raising: null, // { cards: [numbers...], rested: false }
+      battle: [], // [{ cards: [numbers...], rested: false }, ...]
+    };
+  }
+
+  const practiceDeckA = document.getElementById('practiceDeckA');
+  const practiceDeckB = document.getElementById('practiceDeckB');
+  const practiceStartBtn = document.getElementById('practiceStartBtn');
+  const practiceMulliganArea = document.getElementById('practiceMulliganArea');
+  const practiceSetupError = document.getElementById('practiceSetupError');
+  const practiceSetupPanel = document.getElementById('practiceSetupPanel');
+  const practiceBoardPanel = document.getElementById('practiceBoardPanel');
+
+  function populatePracticeDeckSelects() {
+    [practiceDeckA, practiceDeckB].forEach(sel => {
+      const prevValue = sel.value;
+      sel.innerHTML = '<option value="">-- 選択 --</option>';
+      cachedDecks.forEach(d => {
+        const opt = document.createElement('option');
+        opt.value = d.id;
+        opt.textContent = d.name || '無題';
+        sel.appendChild(opt);
+      });
+      if (prevValue) sel.value = prevValue;
+    });
+  }
+
+  let practiceState = null; // the live game state once started
+  let practiceSetup = null; // transient state during setup/mulligan
+
+  function miniCardImg(number) {
+    const card = cardIndexByNumber.get(number);
+    return card ? card.img : '';
+  }
+  function miniCardName(number) {
+    const card = cardIndexByNumber.get(number);
+    return card ? card.name : number;
+  }
+
+  function renderMulliganStep() {
+    if (!practiceSetup) { practiceMulliganArea.innerHTML = ''; return; }
+    const { order, stepIndex } = practiceSetup;
+    if (stepIndex >= order.length) {
+      finalizePracticeSetup();
+      return;
+    }
+    const p = order[stepIndex];
+    practiceMulliganArea.innerHTML = '';
+
+    const wrap = document.createElement('div');
+    wrap.className = 'zone-box';
+    wrap.style.marginTop = '10px';
+    const title = document.createElement('div');
+    title.className = 'zb-label';
+    title.textContent = `${p.deckName} の初手(${stepIndex === 0 ? '先攻' : '後攻'}) — マリガンしますか?`;
+    wrap.appendChild(title);
+
+    const row = document.createElement('div');
+    row.className = 'hand-row';
+    row.style.marginTop = '8px';
+    p.hand.forEach(number => {
+      const c = document.createElement('div');
+      c.className = 'hand-card';
+      c.style.width = '76px';
+      c.innerHTML = `<img src="${escapeHtml(miniCardImg(number))}" alt="" onerror="this.style.opacity=0">
+        <div class="hc-name">${escapeHtml(miniCardName(number))}</div>`;
+      row.appendChild(c);
+    });
+    wrap.appendChild(row);
+
+    const actions = document.createElement('div');
+    actions.className = 'db-actions';
+    actions.style.marginTop = '10px';
+    const keepBtn = document.createElement('button');
+    keepBtn.className = 'btn primary';
+    keepBtn.textContent = 'このまま行く';
+    keepBtn.addEventListener('click', () => {
+      practiceSetup.stepIndex++;
+      renderMulliganStep();
+    });
+    const mulliganBtn = document.createElement('button');
+    mulliganBtn.className = 'btn';
+    mulliganBtn.textContent = 'マリガンする';
+    mulliganBtn.addEventListener('click', () => {
+      p.library.push(...p.hand);
+      p.hand = [];
+      p.library = shuffleArray(p.library);
+      p.hand = p.library.splice(0, 5);
+      practiceSetup.stepIndex++;
+      renderMulliganStep();
+    });
+    actions.appendChild(keepBtn);
+    actions.appendChild(mulliganBtn);
+    wrap.appendChild(actions);
+
+    practiceMulliganArea.appendChild(wrap);
+  }
+
+  function finalizePracticeSetup() {
+    const { order } = practiceSetup;
+    order.forEach(p => {
+      const drawn = p.library.splice(0, 5);
+      p.security = drawn.reverse(); // deck top ends up at security bottom
+    });
+    practiceState = {
+      turn: { count: 1, playerIndex: 0, phase: 'active' },
+      memory: 0,
+      players: order, // players[0] = 先攻
+      viewingIndex: 0,
+    };
+    practiceSetup = null;
+    practiceMulliganArea.innerHTML = '';
+    practiceSetupPanel.style.display = 'none';
+    practiceBoardPanel.style.display = '';
+    renderPracticeBoard();
+  }
+
+  practiceStartBtn.addEventListener('click', () => {
+    practiceSetupError.textContent = '';
+    const idA = practiceDeckA.value;
+    const idB = practiceDeckB.value;
+    if (!idA || !idB) {
+      practiceSetupError.textContent = 'デッキAとデッキBを両方選んでください。';
+      return;
+    }
+    const deckA = cachedDecks.find(d => d.id === idA);
+    const deckB = cachedDecks.find(d => d.id === idB);
+    if (!deckA || !deckB) {
+      practiceSetupError.textContent = 'デッキの読込に失敗しました。';
+      return;
+    }
+    const pA = buildPracticePlayer(deckA);
+    const pB = buildPracticePlayer(deckB);
+    pA.hand = pA.library.splice(0, 5);
+    pB.hand = pB.library.splice(0, 5);
+    const firstIsA = Math.random() < 0.5;
+    const order = firstIsA ? [pA, pB] : [pB, pA];
+    practiceSetup = { order, stepIndex: 0 };
+    renderMulliganStep();
+  });
+
+  function buildStackTile(stack, onClick) {
+    const el = document.createElement('div');
+    el.className = 'stack-tile' + (stack.rested ? ' rested' : '');
+    const top = stack.cards[stack.cards.length - 1];
+    el.innerHTML = `
+      <img src="${escapeHtml(miniCardImg(top))}" alt="" onerror="this.style.opacity=0">
+      ${stack.cards.length > 1 ? `<span class="st-count mono">${stack.cards.length}</span>` : ''}
+    `;
+    if (onClick) el.addEventListener('click', onClick);
+    return el;
+  }
+
+  function openStackDetail(stack) {
+    const card = cardIndexByNumber.get(stack.cards[stack.cards.length - 1]);
+    if (card) openCardDetail(card);
+  }
+
+  function renderPracticeBoard() {
+    if (!practiceState) return;
+    const self = practiceState.players[practiceState.viewingIndex];
+    const oppIndex = 1 - practiceState.viewingIndex;
+    const opp = practiceState.players[oppIndex];
+    const turnPlayer = practiceState.players[practiceState.turn.playerIndex];
+
+    document.getElementById('practiceHeaderLabel').textContent =
+      `視点: ${self.deckName} / ターン: ${turnPlayer.deckName} (${practiceState.turn.count}T)`;
+    document.getElementById('opponentNameLabel').textContent = opp.deckName;
+    document.getElementById('selfNameLabel').textContent = self.deckName;
+
+    // Memory gauge (always shown from the viewing player's perspective: left = self)
+    const memEl = document.getElementById('memoryValue');
+    const memoryFromSelfView = practiceState.viewingIndex === 0 ? practiceState.memory : -practiceState.memory;
+    memEl.textContent = memoryFromSelfView > 0 ? `+${memoryFromSelfView}` : `${memoryFromSelfView}`;
+    memEl.className = 'mg-value mono ' + (memoryFromSelfView > 0 ? 'pos' : memoryFromSelfView < 0 ? 'neg' : 'zero');
+
+    // Opponent mini strip (read-only counts)
+    const oppStrip = document.getElementById('opponentMiniStrip');
+    oppStrip.innerHTML = `
+      <div class="zone-box"><div class="zb-label">山札</div><div class="zb-count mono">${opp.library.length}</div></div>
+      <div class="zone-box"><div class="zb-label">デジタマ</div><div class="zb-count mono">${opp.eggLibrary.length}</div></div>
+      <div class="zone-box"><div class="zb-label">セキュリティ</div><div class="zb-count mono">${opp.security.length}</div></div>
+      <div class="zone-box"><div class="zb-label">トラッシュ</div><div class="zb-count mono">${opp.trash.length}</div></div>
+      <div class="zone-box"><div class="zb-label">手札</div><div class="zb-count mono">${opp.hand.length}</div></div>
+    `;
+    const oppBattleStrip = document.getElementById('opponentBattleStrip');
+    oppBattleStrip.innerHTML = '';
+    if (opp.raising) oppBattleStrip.appendChild(buildStackTile(opp.raising, () => openStackDetail(opp.raising)));
+    opp.battle.forEach(stack => oppBattleStrip.appendChild(buildStackTile(stack, () => openStackDetail(stack))));
+
+    // Self zones row
+    const selfZones = document.getElementById('selfZonesRow');
+    selfZones.innerHTML = `
+      <div class="zone-box"><div class="zb-label">山札</div><div class="zb-count mono">${self.library.length}</div></div>
+      <div class="zone-box"><div class="zb-label">デジタマ</div><div class="zb-count mono">${self.eggLibrary.length}</div></div>
+      <div class="zone-box"><div class="zb-label">セキュリティ</div><div class="zb-count mono">${self.security.length}</div></div>
+      <div class="zone-box"><div class="zb-label">トラッシュ</div><div class="zb-count mono">${self.trash.length}</div></div>
+    `;
+
+    const raisingRow = document.getElementById('selfRaisingRow');
+    raisingRow.innerHTML = '';
+    if (self.raising) {
+      raisingRow.appendChild(buildStackTile(self.raising, () => openStackDetail(self.raising)));
+    } else {
+      raisingRow.innerHTML = '<div class="empty-state" style="padding:6px 0;">(空)</div>';
+    }
+
+    const battleRow = document.getElementById('selfBattleRow');
+    battleRow.innerHTML = '';
+    if (self.battle.length === 0) {
+      battleRow.innerHTML = '<div class="empty-state" style="padding:6px 0;">(場にデジモンがいません)</div>';
+    } else {
+      self.battle.forEach(stack => battleRow.appendChild(buildStackTile(stack, () => openStackDetail(stack))));
+    }
+
+    const handRow = document.getElementById('selfHandRow');
+    handRow.innerHTML = '';
+    self.hand.forEach(number => {
+      const c = document.createElement('div');
+      c.className = 'hand-card';
+      c.innerHTML = `
+        <img src="${escapeHtml(miniCardImg(number))}" alt="" onerror="this.style.opacity=0">
+        <div class="hc-name">${escapeHtml(miniCardName(number))}</div>
+      `;
+      c.addEventListener('click', () => {
+        const card = cardIndexByNumber.get(number);
+        if (card) openCardDetail(card);
+      });
+      handRow.appendChild(c);
+    });
+  }
+
+  document.getElementById('practiceSwitchViewBtn').addEventListener('click', () => {
+    if (!practiceState) return;
+    practiceState.viewingIndex = 1 - practiceState.viewingIndex;
+    renderPracticeBoard();
+  });
+
+  document.getElementById('memoryPlusBtn').addEventListener('click', () => {
+    if (!practiceState) return;
+    const delta = practiceState.viewingIndex === 0 ? 1 : -1;
+    practiceState.memory = Math.max(-10, Math.min(10, practiceState.memory + delta));
+    renderPracticeBoard();
+  });
+  document.getElementById('memoryMinusBtn').addEventListener('click', () => {
+    if (!practiceState) return;
+    const delta = practiceState.viewingIndex === 0 ? -1 : 1;
+    practiceState.memory = Math.max(-10, Math.min(10, practiceState.memory + delta));
+    renderPracticeBoard();
+  });
+
+  document.getElementById('practiceEndGameBtn').addEventListener('click', () => {
+    if (!confirm('練習を終了しますか?現在の盤面は失われます。')) return;
+    practiceState = null;
+    practiceSetup = null;
+    practiceBoardPanel.style.display = 'none';
+    practiceSetupPanel.style.display = '';
+    practiceMulliganArea.innerHTML = '';
+  });
+
+  // Refresh the deck pickers whenever the practice tab becomes visible
+  document.querySelector('.tab-btn[data-tab="practice"]').addEventListener('click', populatePracticeDeckSelects);
 
 })();
 </script>
