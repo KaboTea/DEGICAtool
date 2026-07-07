@@ -796,6 +796,222 @@
     .my-deck-list { max-height: 200px; }
   }
 
+  /* ---- Practice (solo goldfishing) tab ---- */
+  .practice-topbar {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin-bottom: 18px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .practice-topbar select {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    color: var(--text);
+    font-size: 13px;
+    max-width: 220px;
+  }
+  .memory-gauge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+  }
+  .memory-gauge .mg-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 18px;
+    font-weight: 700;
+    width: 44px;
+    text-align: center;
+    border-radius: 6px;
+    padding: 4px 0;
+  }
+  .memory-gauge .mg-value.pos { color: var(--c-red); }
+  .memory-gauge .mg-value.neg { color: var(--c-blue); }
+  .memory-gauge .mg-value.zero { color: var(--text-dim); }
+  .memory-gauge button {
+    width: 28px; height: 28px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--panel-raised);
+    color: var(--text);
+    cursor: pointer;
+    font-size: 14px;
+  }
+
+  .practice-zones-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 10px;
+    margin-bottom: 18px;
+  }
+  .zone-box {
+    background: var(--panel-raised);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+  }
+  .zone-box .zb-label {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-bottom: 4px;
+  }
+  .zone-box .zb-count {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 20px;
+    margin-bottom: 8px;
+  }
+  .zone-box button {
+    font-size: 11px;
+    padding: 5px 9px;
+    border-radius: 5px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+    cursor: pointer;
+    margin-right: 4px;
+  }
+  .zone-box button:hover { border-color: var(--accent-dim); }
+  .zone-box button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .practice-section-title {
+    font-size: 12px;
+    color: var(--text-dim);
+    margin: 4px 0 8px;
+  }
+
+  .stack-row {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    min-height: 96px;
+    margin-bottom: 18px;
+  }
+  .stack-tile {
+    position: relative;
+    width: 76px;
+    cursor: pointer;
+  }
+  .stack-tile img {
+    width: 100%;
+    aspect-ratio: 43 / 60;
+    object-fit: cover;
+    border-radius: 6px;
+    border: 2px solid var(--border);
+    display: block;
+    transition: transform 0.12s ease, filter 0.12s ease;
+  }
+  .stack-tile.rested img {
+    transform: rotate(90deg) scale(0.82);
+    filter: brightness(0.7);
+  }
+  .stack-tile .st-count {
+    position: absolute;
+    bottom: 2px;
+    right: 2px;
+    background: rgba(0,0,0,0.75);
+    color: var(--accent);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    padding: 1px 5px;
+    border-radius: 4px;
+  }
+  .stack-tile.target-pick img {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+  }
+  .stack-actions {
+    display: flex;
+    gap: 4px;
+    margin-top: 4px;
+    justify-content: center;
+  }
+  .stack-actions button {
+    font-size: 10px;
+    padding: 2px 5px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text-dim);
+    cursor: pointer;
+  }
+  .stack-actions button:hover { color: var(--text); border-color: var(--accent-dim); }
+
+  .hand-row {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .hand-card {
+    width: 100px;
+    background: var(--panel-raised);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .hand-card img {
+    width: 100%;
+    aspect-ratio: 43 / 60;
+    object-fit: cover;
+    display: block;
+  }
+  .hand-card .hc-name {
+    font-size: 10px;
+    padding: 4px 5px 2px;
+    line-height: 1.3;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+  .hand-card .hc-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+    padding: 0 5px 6px;
+  }
+  .hand-card .hc-actions button {
+    flex: 1 1 auto;
+    font-size: 9.5px;
+    padding: 3px 2px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text-dim);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .hand-card .hc-actions button:hover { color: var(--text); border-color: var(--accent-dim); }
+  .hand-card.picking-target { outline: 2px solid var(--accent); }
+
+  .evolve-mode-banner {
+    display: none;
+    background: var(--accent);
+    color: #0b1210;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 8px 12px;
+    border-radius: 8px;
+    margin-bottom: 14px;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .evolve-mode-banner.active { display: flex; }
+  .evolve-mode-banner button {
+    background: rgba(0,0,0,0.2);
+    border: none;
+    color: #0b1210;
+    border-radius: 4px;
+    padding: 4px 10px;
+    font-size: 11px;
+    cursor: pointer;
+  }
+
   /* ---- Toast (transient notifications, visible regardless of active tab) ---- */
   .toast {
     position: fixed;
@@ -827,11 +1043,12 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.5.1</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.5.4</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
     <span>更新: <span class="val" id="statDbUpdated">--</span></span>
+    <span id="statDeckWrap" style="display:none;">編集中: <span class="val" id="statDeckName">--</span></span>
   </div>
   <div class="header-actions">
     <button class="db-admin-btn mono" id="openDbTab" title="カードデータベースの更新(たまに使う管理機能)">DB管理</button>
@@ -842,6 +1059,7 @@
 <nav class="tabs">
   <button class="tab-btn active" data-tab="search">🔍 カード検索</button>
   <button class="tab-btn" data-tab="deck">🃏 デッキ構築</button>
+  <button class="tab-btn" data-tab="practice">🎮 練習</button>
 </nav>
 
 <main>
@@ -943,6 +1161,13 @@
           <div class="deck-status-msg" id="deckStatusMsg"></div>
         </div>
       </div>
+    </div>
+  </section>
+
+  <section id="tab-practice" class="tab-panel" style="display:none;">
+    <div class="panel placeholder">
+      <span class="phase-tag">設計中</span><br>
+      ソロ練習(1人回し)機能は設計を詰めてから実装します。
     </div>
   </section>
 
@@ -1061,6 +1286,7 @@
   const tabPanels = {
     search: document.getElementById('tab-search'),
     deck: document.getElementById('tab-deck'),
+    practice: document.getElementById('tab-practice'),
     db: document.getElementById('tab-db'),
   };
   function showTab(tabKey) {
@@ -1541,6 +1767,18 @@
     if (delta > 0) showToast(`「${card.name}」をデッキに追加しました`);
   }
 
+  function adjustDeckCountByNumber(target, number, delta) {
+    // Fallback for cards missing from the current DB (e.g. legacy numbers):
+    // still allow decreasing/removing them so decks can't get stuck with
+    // un-removable entries. Increasing is not allowed without card data.
+    if (delta > 0) return;
+    const map = deckState[target];
+    const current = map[number] || 0;
+    const next = current + delta;
+    if (next <= 0) delete map[number]; else map[number] = next;
+    renderDeckLists();
+  }
+
   function renderOneDeckList(target, listEl, labelEl, limit) {
     const map = deckState[target];
     const entries = Object.entries(map);
@@ -1568,11 +1806,30 @@
           <button type="button" class="dli-plus">＋</button>
         </span>
       `;
-      row.querySelector('.dli-minus').addEventListener('click', () => card && adjustDeckCount(card, -1));
-      row.querySelector('.dli-plus').addEventListener('click', () => card && adjustDeckCount(card, 1));
+      row.querySelector('.dli-minus').addEventListener('click', () => {
+        if (card) adjustDeckCount(card, -1);
+        else adjustDeckCountByNumber(target, number, -1);
+      });
+      row.querySelector('.dli-plus').addEventListener('click', () => {
+        if (card) adjustDeckCount(card, 1);
+        else showToast('DBに存在しないカードのため追加できません', true);
+      });
       frag.appendChild(row);
     });
     listEl.appendChild(frag);
+  }
+
+  function updateDeckStatusHeader() {
+    const wrap = document.getElementById('statDeckWrap');
+    const nameEl = document.getElementById('statDeckName');
+    const total = sumMap(deckState.eggs) + sumMap(deckState.main);
+    const name = deckNameInput.value.trim();
+    if (total === 0 && !name) {
+      wrap.style.display = 'none';
+      return;
+    }
+    wrap.style.display = '';
+    nameEl.textContent = `${name || '無題'} (${sumMap(deckState.main)}/50)`;
   }
 
   function renderDeckLists() {
@@ -1584,7 +1841,10 @@
     if (eggTotal > 5) msgs.push(`デジタマが上限(5枚)を超えています(${eggTotal}枚)`);
     if (mainTotal > 50) msgs.push(`メインが上限(50枚)を超えています(${mainTotal}枚)`);
     deckValidation.textContent = msgs.join(' / ');
+    updateDeckStatusHeader();
   }
+
+  deckNameInput.addEventListener('input', updateDeckStatusHeader);
 
   function renderDeckSearchGrid() {
     if (!currentDb || !Array.isArray(currentDb.cards)) {
@@ -1635,6 +1895,7 @@
   let cachedDecks = [];
 
   function renderMyDeckList() {
+    hideDeckPreview();
     if (cachedDecks.length === 0) {
       myDeckList.innerHTML = '<div class="empty-state" style="padding:8px 0;">保存済みデッキはありません</div>';
       return;
@@ -1653,9 +1914,10 @@
         </div>
         <button type="button" class="mdi-delete" title="削除">✕</button>
       `;
-      row.querySelector('.mdi-main').addEventListener('click', () => loadDeckById(d.id));
+      row.querySelector('.mdi-main').addEventListener('click', () => { hideDeckPreview(); loadDeckById(d.id); });
       row.querySelector('.mdi-delete').addEventListener('click', (e) => {
         e.stopPropagation();
+        hideDeckPreview();
         deleteDeckById(d.id, d.name);
       });
       const repImg = getDeckRepresentativeImage(d);
@@ -1896,7 +2158,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.5.1`);
+    log(`DigiCA Tool build v0.5.4`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
