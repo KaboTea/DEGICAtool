@@ -894,7 +894,7 @@
   .stack-tile {
     position: relative;
     width: 76px;
-    padding: 20px 0 0 20px;
+    padding: 0;
     cursor: pointer;
   }
   .stack-fan {
@@ -1129,7 +1129,14 @@
     flex-wrap: wrap;
     gap: 8px;
     align-content: flex-start;
-    min-height: 90px;
+    min-height: 180px;
+  }
+  .mat-side-col {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex-shrink: 0;
+    width: 190px;
   }
 
   .memory-line {
@@ -1222,7 +1229,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.7.7</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.8.0</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -1382,15 +1389,16 @@
       <!-- 相手側(奥) -->
       <div class="mat-block">
         <div class="mat-label">相手(<span id="opponentNameLabel"></span>)</div>
-        <div class="mat-row" style="margin-bottom:10px;">
-          <div class="mat-cluster" id="opponentHandCluster"></div>
-          <div style="flex:1;"></div>
-          <div class="mat-cluster" id="opponentEggCluster"></div>
-          <div class="sub-area raising-sub-area"><div class="sa-label">育成エリア</div><div id="opponentRaisingArea"></div></div>
-        </div>
         <div class="mat-row">
+          <div class="mat-side-col">
+            <div class="mat-cluster" id="opponentHandCluster"></div>
+            <div class="mat-cluster" id="opponentSideCluster"></div>
+            <div class="mat-row" style="gap:6px;">
+              <div class="mat-cluster" id="opponentEggCluster"></div>
+              <div class="sub-area raising-sub-area"><div class="sa-label">育成</div><div id="opponentRaisingArea"></div></div>
+            </div>
+          </div>
           <div class="sub-area battle-sub-area"><div class="sa-label" style="width:100%;">バトルエリア</div><div id="opponentBattleArea" style="display:contents;"></div></div>
-          <div class="mat-cluster" id="opponentSideCluster"></div>
         </div>
       </div>
 
@@ -1400,14 +1408,15 @@
       <!-- 自分側(手前) -->
       <div class="mat-block">
         <div class="mat-row">
-          <div class="mat-cluster" id="selfSideCluster"></div>
+          <div class="mat-side-col">
+            <div class="mat-cluster" id="selfSideCluster"></div>
+            <div class="db-actions" id="raisingPhaseActions"></div>
+            <div class="mat-row" style="gap:6px;">
+              <div class="mat-cluster" id="selfEggCluster"></div>
+              <div class="sub-area raising-sub-area"><div class="sa-label">育成</div><div id="selfRaisingArea"></div></div>
+            </div>
+          </div>
           <div class="sub-area battle-sub-area"><div class="sa-label" style="width:100%;">バトルエリア</div><div id="selfBattleArea" style="display:contents;"></div></div>
-        </div>
-        <div class="db-actions" id="raisingPhaseActions" style="margin-top:8px;"></div>
-        <div class="mat-row" style="margin-top:10px;">
-          <div class="mat-cluster" id="selfEggCluster"></div>
-          <div class="sub-area raising-sub-area"><div class="sa-label">育成エリア</div><div id="selfRaisingArea"></div></div>
-          <div style="flex:1;"></div>
         </div>
         <div class="mat-label" style="margin-top:14px;">自分(<span id="selfNameLabel"></span>) の手札</div>
         <div class="hand-row" id="selfHandRow"></div>
@@ -2423,7 +2432,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.7.7`);
+    log(`DigiCA Tool build v0.8.0`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -2758,13 +2767,19 @@
 
   function buildStackTile(stack, onClick, isEvolveTarget) {
     const el = document.createElement('div');
-    el.className = 'stack-tile' + (stack.rested ? ' rested' : '') + (isEvolveTarget ? ' target-pick' : '');
     const MAX_LAYERS = 10;
     const layers = stack.cards.slice(-MAX_LAYERS); // bottom-to-top order, capped
+    const topCard = cardIndexByNumber.get(layers[layers.length - 1]);
+    // デジモン/デジタマは上合わせ(材料が下にカスケード)、テイマー/オプションは下合わせ(上にカスケード)
+    const fanUp = topCard && (topCard.category === 'tamer' || topCard.category === 'option');
+    const OFFSET_STEP = 24;
+    const maxOffset = (layers.length - 1) * OFFSET_STEP;
+    el.className = 'stack-tile' + (stack.rested ? ' rested' : '') + (isEvolveTarget ? ' target-pick' : '');
+    el.style.padding = fanUp ? `${maxOffset}px 0 0 0` : `0 0 ${maxOffset}px 0`;
     const layerHtml = layers.map((num, i) => {
       const depth = layers.length - 1 - i; // 0 = top card (no offset), increasing = further back
-      const offset = depth * 2;
-      return `<img class="stack-layer" style="z-index:${i + 1};transform:translate(${-offset}px, ${-offset}px);" src="${escapeHtml(miniCardImg(num))}" alt="" onerror="this.style.opacity=0">`;
+      const offset = depth * OFFSET_STEP * (fanUp ? -1 : 1);
+      return `<img class="stack-layer" style="z-index:${i + 1};transform:translateY(${offset}px);" src="${escapeHtml(miniCardImg(num))}" alt="" onerror="this.style.opacity=0">`;
     }).join('');
     el.innerHTML = `
       <div class="stack-fan">${layerHtml}</div>
@@ -3271,7 +3286,8 @@
     const self = practiceState.players[practiceState.viewingIndex];
     const hatchBtn = document.createElement('button');
     hatchBtn.className = 'btn';
-    hatchBtn.textContent = `孵化(デジタマ${self.eggLibrary.length}枚)`;
+    hatchBtn.textContent = `孵化`;
+    hatchBtn.title = `デジタマ${self.eggLibrary.length}枚`;
     hatchBtn.disabled = !!self.raising || self.eggLibrary.length === 0;
     hatchBtn.addEventListener('click', hatchEgg);
     el.appendChild(hatchBtn);
@@ -3280,7 +3296,8 @@
     const canMove = !!self.raising && raisingTop && raisingTop.dp !== null && raisingTop.dp !== undefined;
     const moveBtn = document.createElement('button');
     moveBtn.className = 'btn';
-    moveBtn.textContent = self.raising && !canMove ? '育成エリア → バトルエリアへ移動(DPなし)' : '育成エリア → バトルエリアへ移動';
+    moveBtn.textContent = self.raising && !canMove ? '移動(DPなし)' : '移動';
+    moveBtn.title = '育成エリア → バトルエリアへ移動';
     moveBtn.disabled = !canMove;
     moveBtn.addEventListener('click', moveRaisingToBattle);
     el.appendChild(moveBtn);
