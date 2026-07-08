@@ -1130,6 +1130,32 @@
     transform: scale(1.15);
   }
 
+  .evolve-route-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: var(--panel-raised);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    color: var(--text);
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .evolve-route-item:hover { border-color: var(--accent); }
+  .evolve-route-item .eri-cost {
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--accent);
+    font-weight: 700;
+    margin-right: 8px;
+  }
+  .evolve-route-item .eri-text {
+    color: var(--text-dim);
+    font-size: 11px;
+    display: block;
+    margin-top: 3px;
+  }
+
   /* ---- Toast (transient notifications, visible regardless of active tab) ---- */
   .toast {
     position: fixed;
@@ -1161,7 +1187,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.6.3</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.7.3</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -1304,7 +1330,18 @@
       <div class="practice-topbar">
         <span class="mono" id="practiceHeaderLabel" style="font-size:12px;color:var(--text-dim);"></span>
         <button class="btn" id="practiceSwitchViewBtn" style="margin-left:8px;">🔄 視点を切り替え</button>
+        <button class="btn" id="practiceUndoBtn" disabled>⟲ 1手戻す</button>
         <button class="btn" id="practiceEndGameBtn">練習を終了</button>
+        <div style="margin-left:auto;display:flex;gap:8px;align-items:center;">
+          <span class="mono" id="phaseLabel" style="font-size:12px;color:var(--accent);"></span>
+          <button class="btn" id="practicePassBtn">パス</button>
+          <button class="btn primary" id="practiceNextPhaseBtn">次のフェーズへ</button>
+        </div>
+      </div>
+
+      <div class="evolve-mode-banner" id="evolveModeBanner">
+        <span id="evolveModeText"></span>
+        <button type="button" id="evolveModeCancel">キャンセル</button>
       </div>
 
       <!-- 相手側(奥) -->
@@ -1330,6 +1367,7 @@
           <div class="mat-cluster" id="selfSideCluster"></div>
           <div class="mat-battle-area" id="selfRaisingAndBattle"></div>
         </div>
+        <div class="db-actions" id="raisingPhaseActions" style="margin-top:8px;"></div>
         <div class="mat-row" style="margin-top:10px;">
           <div class="mat-cluster" id="selfEggCluster"></div>
           <div style="flex:1;"></div>
@@ -1411,6 +1449,25 @@
 
 <!-- Toast notification -->
 <div class="toast" id="toast"></div>
+
+<!-- Evolution route picker -->
+<div class="modal-backdrop" id="evolveRouteModal">
+  <div class="modal">
+    <h2 class="mono">進化ルートを選択</h2>
+    <div id="evolveRouteSubtitle" style="font-size:12px;color:var(--text-dim);margin-bottom:12px;"></div>
+    <div id="evolveRouteList" style="display:flex;flex-direction:column;gap:8px;max-height:340px;overflow-y:auto;"></div>
+    <div class="field" style="margin-top:14px;">
+      <label>その他(手動でコストを入力)</label>
+      <div style="display:flex;gap:8px;">
+        <input type="number" id="evolveManualCost" min="0" placeholder="コスト" style="flex:1;">
+        <button class="btn" id="evolveManualApply">この内容で進化</button>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" id="evolveRouteCancel">キャンセル</button>
+    </div>
+  </div>
+</div>
 
 <!-- Image Lightbox (click-to-enlarge) -->
 <div class="image-lightbox" id="imageLightbox">
@@ -2329,7 +2386,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.6.3`);
+    log(`DigiCA Tool build v0.7.3`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -2662,15 +2719,27 @@
     renderMulliganStep();
   });
 
-  function buildStackTile(stack, onClick) {
+  function buildStackTile(stack, onClick, isEvolveTarget) {
     const el = document.createElement('div');
-    el.className = 'stack-tile' + (stack.rested ? ' rested' : '');
+    el.className = 'stack-tile' + (stack.rested ? ' rested' : '') + (isEvolveTarget ? ' target-pick' : '');
     const top = stack.cards[stack.cards.length - 1];
     el.innerHTML = `
       <img src="${escapeHtml(miniCardImg(top))}" alt="" onerror="this.style.opacity=0">
       ${stack.cards.length > 1 ? `<span class="st-count mono">${stack.cards.length}</span>` : ''}
+      <button type="button" class="tile-quickadd" title="レスト/アクティブ切替" style="opacity:0.55;">⟳</button>
     `;
-    if (onClick) el.addEventListener('click', onClick);
+    el.querySelector('.tile-quickadd').addEventListener('click', (e) => {
+      e.stopPropagation();
+      snapshotPracticeState();
+      stack.rested = !stack.rested;
+      renderPracticeBoard();
+    });
+    if (isEvolveTarget) {
+      el.title = 'クリックしてここに進化';
+      el.addEventListener('click', () => performEvolve(stack));
+    } else if (onClick) {
+      el.addEventListener('click', onClick);
+    }
     return el;
   }
 
@@ -2736,7 +2805,7 @@
     return wrap;
   }
 
-  function renderPlayerZones(player, { handClusterEl, eggClusterEl, sideClusterEl, battleAreaEl, isSelf }) {
+  function renderPlayerZones(player, { handClusterEl, eggClusterEl, sideClusterEl, battleAreaEl, isSelf, allowEvolveTarget }) {
     // Hand: opponent's hand shows as a face-down pile (count only).
     // Self's hand is rendered separately below the mat (selfHandRow), so handClusterEl may be null.
     if (handClusterEl) {
@@ -2762,9 +2831,9 @@
     // Battle + raising area (face-up, public)
     battleAreaEl.innerHTML = '';
     if (player.raising) {
-      battleAreaEl.appendChild(buildStackTile(player.raising, () => openStackDetail(player.raising)));
+      battleAreaEl.appendChild(buildStackTile(player.raising, () => openStackDetail(player.raising), !!allowEvolveTarget));
     }
-    player.battle.forEach(stack => battleAreaEl.appendChild(buildStackTile(stack, () => openStackDetail(stack))));
+    player.battle.forEach(stack => battleAreaEl.appendChild(buildStackTile(stack, () => openStackDetail(stack), !!allowEvolveTarget)));
     if (!player.raising && player.battle.length === 0) {
       battleAreaEl.innerHTML = '<div class="empty-state" style="padding:6px 0;">(場にカードがいません)</div>';
     }
@@ -2795,11 +2864,19 @@
     const oppIndex = 1 - practiceState.viewingIndex;
     const opp = practiceState.players[oppIndex];
     const turnPlayer = practiceState.players[practiceState.turn.playerIndex];
+    const selfTurn = isSelfTurn();
 
     document.getElementById('practiceHeaderLabel').textContent =
       `視点: ${self.deckName} / ターン: ${turnPlayer.deckName} (${practiceState.turn.count}T)`;
     document.getElementById('opponentNameLabel').textContent = opp.deckName;
     document.getElementById('selfNameLabel').textContent = self.deckName;
+    document.getElementById('phaseLabel').textContent = PHASE_LABELS[practiceState.turn.phase];
+
+    const nextBtn = document.getElementById('practiceNextPhaseBtn');
+    const passBtn = document.getElementById('practicePassBtn');
+    nextBtn.disabled = !selfTurn;
+    nextBtn.textContent = practiceState.turn.phase === 'end' ? '次のターンへ' : '次のフェーズへ';
+    passBtn.disabled = !selfTurn || practiceState.turn.phase !== 'main';
 
     renderMemoryLine();
 
@@ -2809,6 +2886,7 @@
       sideClusterEl: document.getElementById('opponentSideCluster'),
       battleAreaEl: document.getElementById('opponentRaisingAndBattle'),
       isSelf: false,
+      allowEvolveTarget: false,
     });
 
     renderPlayerZones(self, {
@@ -2817,28 +2895,319 @@
       sideClusterEl: document.getElementById('selfSideCluster'),
       battleAreaEl: document.getElementById('selfRaisingAndBattle'),
       isSelf: true,
+      allowEvolveTarget: !!evolveMode && selfTurn,
     });
 
+    renderRaisingPhaseActions();
+
+    const canAct = selfTurn && practiceState.turn.phase === 'main' && !evolveMode;
     const handRow = document.getElementById('selfHandRow');
     handRow.innerHTML = '';
-    self.hand.forEach(number => {
+    self.hand.forEach((number, index) => {
+      const card = cardIndexByNumber.get(number);
       const c = document.createElement('div');
       c.className = 'hand-card';
       c.innerHTML = `
         <img src="${escapeHtml(miniCardImg(number))}" alt="" onerror="this.style.opacity=0">
         <div class="hc-name">${escapeHtml(miniCardName(number))}</div>
+        <div class="hc-actions"></div>
       `;
-      c.addEventListener('click', () => {
-        const card = cardIndexByNumber.get(number);
-        if (card) openCardDetail(card, true);
-      });
+      c.querySelector('img').addEventListener('click', () => { if (card) openCardDetail(card, true); });
+
+      if (canAct && card) {
+        const actions = c.querySelector('.hc-actions');
+        const mkBtn = (label, fn, disabled) => {
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.textContent = label;
+          b.disabled = !!disabled;
+          b.addEventListener('click', (e) => { e.stopPropagation(); fn(); });
+          actions.appendChild(b);
+        };
+        mkBtn('登場', () => appearFromHand(index, number), card.play_cost === null || card.play_cost === undefined);
+        mkBtn('進化', () => enterEvolveMode(index, number));
+        mkBtn('育成進化', () => raisingEvolveFromHand(index, number), !self.raising);
+        mkBtn('捨てる', () => trashFromHand(index));
+      }
       handRow.appendChild(c);
     });
+  }
+
+  // ---------- Undo (snapshot-based) ----------
+  const practiceHistory = [];
+  const HISTORY_LIMIT = 30;
+  function snapshotPracticeState() {
+    if (!practiceState) return;
+    practiceHistory.push(JSON.stringify(practiceState));
+    if (practiceHistory.length > HISTORY_LIMIT) practiceHistory.shift();
+    document.getElementById('practiceUndoBtn').disabled = false;
+  }
+  document.getElementById('practiceUndoBtn').addEventListener('click', () => {
+    if (practiceHistory.length === 0) return;
+    practiceState = JSON.parse(practiceHistory.pop());
+    document.getElementById('practiceUndoBtn').disabled = practiceHistory.length === 0;
+    exitEvolveMode();
+    renderPracticeBoard();
+    showToast('1手戻しました');
+  });
+
+  function clampMemory(v) { return Math.max(-10, Math.min(10, v)); }
+  function payMemory(payerIndex, cost) {
+    const delta = payerIndex === 0 ? cost : -cost;
+    practiceState.memory = clampMemory(practiceState.memory + delta);
+  }
+  function isSelfTurn() {
+    return practiceState && practiceState.viewingIndex === practiceState.turn.playerIndex;
+  }
+
+  // ---------- Evolution requirement check (basic Lv/color only; see design doc §2-3) ----------
+  // Build the full list of possible evolution routes for a hand card evolving onto a
+  // given target top card. We do NOT try to silently decide which route is "correct" —
+  // structured Lv/color requirements are shown as one set of options, and every
+  // 【進化】...コストN block found in the effect text is shown as another (its condition
+  // text is shown verbatim so the player can judge applicability themselves). See design
+  // doc §2-3: automatic judgement of name/trait/quantity conditions is out of scope.
+  function buildEvolveRoutes(handCard, topCard) {
+    const routes = [];
+    const seen = new Set();
+
+    if (Array.isArray(handCard.evo) && topCard) {
+      handCard.evo.forEach(req => {
+        const levelOk = topCard.level == null || req.level == null || topCard.level >= req.level;
+        const colorOk = !req.color || req.color.length === 0 || (topCard.color || []).some(c => req.color.includes(c));
+        if (!levelOk || !colorOk) return; // structurally impossible against this target
+        const cost = req.cost ?? 0;
+        const colorLabel = (req.color || []).map(c => COLOR_JA[c] || c).join('・') || '色指定なし';
+        const key = `S${cost}-${req.level}-${colorLabel}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        routes.push({ cost, label: `基本条件: Lv${req.level ?? '?'}以上 / ${colorLabel}`, sub: null });
+      });
+    }
+
+    if (handCard.effect) {
+      const blockRe = /【進化】([\s\S]*?)コスト(\d+)/g;
+      let m;
+      while ((m = blockRe.exec(handCard.effect))) {
+        const conditionText = m[1].replace(/\s+/g, '').trim();
+        const cost = parseInt(m[2], 10);
+        const key = `T${cost}-${conditionText}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        routes.push({ cost, label: `条件進化: コスト${cost}`, sub: conditionText });
+      }
+    }
+
+    return routes;
+  }
+
+  // ---------- Evolve target-picking mode ----------
+  let evolveMode = null; // { handIndex, handNumber, card }
+  let evolveRouteTarget = null; // stack currently chosen as the evolution target
+  const evolveModeBanner = document.getElementById('evolveModeBanner');
+  const evolveModeText = document.getElementById('evolveModeText');
+  const evolveRouteModal = document.getElementById('evolveRouteModal');
+  const evolveRouteList = document.getElementById('evolveRouteList');
+  const evolveRouteSubtitle = document.getElementById('evolveRouteSubtitle');
+  const evolveManualCost = document.getElementById('evolveManualCost');
+
+  function enterEvolveMode(handIndex, handNumber) {
+    const card = cardIndexByNumber.get(handNumber);
+    if (!card) return;
+    evolveMode = { handIndex, handNumber, card };
+    evolveModeText.textContent = `「${card.name}」の進化先を、バトルエリア/育成エリアのスタックから選んでください`;
+    evolveModeBanner.classList.add('active');
+    renderPracticeBoard();
+  }
+  function exitEvolveMode() {
+    evolveMode = null;
+    evolveModeBanner.classList.remove('active');
+  }
+  document.getElementById('evolveModeCancel').addEventListener('click', exitEvolveMode);
+
+  function performEvolve(targetStack) {
+    if (!evolveMode || !practiceState) return;
+    evolveRouteTarget = targetStack;
+    const topCard = cardIndexByNumber.get(targetStack.cards[targetStack.cards.length - 1]);
+    const routes = buildEvolveRoutes(evolveMode.card, topCard);
+
+    evolveRouteSubtitle.textContent = `「${evolveMode.card.name}」→ 進化先: ${topCard ? topCard.name : '?'}`;
+    evolveManualCost.value = '';
+    evolveRouteList.innerHTML = '';
+    if (routes.length === 0) {
+      evolveRouteList.innerHTML = '<div class="empty-state" style="padding:8px 0;">条件に一致するルートが見つかりませんでした。下の手動入力を使ってください。</div>';
+    } else {
+      routes.forEach(r => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'evolve-route-item';
+        btn.innerHTML = `<span class="eri-cost">コスト${r.cost}</span>${escapeHtml(r.label)}${r.sub ? `<span class="eri-text">${escapeHtml(r.sub)}</span>` : ''}`;
+        btn.addEventListener('click', () => finalizeEvolve(r.cost));
+        evolveRouteList.appendChild(btn);
+      });
+    }
+    evolveRouteModal.classList.add('open');
+  }
+
+  function finalizeEvolve(cost) {
+    if (!evolveMode || !evolveRouteTarget || !practiceState) return;
+    if (isNaN(cost) || cost < 0) { showToast('コストの入力が不正です', true); return; }
+    const self = practiceState.players[practiceState.viewingIndex];
+
+    snapshotPracticeState();
+    self.hand.splice(evolveMode.handIndex, 1);
+    evolveRouteTarget.cards.push(evolveMode.handNumber);
+    payMemory(practiceState.turn.playerIndex, cost);
+    if (self.library.length > 0) self.hand.push(self.library.shift()); // 進化解決時に1ドロー
+    const evolvedName = evolveMode.card.name;
+
+    evolveRouteModal.classList.remove('open');
+    evolveRouteTarget = null;
+    exitEvolveMode();
+    renderPracticeBoard();
+    showToast(`「${evolvedName}」に進化しました(コスト${cost})`);
+  }
+
+  document.getElementById('evolveManualApply').addEventListener('click', () => {
+    finalizeEvolve(parseInt(evolveManualCost.value, 10));
+  });
+  document.getElementById('evolveRouteCancel').addEventListener('click', () => {
+    evolveRouteModal.classList.remove('open');
+    evolveRouteTarget = null;
+  });
+
+  // ---------- Hand actions: 登場 / 進化 / 育成進化 / トラッシュ ----------
+  function appearFromHand(handIndex, handNumber) {
+    const card = cardIndexByNumber.get(handNumber);
+    if (!card) return;
+    const cost = card.play_cost;
+    if (cost === null || cost === undefined) {
+      showToast('このカードには登場コストがありません(進化でのみ場に出せます)', true);
+      return;
+    }
+    snapshotPracticeState();
+    const self = practiceState.players[practiceState.viewingIndex];
+    self.hand.splice(handIndex, 1);
+    self.battle.push({ cards: [handNumber], rested: false });
+    payMemory(practiceState.turn.playerIndex, cost);
+    renderPracticeBoard();
+    showToast(`「${card.name}」が登場しました(コスト${cost})`);
+  }
+
+  function trashFromHand(handIndex) {
+    snapshotPracticeState();
+    const self = practiceState.players[practiceState.viewingIndex];
+    const [number] = self.hand.splice(handIndex, 1);
+    self.trash.push(number);
+    renderPracticeBoard();
+  }
+
+  function raisingEvolveFromHand(handIndex, handNumber) {
+    const self = practiceState.players[practiceState.viewingIndex];
+    if (!self.raising) { showToast('育成エリアにデジモンがいません', true); return; }
+    evolveMode = { handIndex, handNumber, card: cardIndexByNumber.get(handNumber) };
+    performEvolve(self.raising);
+  }
+
+  // ---------- Raising phase: 孵化 / バトルエリアへ移動 ----------
+  function hatchEgg() {
+    const self = practiceState.players[practiceState.viewingIndex];
+    if (self.raising) { showToast('育成エリアに既にデジモンがいます', true); return; }
+    if (self.eggLibrary.length === 0) { showToast('デジタマデッキがありません', true); return; }
+    snapshotPracticeState();
+    const num = self.eggLibrary.shift();
+    self.raising = { cards: [num], rested: false };
+    renderPracticeBoard();
+  }
+  function moveRaisingToBattle() {
+    const self = practiceState.players[practiceState.viewingIndex];
+    if (!self.raising) { showToast('育成エリアが空です', true); return; }
+    snapshotPracticeState();
+    self.battle.push(self.raising);
+    self.raising = null;
+    renderPracticeBoard();
+  }
+
+  // ---------- Turn / phase progression ----------
+  const PHASE_LABELS = { active: 'アクティブフェイズ', draw: 'ドローフェイズ', raising: '育成フェイズ', main: 'メインフェイズ', end: 'エンドフェイズ' };
+  const PHASE_ORDER = ['active', 'draw', 'raising', 'main', 'end'];
+
+  function advancePhase() {
+    if (!practiceState) return;
+    const { turn } = practiceState;
+    const turnPlayer = practiceState.players[turn.playerIndex];
+    const idx = PHASE_ORDER.indexOf(turn.phase);
+    let nextPhase = PHASE_ORDER[idx + 1];
+
+    // First player's first turn has no draw phase (6-2-2)
+    if (turn.phase === 'active' && turn.count === 1 && turn.playerIndex === 0) {
+      nextPhase = 'raising';
+    }
+
+    if (turn.phase === 'main') {
+      const memoryTowardOpponent = turn.playerIndex === 0 ? practiceState.memory : -practiceState.memory;
+      if (memoryTowardOpponent < 1) {
+        showToast('メモリーが相手側1以上でないとターンを終了できません', true);
+        return;
+      }
+    }
+
+    snapshotPracticeState();
+
+    if (!nextPhase) {
+      // was 'end' -> start next turn for the other player
+      const nextPlayerIndex = 1 - turn.playerIndex;
+      practiceState.turn = { count: turn.count + 1, playerIndex: nextPlayerIndex, phase: 'active' };
+      const nextPlayer = practiceState.players[nextPlayerIndex];
+      nextPlayer.raising && (nextPlayer.raising.rested = false);
+      nextPlayer.battle.forEach(s => { s.rested = false; });
+    } else {
+      turn.phase = nextPhase;
+      if (nextPhase === 'draw') {
+        if (turnPlayer.library.length === 0) {
+          showToast(`${turnPlayer.deckName} は山札切れです(敗北)`, true);
+        } else {
+          turnPlayer.hand.push(turnPlayer.library.shift());
+        }
+      }
+    }
+    exitEvolveMode();
+    renderPracticeBoard();
+  }
+
+  document.getElementById('practiceNextPhaseBtn').addEventListener('click', advancePhase);
+  document.getElementById('practicePassBtn').addEventListener('click', () => {
+    if (!practiceState || practiceState.turn.phase !== 'main') { showToast('パスはメインフェイズのみ使えます', true); return; }
+    snapshotPracticeState();
+    practiceState.memory = practiceState.turn.playerIndex === 0 ? 3 : -3;
+    renderPracticeBoard();
+    showToast('パスしました(メモリーが相手側3になりました)');
+  });
+
+  function renderRaisingPhaseActions() {
+    const el = document.getElementById('raisingPhaseActions');
+    el.innerHTML = '';
+    if (!practiceState || !isSelfTurn() || practiceState.turn.phase !== 'raising') return;
+    const self = practiceState.players[practiceState.viewingIndex];
+    const hatchBtn = document.createElement('button');
+    hatchBtn.className = 'btn';
+    hatchBtn.textContent = `孵化(デジタマ${self.eggLibrary.length}枚)`;
+    hatchBtn.disabled = !!self.raising || self.eggLibrary.length === 0;
+    hatchBtn.addEventListener('click', hatchEgg);
+    el.appendChild(hatchBtn);
+
+    const moveBtn = document.createElement('button');
+    moveBtn.className = 'btn';
+    moveBtn.textContent = '育成エリア → バトルエリアへ移動';
+    moveBtn.disabled = !self.raising;
+    moveBtn.addEventListener('click', moveRaisingToBattle);
+    el.appendChild(moveBtn);
   }
 
   document.getElementById('practiceSwitchViewBtn').addEventListener('click', () => {
     if (!practiceState) return;
     practiceState.viewingIndex = 1 - practiceState.viewingIndex;
+    exitEvolveMode();
     renderPracticeBoard();
   });
 
@@ -2846,6 +3215,8 @@
     if (!confirm('練習を終了しますか?現在の盤面は失われます。')) return;
     practiceState = null;
     practiceSetup = null;
+    practiceHistory.length = 0;
+    exitEvolveMode();
     practiceBoardPanel.style.display = 'none';
     practiceSetupPanel.style.display = '';
     practiceMulliganArea.innerHTML = '';
