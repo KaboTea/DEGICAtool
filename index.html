@@ -1097,6 +1097,32 @@
     margin-bottom: 6px;
   }
 
+  .sub-area {
+    border: 1px dashed var(--border);
+    border-radius: 8px;
+    padding: 8px;
+    flex-shrink: 0;
+  }
+  .sub-area .sa-label {
+    font-size: 10px;
+    color: var(--accent);
+    margin-bottom: 6px;
+    letter-spacing: 0.03em;
+  }
+  .raising-sub-area {
+    width: 92px;
+    min-height: 108px;
+  }
+  .battle-sub-area {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-content: flex-start;
+    min-height: 90px;
+  }
+
   .memory-line {
     display: flex;
     justify-content: center;
@@ -1187,7 +1213,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.7.3</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.7.4</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -1353,7 +1379,8 @@
           <div class="mat-cluster" id="opponentEggCluster"></div>
         </div>
         <div class="mat-row">
-          <div class="mat-battle-area" id="opponentRaisingAndBattle"></div>
+          <div class="sub-area raising-sub-area"><div class="sa-label">育成エリア</div><div id="opponentRaisingArea"></div></div>
+          <div class="sub-area battle-sub-area"><div class="sa-label" style="width:100%;">バトルエリア</div><div id="opponentBattleArea" style="display:contents;"></div></div>
           <div class="mat-cluster" id="opponentSideCluster"></div>
         </div>
       </div>
@@ -1365,7 +1392,8 @@
       <div class="mat-block">
         <div class="mat-row">
           <div class="mat-cluster" id="selfSideCluster"></div>
-          <div class="mat-battle-area" id="selfRaisingAndBattle"></div>
+          <div class="sub-area raising-sub-area"><div class="sa-label">育成エリア</div><div id="selfRaisingArea"></div></div>
+          <div class="sub-area battle-sub-area"><div class="sa-label" style="width:100%;">バトルエリア</div><div id="selfBattleArea" style="display:contents;"></div></div>
         </div>
         <div class="db-actions" id="raisingPhaseActions" style="margin-top:8px;"></div>
         <div class="mat-row" style="margin-top:10px;">
@@ -2386,7 +2414,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.7.3`);
+    log(`DigiCA Tool build v0.7.4`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -2805,7 +2833,7 @@
     return wrap;
   }
 
-  function renderPlayerZones(player, { handClusterEl, eggClusterEl, sideClusterEl, battleAreaEl, isSelf, allowEvolveTarget }) {
+  function renderPlayerZones(player, { handClusterEl, eggClusterEl, sideClusterEl, raisingAreaEl, battleAreaEl, isSelf, allowEvolveTarget }) {
     // Hand: opponent's hand shows as a face-down pile (count only).
     // Self's hand is rendered separately below the mat (selfHandRow), so handClusterEl may be null.
     if (handClusterEl) {
@@ -2828,14 +2856,20 @@
       }
     }));
 
-    // Battle + raising area (face-up, public)
-    battleAreaEl.innerHTML = '';
+    // Raising area (0 or 1 stack)
+    raisingAreaEl.innerHTML = '';
     if (player.raising) {
-      battleAreaEl.appendChild(buildStackTile(player.raising, () => openStackDetail(player.raising), !!allowEvolveTarget));
+      raisingAreaEl.appendChild(buildStackTile(player.raising, () => openStackDetail(player.raising), !!allowEvolveTarget));
+    } else {
+      raisingAreaEl.innerHTML = '<div class="empty-state" style="padding:14px 0;font-size:11px;">(空)</div>';
     }
-    player.battle.forEach(stack => battleAreaEl.appendChild(buildStackTile(stack, () => openStackDetail(stack), !!allowEvolveTarget)));
-    if (!player.raising && player.battle.length === 0) {
-      battleAreaEl.innerHTML = '<div class="empty-state" style="padding:6px 0;">(場にカードがいません)</div>';
+
+    // Battle area (0+ stacks)
+    battleAreaEl.innerHTML = '';
+    if (player.battle.length === 0) {
+      battleAreaEl.innerHTML = '<div class="empty-state" style="padding:14px 0;">(場にデジモンがいません)</div>';
+    } else {
+      player.battle.forEach(stack => battleAreaEl.appendChild(buildStackTile(stack, () => openStackDetail(stack), !!allowEvolveTarget)));
     }
   }
 
@@ -2884,7 +2918,8 @@
       handClusterEl: document.getElementById('opponentHandCluster'),
       eggClusterEl: document.getElementById('opponentEggCluster'),
       sideClusterEl: document.getElementById('opponentSideCluster'),
-      battleAreaEl: document.getElementById('opponentRaisingAndBattle'),
+      raisingAreaEl: document.getElementById('opponentRaisingArea'),
+      battleAreaEl: document.getElementById('opponentBattleArea'),
       isSelf: false,
       allowEvolveTarget: false,
     });
@@ -2893,7 +2928,8 @@
       handClusterEl: null, // self's hand is rendered separately in selfHandRow
       eggClusterEl: document.getElementById('selfEggCluster'),
       sideClusterEl: document.getElementById('selfSideCluster'),
-      battleAreaEl: document.getElementById('selfRaisingAndBattle'),
+      raisingAreaEl: document.getElementById('selfRaisingArea'),
+      battleAreaEl: document.getElementById('selfBattleArea'),
       isSelf: true,
       allowEvolveTarget: !!evolveMode && selfTurn,
     });
@@ -2954,7 +2990,12 @@
   function clampMemory(v) { return Math.max(-10, Math.min(10, v)); }
   function payMemory(payerIndex, cost) {
     const delta = payerIndex === 0 ? cost : -cost;
-    practiceState.memory = clampMemory(practiceState.memory + delta);
+    const raw = practiceState.memory + delta;
+    const clamped = clampMemory(raw);
+    if (clamped !== raw) {
+      showToast('メモリーが上限(10)に達しました。超過分は反映されません', true);
+    }
+    practiceState.memory = clamped;
   }
   function isSelfTurn() {
     return practiceState && practiceState.viewingIndex === practiceState.turn.playerIndex;
