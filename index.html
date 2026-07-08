@@ -1291,7 +1291,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.10.5</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.10.7</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -2099,6 +2099,16 @@
 
   const sumMap = (m) => Object.values(m).reduce((s, c) => s + c, 0);
 
+  // 一部のカードには「〈ルール〉このカードと同じカードナンバーのカードはデッキに
+  // N枚まで入れられる」という特殊ルールが書かれており、通常の同名4枚制限を上書きする。
+  // 表記ゆれ(カード番号/カードナンバー、デッキに/デッキ内に 等)を吸収する。
+  function getCardCopyLimit(card) {
+    const combined = [card.effect, card.inherited, card.security_effect, card.alt_effect_ja]
+      .filter(Boolean).join(' ');
+    const m = combined.match(/同じカード(?:ナンバー|番号)の[^デ]{0,10}デッキ(?:内)?に(\d+)枚まで/);
+    return m ? parseInt(m[1], 10) : 4;
+  }
+
   function adjustDeckCount(card, delta) {
     const target = card.category === 'digi-egg' ? 'eggs' : 'main';
     const map = deckState[target];
@@ -2106,8 +2116,9 @@
     const next = current + delta;
     if (next < 0) return;
 
-    if (next > 4) {
-      const msg = `「${card.name}」は同名カード4枚までです。`;
+    const copyLimit = getCardCopyLimit(card);
+    if (next > copyLimit) {
+      const msg = `「${card.name}」は同名カード${copyLimit}枚までです。`;
       deckValidation.textContent = msg;
       showToast(msg, true);
       return;
@@ -2519,7 +2530,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.10.5`);
+    log(`DigiCA Tool build v0.10.7`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
