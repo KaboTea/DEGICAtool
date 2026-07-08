@@ -1291,7 +1291,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.10.3</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.10.5</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -2519,7 +2519,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.10.3`);
+    log(`DigiCA Tool build v0.10.5`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -3178,7 +3178,7 @@
       raisingAreaEl: document.getElementById('selfRaisingArea'),
       battleAreaEl: document.getElementById('selfBattleArea'),
       isSelf: true,
-      allowEvolveTarget: (!!evolveMode || !!materialTargetMode) && selfTurn,
+      allowEvolveTarget: !!evolveMode || !!materialTargetMode,
     });
 
     renderRaisingPhaseActions();
@@ -3233,6 +3233,7 @@
     practiceState = JSON.parse(practiceHistory.pop());
     document.getElementById('practiceUndoBtn').disabled = practiceHistory.length === 0;
     exitEvolveMode();
+    exitMaterialTargetMode();
     renderPracticeBoard();
     showToast('1手戻しました');
   });
@@ -3352,9 +3353,21 @@
     if (!evolveMode) evolveModeBanner.classList.remove('active');
   }
 
-  document.getElementById('evolveModeCancel').addEventListener('click', () => {
+  // Cancels both target-picking modes. If a card revealed from the deck was
+  // pending placement (source 'reveal'), return it to the top of the deck so it
+  // doesn't vanish into no-zone.
+  function cancelTargetModes() {
+    if (materialTargetMode && materialTargetMode.source === 'reveal') {
+      const self = practiceState.players[practiceState.viewingIndex];
+      self.library.unshift(materialTargetMode.number);
+      showToast('公開したカードをデッキの上に戻しました');
+    }
     exitEvolveMode();
     exitMaterialTargetMode();
+  }
+
+  document.getElementById('evolveModeCancel').addEventListener('click', () => {
+    cancelTargetModes();
     renderPracticeBoard();
   });
 
@@ -3461,7 +3474,8 @@
             <input type="number" id="appearCostInput" value="0" min="0" style="width:56px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:4px;color:var(--text);font-size:12px;">
             <button type="button" id="appearCostGo" class="btn" style="font-size:11px;padding:6px 8px;">このコストで登場</button>
           `;
-          container.querySelector('#appearCostGo').addEventListener('click', () => {
+          container.querySelector('#appearCostGo').addEventListener('click', (e) => {
+            e.stopPropagation();
             const x = parseInt(container.querySelector('#appearCostInput').value, 10);
             closeZonePopup();
             finalize(x);
@@ -3697,6 +3711,10 @@
         btn.addEventListener('click', () => {
           const idx = parseInt(btn.dataset.idx, 10);
           const number = revealed[idx];
+          if (!cardIndexByNumber.get(number)) {
+            showToast('DBに存在しないカードのため進化元に追加できません', true);
+            return;
+          }
           revealed.splice(idx, 1);
           cardDetailModal.classList.remove('open');
           // このカード自体は既に公開処理の場から離れているので、進化元追加の
@@ -3723,7 +3741,8 @@
             <input type="number" id="revealCountInput" value="3" min="1" style="width:48px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:4px;color:var(--text);font-size:12px;">
             <button type="button" id="revealCountGo" class="btn" style="font-size:11px;padding:6px 8px;white-space:nowrap;">公開して振分</button>
           `;
-          container.querySelector('#revealCountGo').addEventListener('click', () => {
+          container.querySelector('#revealCountGo').addEventListener('click', (e) => {
+            e.stopPropagation();
             const x = parseInt(container.querySelector('#revealCountInput').value, 10);
             closeZonePopup();
             revealTopAndSort(x);
@@ -3928,8 +3947,8 @@
             closeZonePopup();
             modifyStackDP(stack, sign * v);
           };
-          container.querySelector('#dpPlusBtn').addEventListener('click', () => apply(1));
-          container.querySelector('#dpMinusBtn').addEventListener('click', () => apply(-1));
+          container.querySelector('#dpPlusBtn').addEventListener('click', (e) => { e.stopPropagation(); apply(1); });
+          container.querySelector('#dpMinusBtn').addEventListener('click', (e) => { e.stopPropagation(); apply(-1); });
         },
       },
     ]);
@@ -4030,7 +4049,8 @@
                   <input type="number" id="tamerDpInput" value="3000" min="0" step="500" style="width:74px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:4px;color:var(--text);font-size:12px;">
                   <button type="button" id="tamerDpGo" class="btn" style="font-size:11px;padding:6px 8px;">決定</button>
                 `;
-                container.querySelector('#tamerDpGo').addEventListener('click', () => {
+                container.querySelector('#tamerDpGo').addEventListener('click', (e) => {
+                  e.stopPropagation();
                   const dp = parseInt(container.querySelector('#tamerDpInput').value, 10);
                   if (isNaN(dp) || dp < 0) { showToast('DPの入力が不正です', true); return; }
                   closeZonePopup();
@@ -4137,7 +4157,7 @@
       nextPlayer.raising && (nextPlayer.raising.rested = false);
       nextPlayer.battle.forEach(s => { s.rested = false; });
     }
-    exitEvolveMode();
+    cancelTargetModes();
     renderPracticeBoard();
   }
 
@@ -4176,8 +4196,8 @@
 
   document.getElementById('practiceSwitchViewBtn').addEventListener('click', () => {
     if (!practiceState) return;
+    cancelTargetModes();
     practiceState.viewingIndex = 1 - practiceState.viewingIndex;
-    exitEvolveMode();
     renderPracticeBoard();
   });
 
@@ -4187,6 +4207,7 @@
     practiceSetup = null;
     practiceHistory.length = 0;
     exitEvolveMode();
+    exitMaterialTargetMode();
     practiceBoardPanel.style.display = 'none';
     practiceSetupPanel.style.display = '';
     practiceMulliganArea.innerHTML = '';
