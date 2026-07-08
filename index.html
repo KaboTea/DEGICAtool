@@ -1136,18 +1136,23 @@
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
+    padding-top: 16px;
   }
   .st-dp {
     position: absolute;
-    bottom: 2px;
-    left: 2px;
-    background: rgba(0,0,0,0.75);
-    color: var(--c-red);
+    top: -14px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--c-red);
+    color: #fff;
     font-family: 'JetBrains Mono', monospace;
-    font-size: 9px;
-    padding: 1px 4px;
-    border-radius: 4px;
-    z-index: 10;
+    font-size: 19px;
+    font-weight: 800;
+    padding: 3px 16px;
+    clip-path: polygon(10% 0%, 90% 0%, 100% 50%, 90% 100%, 10% 100%, 0% 50%);
+    white-space: nowrap;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+    z-index: 15;
   }
   .mat-side-col {
     display: flex;
@@ -1286,7 +1291,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.10.0</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.10.2</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -1428,7 +1433,6 @@
     <div class="panel" id="practiceBoardPanel" style="display:none;">
       <div class="practice-topbar">
         <span class="mono" id="practiceHeaderLabel" style="font-size:12px;color:var(--text-dim);"></span>
-        <button class="btn" id="practiceUndoBtn" disabled>⟲ 1手戻す</button>
         <button class="btn" id="practiceEndGameBtn">練習を終了</button>
       </div>
 
@@ -1461,8 +1465,12 @@
         <button class="btn primary" id="practiceNextPhaseBtn">次のフェーズへ</button>
       </div>
 
-      <!-- メモリーゲージ(数直線) -->
-      <div class="memory-line" id="memoryLine"></div>
+      <!-- メモリーゲージ: 左にターン表示、右に1手戻す -->
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span class="mono" id="turnIndicatorLabel" style="font-size:12px;color:var(--text-dim);white-space:nowrap;"></span>
+        <div class="memory-line" id="memoryLine" style="flex:1;"></div>
+        <button class="btn" id="practiceUndoBtn" disabled style="white-space:nowrap;">⟲ 1手戻す</button>
+      </div>
 
       <!-- 自分側(手前) -->
       <div class="mat-block">
@@ -2511,7 +2519,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.10.0`);
+    log(`DigiCA Tool build v0.10.2`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -3139,6 +3147,8 @@
 
     document.getElementById('practiceHeaderLabel').textContent =
       `視点: ${self.deckName} / ターン: ${turnPlayer.deckName} (${practiceState.turn.count}T)`;
+    document.getElementById('turnIndicatorLabel').textContent =
+      `ターン: ${turnPlayer.deckName}${selfTurn ? '(自分)' : '(相手)'}`;
     document.getElementById('opponentNameLabel').textContent = opp.deckName;
     document.getElementById('selfNameLabel').textContent = self.deckName;
     document.getElementById('phaseLabel').textContent = PHASE_LABELS[practiceState.turn.phase];
@@ -3174,7 +3184,9 @@
     renderRaisingPhaseActions();
     renderUtilityActions();
 
-    const canAct = selfTurn && practiceState.turn.phase === 'main' && !evolveMode && !materialTargetMode;
+    // 相手のセキュリティ/消滅などの効果で、ターンを持っていない側にも登場・進化が
+    // 発生することがあるため、ターン保持者に関わらず操作可能にする。
+    const canAct = practiceState.turn.phase === 'main' && !evolveMode && !materialTargetMode;
     const handRow = document.getElementById('selfHandRow');
     handRow.innerHTML = '';
     self.hand.forEach((number, index) => {
@@ -3200,7 +3212,6 @@
         };
         mkBtn('登場', (e) => appearFromHand(index, number, e), card.play_cost === null || card.play_cost === undefined);
         mkBtn('進化', () => enterEvolveMode(index, number));
-        mkBtn('育成進化', () => raisingEvolveFromHand(index, number), !self.raising);
         mkBtn('進化元に追加', () => enterMaterialTargetMode(number, 'hand', index));
         mkBtn('捨てる', () => trashFromHand(index));
       }
@@ -3466,13 +3477,6 @@
     const [number] = self.hand.splice(handIndex, 1);
     self.trash.push(number);
     renderPracticeBoard();
-  }
-
-  function raisingEvolveFromHand(handIndex, handNumber) {
-    const self = practiceState.players[practiceState.viewingIndex];
-    if (!self.raising) { showToast('育成エリアにデジモンがいません', true); return; }
-    evolveMode = { handIndex, handNumber, card: cardIndexByNumber.get(handNumber) };
-    performEvolve(self.raising);
   }
 
   // ---------- Raising phase: 孵化 / バトルエリアへ移動 ----------
