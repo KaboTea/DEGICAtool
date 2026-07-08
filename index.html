@@ -1122,10 +1122,32 @@
     flex: 1;
     min-width: 0;
     display: flex;
+    flex-direction: column;
+    min-height: 180px;
+  }
+  .battle-groups-wrap {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+  .battle-top-group, .battle-bottom-group {
+    display: flex;
     flex-wrap: wrap;
     gap: 8px;
-    align-content: flex-start;
-    min-height: 180px;
+  }
+  .st-dp {
+    position: absolute;
+    bottom: 2px;
+    left: 2px;
+    background: rgba(0,0,0,0.75);
+    color: var(--c-red);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    padding: 1px 4px;
+    border-radius: 4px;
+    z-index: 10;
   }
   .mat-side-col {
     display: flex;
@@ -1264,7 +1286,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.9.7</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.10.0</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -1427,7 +1449,7 @@
               <div class="sub-area raising-sub-area"><div class="sa-label">育成</div><div id="opponentRaisingArea"></div></div>
             </div>
           </div>
-          <div class="sub-area battle-sub-area"><div class="sa-label" style="width:100%;">バトルエリア</div><div id="opponentBattleArea" style="display:contents;"></div></div>
+          <div class="sub-area battle-sub-area"><div class="sa-label">バトルエリア</div><div id="opponentBattleArea" class="battle-groups-wrap"></div></div>
         </div>
       </div>
 
@@ -1453,7 +1475,7 @@
               <div class="sub-area raising-sub-area"><div class="sa-label">育成</div><div id="selfRaisingArea"></div></div>
             </div>
           </div>
-          <div class="sub-area battle-sub-area"><div class="sa-label" style="width:100%;">バトルエリア</div><div id="selfBattleArea" style="display:contents;"></div></div>
+          <div class="sub-area battle-sub-area"><div class="sa-label">バトルエリア</div><div id="selfBattleArea" class="battle-groups-wrap"></div></div>
         </div>
         <div class="mat-label" style="margin-top:14px;">自分(<span id="selfNameLabel"></span>) の手札</div>
         <div class="hand-row" id="selfHandRow"></div>
@@ -1970,7 +1992,14 @@
     cardDetailModal.classList.add('open');
 
     if (stackContext) {
-      detailBody.querySelector('.detail-info').appendChild(renderStackActionButtons(stackContext));
+      const owner = findStackOwnerAndZone(stackContext);
+      const isOwn = owner && practiceState && owner.player === practiceState.players[practiceState.viewingIndex];
+      if (isOwn) {
+        detailBody.querySelector('.detail-info').appendChild(renderStackActionButtons(stackContext));
+      } else {
+        const dpPanel = renderDPModifierPanel(stackContext);
+        if (dpPanel) detailBody.querySelector('.detail-info').appendChild(dpPanel);
+      }
     }
 
     const detailImg = detailBody.querySelector('img');
@@ -2482,7 +2511,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.9.7`);
+    log(`DigiCA Tool build v0.10.0`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -2702,6 +2731,21 @@
   function cardEntryNum(entry) { return (entry && typeof entry === 'object') ? entry.n : entry; }
   function cardEntryFaceDown(entry) { return !!(entry && typeof entry === 'object' && entry.d); }
 
+  // ---------- DP helpers (used by both battle-area rendering and the DP modify feature) ----------
+  function getStackTopCard(stack) {
+    return cardIndexByNumber.get(cardEntryNum(stack.cards[stack.cards.length - 1]));
+  }
+  function isDigimonLikeStack(stack) {
+    const c = getStackTopCard(stack);
+    return !!c && (c.category === 'digimon' || c.category === 'digi-egg' || !!stack.actingAsDigimon);
+  }
+  function getEffectiveDP(stack) {
+    const c = getStackTopCard(stack);
+    const base = stack.actingAsDigimon ? (stack.assignedDP ?? 0) : (c ? (c.dp ?? 0) : 0);
+    return base + (stack.dpModifier || 0);
+  }
+
+
   function renderMulliganStep() {
     if (!practiceSetup) { practiceMulliganArea.innerHTML = ''; return; }
     const { order, stepIndex } = practiceSetup;
@@ -2827,7 +2871,8 @@
     const layers = stack.cards.slice(-MAX_LAYERS); // bottom-to-top order, capped
     const topCard = cardIndexByNumber.get(cardEntryNum(layers[layers.length - 1]));
     // デジモン/デジタマは上合わせ(材料が下にカスケード)、テイマー/オプションは下合わせ(上にカスケード)
-    const fanUp = topCard && (topCard.category === 'tamer' || topCard.category === 'option');
+    // ただし「デジモンにする」で人間→デジモン扱いにした場合は上合わせにする
+    const fanUp = topCard && (topCard.category === 'tamer' || topCard.category === 'option') && !stack.actingAsDigimon;
     const OFFSET_STEP = 24;
     const maxOffset = (layers.length - 1) * OFFSET_STEP;
     el.className = 'stack-tile' + (stack.rested ? ' rested' : '') + (isEvolveTarget ? ' target-pick' : '');
@@ -2847,6 +2892,7 @@
     el.innerHTML = `
       <div class="stack-fan">${layerHtml}</div>
       ${stack.cards.length > 1 ? `<span class="st-count mono">${stack.cards.length}</span>` : ''}
+      ${(stack.actingAsDigimon || ((stack.dpModifier || 0) !== 0 && isDigimonLikeStack(stack))) ? `<span class="st-dp">DP${getEffectiveDP(stack)}</span>` : ''}
       <button type="button" class="tile-quickadd" title="レスト/アクティブ切替" style="opacity:0.55;">⟳</button>
     `;
     el.querySelector('.tile-quickadd').addEventListener('click', (e) => {
@@ -2856,8 +2902,12 @@
       renderPracticeBoard();
     });
     if (isEvolveTarget) {
-      el.title = 'クリックしてここに進化';
-      el.addEventListener('click', (e) => { e.stopPropagation(); performEvolve(stack); });
+      el.title = 'クリックして選択';
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (evolveMode) performEvolve(stack);
+        else if (materialTargetMode) performAddMaterial(stack);
+      });
     } else if (onClick) {
       el.addEventListener('click', (e) => { e.stopPropagation(); onClick(e); });
     }
@@ -2892,7 +2942,7 @@
   function openStackDetail(stack) {
     if (stack.cards.length <= 1) {
       const card = cardIndexByNumber.get(cardEntryNum(stack.cards[stack.cards.length - 1]));
-      if (card) openCardDetail(card, true);
+      if (card) openCardDetail(card, true, stack);
       return;
     }
     // Multi-card stack: show contents from top to bottom; click any card for its detail.
@@ -2912,7 +2962,7 @@
     }).join('');
     detailBody.innerHTML = `
       <div class="detail-info" style="width:100%;">
-        <div class="d-title">スタックの中身(上から順)</div>
+        <div class="d-title">進化元の中身(上から順)</div>
         <div class="d-number mono">${stack.cards.length}枚${stack.rested ? '・レスト中' : ''}</div>
         <div class="deck-list" style="margin-top:8px;">${rows}</div>
       </div>
@@ -2938,7 +2988,14 @@
       });
     });
     cardDetailModal.classList.add('open');
-    detailBody.querySelector('.detail-info').appendChild(renderStackActionButtons(stack));
+    const owner = findStackOwnerAndZone(stack);
+    const isOwn = owner && practiceState && owner.player === practiceState.players[practiceState.viewingIndex];
+    if (isOwn) {
+      detailBody.querySelector('.detail-info').appendChild(renderStackActionButtons(stack));
+    } else {
+      const dpPanel = renderDPModifierPanel(stack);
+      if (dpPanel) detailBody.querySelector('.detail-info').appendChild(dpPanel);
+    }
   }
 
   // ---------- Generic card-list picker (reused by security check, trash retrieval, etc.) ----------
@@ -3011,7 +3068,7 @@
     sideClusterEl.appendChild(buildFaceDownPile('セキュリティ', player.security.length, isSelf ? (e) => openSecurityPopup(e) : null));
     sideClusterEl.appendChild(buildFaceDownPile('デッキ', player.library.length, isSelf ? (e) => openDeckPopup(e) : null));
     sideClusterEl.appendChild(buildFaceUpPile('トラッシュ', player.trash, isSelf
-      ? (e) => openTrashPopup(e)
+      ? () => openTrashListView()
       : () => {
           if (player.trash.length > 0) {
             const card = cardIndexByNumber.get(player.trash[player.trash.length - 1]);
@@ -3030,17 +3087,26 @@
       raisingAreaEl.innerHTML = '<div class="empty-state" style="padding:14px 0;font-size:11px;">(空)</div>';
     }
 
-    // Battle area (0+ stacks)
+    // Battle area (0+ stacks): Digimon top-aligned, Tamer/Option bottom-aligned
     battleAreaEl.innerHTML = '';
     if (player.battle.length === 0) {
       battleAreaEl.innerHTML = '<div class="empty-state" style="padding:14px 0;">(場にデジモンがいません)</div>';
     } else {
+      const topGroup = document.createElement('div');
+      topGroup.className = 'battle-top-group';
+      const bottomGroup = document.createElement('div');
+      bottomGroup.className = 'battle-bottom-group';
       player.battle.forEach(stack => {
         const onClick = isSelf && !allowEvolveTarget
           ? () => openStackActionView(stack)
           : () => openStackDetail(stack);
-        battleAreaEl.appendChild(buildStackTile(stack, onClick, !!allowEvolveTarget));
+        const tile = buildStackTile(stack, onClick, !!allowEvolveTarget);
+        const topCard = cardIndexByNumber.get(cardEntryNum(stack.cards[stack.cards.length - 1]));
+        const isHumanGroup = topCard && (topCard.category === 'tamer' || topCard.category === 'option') && !stack.actingAsDigimon;
+        (isHumanGroup ? bottomGroup : topGroup).appendChild(tile);
       });
+      battleAreaEl.appendChild(topGroup);
+      battleAreaEl.appendChild(bottomGroup);
     }
   }
 
@@ -3102,13 +3168,13 @@
       raisingAreaEl: document.getElementById('selfRaisingArea'),
       battleAreaEl: document.getElementById('selfBattleArea'),
       isSelf: true,
-      allowEvolveTarget: !!evolveMode && selfTurn,
+      allowEvolveTarget: (!!evolveMode || !!materialTargetMode) && selfTurn,
     });
 
     renderRaisingPhaseActions();
     renderUtilityActions();
 
-    const canAct = selfTurn && practiceState.turn.phase === 'main' && !evolveMode;
+    const canAct = selfTurn && practiceState.turn.phase === 'main' && !evolveMode && !materialTargetMode;
     const handRow = document.getElementById('selfHandRow');
     handRow.innerHTML = '';
     self.hand.forEach((number, index) => {
@@ -3135,6 +3201,7 @@
         mkBtn('登場', (e) => appearFromHand(index, number, e), card.play_cost === null || card.play_cost === undefined);
         mkBtn('進化', () => enterEvolveMode(index, number));
         mkBtn('育成進化', () => raisingEvolveFromHand(index, number), !self.raising);
+        mkBtn('進化元に追加', () => enterMaterialTargetMode(number, 'hand', index));
         mkBtn('捨てる', () => trashFromHand(index));
       }
       handRow.appendChild(c);
@@ -3237,8 +3304,9 @@
     return routes;
   }
 
-  // ---------- Evolve target-picking mode ----------
+  // ---------- Evolve / add-material target-picking mode ----------
   let evolveMode = null; // { handIndex, handNumber, card }
+  let materialTargetMode = null; // { source: 'hand'|'trash', index, number, card }
   let evolveRouteTarget = null; // stack currently chosen as the evolution target
   const evolveModeBanner = document.getElementById('evolveModeBanner');
   const evolveModeText = document.getElementById('evolveModeText');
@@ -3251,15 +3319,48 @@
     const card = cardIndexByNumber.get(handNumber);
     if (!card) return;
     evolveMode = { handIndex, handNumber, card };
-    evolveModeText.textContent = `「${card.name}」の進化先を、バトルエリア/育成エリアのスタックから選んでください`;
+    evolveModeText.textContent = `「${card.name}」の進化先を、バトルエリア/育成エリアの進化元から選んでください`;
     evolveModeBanner.classList.add('active');
     renderPracticeBoard();
   }
   function exitEvolveMode() {
     evolveMode = null;
-    evolveModeBanner.classList.remove('active');
+    if (!materialTargetMode) evolveModeBanner.classList.remove('active');
   }
-  document.getElementById('evolveModeCancel').addEventListener('click', exitEvolveMode);
+
+  function enterMaterialTargetMode(number, source, index) {
+    const card = cardIndexByNumber.get(number);
+    if (!card) return;
+    materialTargetMode = { source, index, number, card };
+    evolveModeText.textContent = `「${card.name}」を追加する進化元を、バトルエリア/育成エリアから選んでください`;
+    evolveModeBanner.classList.add('active');
+    renderPracticeBoard();
+  }
+  function exitMaterialTargetMode() {
+    materialTargetMode = null;
+    if (!evolveMode) evolveModeBanner.classList.remove('active');
+  }
+
+  document.getElementById('evolveModeCancel').addEventListener('click', () => {
+    exitEvolveMode();
+    exitMaterialTargetMode();
+    renderPracticeBoard();
+  });
+
+  function performAddMaterial(targetStack) {
+    if (!materialTargetMode || !practiceState) return;
+    const { source, index, number, card } = materialTargetMode;
+    const self = practiceState.players[practiceState.viewingIndex];
+    askFaceOrientation((faceDown) => {
+      snapshotPracticeState();
+      if (source === 'hand') self.hand.splice(index, 1);
+      else if (source === 'trash') self.trash.splice(index, 1);
+      targetStack.cards.unshift(faceDown ? { n: number, d: true } : number);
+      exitMaterialTargetMode();
+      renderPracticeBoard();
+      showToast(`「${card.name}」を進化元に追加しました(${faceDown ? '裏向き' : '表向き'})`);
+    });
+  }
 
   function performEvolve(targetStack) {
     if (!evolveMode || !practiceState) return;
@@ -3478,18 +3579,6 @@
     showToast('セキュリティの上から1枚をトラッシュしました');
   }
 
-  function openTrashToHandPicker() {
-    const self = practiceState.players[practiceState.viewingIndex];
-    if (self.trash.length === 0) { showToast('トラッシュがありません', true); return; }
-    openCardListPicker('トラッシュから手札に戻すカードを選択', self.trash, (idx) => {
-      snapshotPracticeState();
-      const [num] = self.trash.splice(idx, 1);
-      self.hand.push(num);
-      renderPracticeBoard();
-      showToast('手札に加えました');
-    });
-  }
-
   // ---------- Zone action popup ----------
   const zonePopupEl = document.getElementById('zonePopup');
   function closeZonePopup() { zonePopupEl.classList.remove('open'); }
@@ -3524,7 +3613,7 @@
   // ---------- Pick a card from hand / trash / battle-area top (used by security placement, evo-material add) ----------
   function pickSourceCard(promptTitle, onPicked) {
     const self = practiceState.players[practiceState.viewingIndex];
-    const choice = prompt(`${promptTitle}\n取得元を選んでください:\n1 = 手札\n2 = トラッシュ\n3 = バトルエリア(各スタックの一番上)`, '1');
+    const choice = prompt(`${promptTitle}\n取得元を選んでください:\n1 = 手札\n2 = トラッシュ\n3 = バトルエリア(各進化元の一番上)`, '1');
     if (choice === null) return;
     const c = choice.trim();
     if (c === '1') {
@@ -3662,53 +3751,66 @@
     ]);
   }
 
-  function trashMoveFlow(destination) {
-    const self = practiceState.players[practiceState.viewingIndex];
-    if (self.trash.length === 0) { showToast('トラッシュがありません', true); return; }
-    openCardListPicker('トラッシュから選択', self.trash, (idx) => {
-      snapshotPracticeState();
-      const [num] = self.trash.splice(idx, 1);
-      sendCardToDestination(self, num, destination);
-      renderPracticeBoard();
-      showToast(`カードを${DESTINATION_LABEL[destination]}移動しました`);
-    });
-  }
-
-  function openTrashContentsView() {
+  // トラッシュをクリックすると中身の一覧が直接開き、カードごとに「送る▾」(移動先選択)
+  // と「進化元へ」(進化元へ追加のターゲット選択モードに入る)を選べる。
+  function openTrashListView() {
     const self = practiceState.players[practiceState.viewingIndex];
     currentDetailCard = null;
     document.getElementById('addToDeckFromDetail').style.display = 'none';
-    const rows = self.trash.slice().reverse().map((number) => `
-      <div class="deck-list-item trash-view-row" data-number="${escapeHtml(number)}" style="cursor:pointer;">
-        <img src="${escapeHtml(miniCardImg(number))}" alt="" style="width:34px;border-radius:3px;" onerror="this.style.opacity=0">
-        <span class="dli-name">${escapeHtml(miniCardName(number))}</span>
-      </div>`).join('');
-    detailBody.innerHTML = `
-      <div class="detail-info" style="width:100%;">
-        <div class="d-title">トラッシュの中身(上から順)</div>
-        <div class="d-number mono">${self.trash.length}枚</div>
-        <div class="deck-list" style="margin-top:8px;">${rows || '<div class="empty-state">トラッシュは空です</div>'}</div>
-      </div>
-    `;
-    detailBody.querySelectorAll('.trash-view-row').forEach(row => {
-      row.addEventListener('click', () => {
-        const card = cardIndexByNumber.get(row.dataset.number);
-        if (card) openCardDetail(card, true);
-      });
-    });
-    cardDetailModal.classList.add('open');
-  }
 
-  function openTrashPopup(e) {
-    const self = practiceState.players[practiceState.viewingIndex];
-    openZonePopup(e, `トラッシュ(${self.trash.length}枚)`, [
-      { label: '中身を見る', onClick: openTrashContentsView },
-      { label: '手札へ', onClick: () => trashMoveFlow('hand') },
-      { label: 'デッキの上へ', onClick: () => trashMoveFlow('deckTop') },
-      { label: 'デッキの下へ', onClick: () => trashMoveFlow('deckBottom') },
-      { label: 'セキュリティの上へ', onClick: () => trashMoveFlow('secTop') },
-      { label: 'セキュリティの下へ', onClick: () => trashMoveFlow('secBottom') },
-    ]);
+    function render() {
+      const rows = self.trash.map((number, idx) => `
+        <div class="deck-list-item" style="cursor:default;">
+          <img src="${escapeHtml(miniCardImg(number))}" alt="" class="trash-list-img" data-idx="${idx}" style="width:34px;border-radius:3px;cursor:pointer;" onerror="this.style.opacity=0">
+          <span class="dli-name trash-list-name" data-idx="${idx}" style="cursor:pointer;">${escapeHtml(miniCardName(number))}</span>
+          <button type="button" class="btn trash-row-move" data-idx="${idx}" style="font-size:10px;padding:3px 6px;">送る▾</button>
+          <button type="button" class="btn trash-row-material" data-idx="${idx}" style="font-size:10px;padding:3px 6px;">進化元へ</button>
+        </div>`).join('');
+      detailBody.innerHTML = `
+        <div class="detail-info" style="width:100%;">
+          <div class="d-title">トラッシュ(${self.trash.length}枚)</div>
+          <div class="deck-list" style="margin-top:8px;">${rows || '<div class="empty-state">トラッシュは空です</div>'}</div>
+        </div>
+      `;
+      detailBody.querySelectorAll('.trash-list-img, .trash-list-name').forEach(el => {
+        el.addEventListener('click', () => {
+          const idx = parseInt(el.dataset.idx, 10);
+          const card = cardIndexByNumber.get(self.trash[idx]);
+          if (card) openCardDetail(card, true);
+        });
+      });
+      detailBody.querySelectorAll('.trash-row-move').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const idx = parseInt(btn.dataset.idx, 10);
+          const number = self.trash[idx];
+          openZonePopup(e, `「${escapeHtml(miniCardName(number))}」を送る`,
+            ALL_DESTINATIONS.map(dest => ({
+              label: DESTINATION_LABEL[dest],
+              onClick: () => {
+                snapshotPracticeState();
+                self.trash.splice(idx, 1);
+                sendCardToDestination(self, number, dest);
+                cardDetailModal.classList.remove('open');
+                renderPracticeBoard();
+                showToast(`カードを${DESTINATION_LABEL[dest]}移動しました`);
+              },
+            }))
+          );
+        });
+      });
+      detailBody.querySelectorAll('.trash-row-material').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const idx = parseInt(btn.dataset.idx, 10);
+          const number = self.trash[idx];
+          cardDetailModal.classList.remove('open');
+          enterMaterialTargetMode(number, 'trash', idx);
+        });
+      });
+    }
+    render();
+    cardDetailModal.classList.add('open');
   }
 
   // ---------- Evolution material add (進化元に追加) ----------
@@ -3754,16 +3856,6 @@
     ]);
   }
 
-  function addToEvolutionMaterial(stack) {
-    pickSourceCard('進化元に追加するカードを選択', (num) => {
-      askFaceOrientation((faceDown) => {
-        stack.cards.unshift(faceDown ? { n: num, d: true } : num);
-        renderPracticeBoard();
-        showToast(`進化元に追加しました(${faceDown ? '裏向き' : '表向き'})`);
-      });
-    });
-  }
-
   // Builds the action-button panel appended below a stack's card detail, so the
   // player can read the effect text and act on it in the same view.
   function trashEntireStack(stack) {
@@ -3775,7 +3867,98 @@
     else owner.player.battle.splice(owner.index, 1);
     cardDetailModal.classList.remove('open');
     renderPracticeBoard();
-    showToast('スタックを全てトラッシュしました');
+    showToast('進化元を全てトラッシュしました');
+  }
+
+  // ---------- DP modify (works on any Digimon, self or opponent, any time) ----------
+  function promptDestructionChoice(stack) {
+    const topCard = getStackTopCard(stack);
+    const centerEvent = { clientX: window.innerWidth / 2 - 130, clientY: window.innerHeight / 2 - 90 };
+    openZonePopup(centerEvent, `「${topCard ? topCard.name : '?'}」がDP0以下になり消滅します`, [
+      { label: 'そのまま消滅(進化元ごとトラッシュへ)', onClick: () => trashEntireStack(stack) },
+      { label: '消滅効果を発揮(トラッシュに送らない)', onClick: () => showToast('消滅効果の処理は手動で行ってください') },
+    ]);
+  }
+
+  function modifyStackDP(stack, delta) {
+    snapshotPracticeState();
+    stack.dpModifier = (stack.dpModifier || 0) + delta;
+    const newDP = getEffectiveDP(stack);
+    cardDetailModal.classList.remove('open');
+    renderPracticeBoard();
+    if (newDP <= 0) {
+      promptDestructionChoice(stack);
+    } else {
+      showToast(`DPを${delta > 0 ? '+' : ''}${delta}しました(現在DP${newDP})`);
+    }
+  }
+
+  function openDPModifyPopup(stack) {
+    const centerEvent = { clientX: window.innerWidth / 2 - 110, clientY: window.innerHeight / 2 - 60 };
+    openZonePopup(centerEvent, 'DPを増減', [
+      {
+        custom: true,
+        render: (container) => {
+          container.style.cssText = 'display:flex;gap:6px;align-items:center;';
+          container.innerHTML = `
+            <input type="number" id="dpDeltaInput" value="1000" min="0" step="500" style="width:74px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:4px;color:var(--text);font-size:12px;">
+            <button type="button" id="dpPlusBtn" class="btn" style="font-size:11px;padding:6px 8px;">+適用</button>
+            <button type="button" id="dpMinusBtn" class="btn" style="font-size:11px;padding:6px 8px;">-適用</button>
+          `;
+          const apply = (sign) => {
+            const v = parseInt(container.querySelector('#dpDeltaInput').value, 10);
+            if (isNaN(v) || v < 0) { showToast('数値が不正です', true); return; }
+            closeZonePopup();
+            modifyStackDP(stack, sign * v);
+          };
+          container.querySelector('#dpPlusBtn').addEventListener('click', () => apply(1));
+          container.querySelector('#dpMinusBtn').addEventListener('click', () => apply(-1));
+        },
+      },
+    ]);
+  }
+
+  // Builds a compact DP panel (current DP, ±DP button, reset). Shown for any
+  // Digimon-like stack regardless of ownership — DP effects can target the
+  // opponent's Digimon too, and this isn't gated by whose turn it is.
+  function renderDPModifierPanel(stack) {
+    if (!isDigimonLikeStack(stack)) return null;
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'display:flex;flex-direction:column;gap:6px;margin-top:14px;padding-top:12px;border-top:1px solid var(--border);width:100%;';
+    const mod = stack.dpModifier || 0;
+    const info = document.createElement('div');
+    info.style.cssText = 'font-size:12px;color:var(--text-dim);display:flex;gap:8px;align-items:center;';
+    info.innerHTML = `現在DP: <span class="mono" style="color:var(--accent);">${getEffectiveDP(stack)}</span>` +
+      (mod !== 0 ? `<span class="mono" style="color:${mod > 0 ? 'var(--c-red)' : 'var(--c-blue)'};">(${mod > 0 ? '+' : ''}${mod})</span>` : '');
+    wrap.appendChild(info);
+
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;';
+    const dpBtn = document.createElement('button');
+    dpBtn.type = 'button';
+    dpBtn.className = 'btn';
+    dpBtn.style.fontSize = '11px';
+    dpBtn.textContent = '±DP';
+    dpBtn.addEventListener('click', (e) => { e.stopPropagation(); openDPModifyPopup(stack); });
+    row.appendChild(dpBtn);
+    if (mod !== 0) {
+      const resetBtn = document.createElement('button');
+      resetBtn.type = 'button';
+      resetBtn.className = 'btn';
+      resetBtn.style.fontSize = '11px';
+      resetBtn.textContent = '✕ DP増減をリセット';
+      resetBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        snapshotPracticeState();
+        stack.dpModifier = 0;
+        cardDetailModal.classList.remove('open');
+        renderPracticeBoard();
+        showToast('DP増減をリセットしました');
+      });
+      row.appendChild(resetBtn);
+    }
+    wrap.appendChild(row);
+    return wrap;
   }
 
   function renderStackActionButtons(stack) {
@@ -3783,7 +3966,7 @@
     wrap.style.cssText = 'display:flex;flex-direction:column;gap:6px;margin-top:14px;padding-top:12px;border-top:1px solid var(--border);width:100%;';
     const title = document.createElement('div');
     title.style.cssText = 'font-size:11px;color:var(--text-dim);';
-    title.textContent = 'スタック操作';
+    title.textContent = '進化元 操作';
     wrap.appendChild(title);
 
     const row = document.createElement('div');
@@ -3800,17 +3983,53 @@
     };
 
     const topIndex = stack.cards.length - 1;
+    const topCardObj = cardIndexByNumber.get(cardEntryNum(stack.cards[topIndex]));
     mk('レスト/アクティブ切替', () => {
       snapshotPracticeState();
       stack.rested = !stack.rested;
       cardDetailModal.classList.remove('open');
       renderPracticeBoard();
     });
-    mk('進化元に追加', () => {
-      cardDetailModal.classList.remove('open');
-      addToEvolutionMaterial(stack);
-    });
-    mk('スタックを全部トラッシュへ', () => trashEntireStack(stack));
+    if (topCardObj && topCardObj.category === 'tamer') {
+      if (stack.actingAsDigimon) {
+        mk('人間に戻る', () => {
+          snapshotPracticeState();
+          stack.actingAsDigimon = false;
+          stack.assignedDP = null;
+          cardDetailModal.classList.remove('open');
+          renderPracticeBoard();
+          showToast('人間(テイマー)に戻しました');
+        });
+      } else {
+        mk('デジモンにする', () => {
+          cardDetailModal.classList.remove('open');
+          const centerEvent = { clientX: window.innerWidth / 2 - 100, clientY: window.innerHeight / 2 - 60 };
+          openZonePopup(centerEvent, 'DPを設定してデジモンにする', [
+            {
+              custom: true,
+              render: (container) => {
+                container.style.cssText = 'display:flex;gap:6px;align-items:center;';
+                container.innerHTML = `
+                  <input type="number" id="tamerDpInput" value="3000" min="0" step="500" style="width:74px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:4px;color:var(--text);font-size:12px;">
+                  <button type="button" id="tamerDpGo" class="btn" style="font-size:11px;padding:6px 8px;">決定</button>
+                `;
+                container.querySelector('#tamerDpGo').addEventListener('click', () => {
+                  const dp = parseInt(container.querySelector('#tamerDpInput').value, 10);
+                  if (isNaN(dp) || dp < 0) { showToast('DPの入力が不正です', true); return; }
+                  closeZonePopup();
+                  snapshotPracticeState();
+                  stack.actingAsDigimon = true;
+                  stack.assignedDP = dp;
+                  renderPracticeBoard();
+                  showToast(`デジモンとして扱います(DP${dp})`);
+                });
+              },
+            },
+          ]);
+        });
+      }
+    }
+    mk('進化元を全部トラッシュへ', () => trashEntireStack(stack));
     mk('一番上を手札へ', () => removeCardFromStackAt(stack, topIndex, 'hand'));
     mk('一番上をトラッシュへ', () => removeCardFromStackAt(stack, topIndex, 'trash'));
     mk('一番上をデッキへ▾', (e) => openZonePopup(e, 'デッキのどちらに置きますか?', [
@@ -3822,6 +4041,8 @@
       { label: '下へ', onClick: () => removeCardFromStackAt(stack, topIndex, 'secBottom') },
     ]));
     wrap.appendChild(row);
+    const dpPanel = renderDPModifierPanel(stack);
+    if (dpPanel) wrap.appendChild(dpPanel);
     return wrap;
   }
 
