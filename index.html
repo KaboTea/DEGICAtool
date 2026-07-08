@@ -1291,7 +1291,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.10.2</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.10.3</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -1581,7 +1581,7 @@
     <div class="field" style="margin-top:14px;">
       <label>その他(手動でコストを入力)</label>
       <div style="display:flex;gap:8px;">
-        <input type="number" id="evolveManualCost" min="0" placeholder="コスト" style="flex:1;">
+        <input type="number" id="evolveManualCost" min="0" value="0" style="flex:1;">
         <button class="btn" id="evolveManualApply">この内容で進化</button>
       </div>
     </div>
@@ -2519,7 +2519,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.10.2`);
+    log(`DigiCA Tool build v0.10.3`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -3380,7 +3380,7 @@
     const routes = buildEvolveRoutes(evolveMode.card, topCard);
 
     evolveRouteSubtitle.textContent = `「${evolveMode.card.name}」→ 進化先: ${topCard ? topCard.name : '?'}`;
-    evolveManualCost.value = '';
+    evolveManualCost.value = '0';
     evolveRouteList.innerHTML = '';
     if (routes.length === 0) {
       evolveRouteList.innerHTML = '<div class="empty-state" style="padding:8px 0;">条件に一致するルートが見つかりませんでした。下の手動入力を使ってください。</div>';
@@ -3458,7 +3458,7 @@
         render: (container) => {
           container.style.cssText = 'display:flex;gap:6px;align-items:center;padding:4px 0;';
           container.innerHTML = `
-            <input type="number" id="appearCostInput" value="${baseCost}" min="0" style="width:56px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:4px;color:var(--text);font-size:12px;">
+            <input type="number" id="appearCostInput" value="0" min="0" style="width:56px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:4px;color:var(--text);font-size:12px;">
             <button type="button" id="appearCostGo" class="btn" style="font-size:11px;padding:6px 8px;">このコストで登場</button>
           `;
           container.querySelector('#appearCostGo').addEventListener('click', () => {
@@ -3665,11 +3665,12 @@
         <div class="deck-list-item" style="cursor:default;">
           <img src="${escapeHtml(miniCardImg(number))}" alt="" style="width:34px;border-radius:3px;" onerror="this.style.opacity=0">
           <span class="dli-name">${escapeHtml(miniCardName(number))}</span>
-          <span class="dli-stepper" style="gap:3px;">
+          <span class="dli-stepper" style="gap:3px;flex-wrap:wrap;">
             <button type="button" class="btn reveal-act" data-idx="${i}" data-dest="hand" style="font-size:10px;padding:3px 5px;">手札</button>
             <button type="button" class="btn reveal-act" data-idx="${i}" data-dest="top" style="font-size:10px;padding:3px 5px;">山上</button>
             <button type="button" class="btn reveal-act" data-idx="${i}" data-dest="bottom" style="font-size:10px;padding:3px 5px;">山下</button>
             <button type="button" class="btn reveal-act" data-idx="${i}" data-dest="trash" style="font-size:10px;padding:3px 5px;">破棄</button>
+            <button type="button" class="btn reveal-material" data-idx="${i}" style="font-size:10px;padding:3px 5px;">進化元へ</button>
           </span>
         </div>`).join('');
       detailBody.innerHTML = `
@@ -3689,6 +3690,18 @@
           else if (dest === 'bottom') self.library.push(number);
           else self.trash.push(number);
           renderPracticeBoard();
+          render();
+        });
+      });
+      detailBody.querySelectorAll('.reveal-material').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const idx = parseInt(btn.dataset.idx, 10);
+          const number = revealed[idx];
+          revealed.splice(idx, 1);
+          cardDetailModal.classList.remove('open');
+          // このカード自体は既に公開処理の場から離れているので、進化元追加の
+          // ソースは「デッキ」ではなく直接このカード番号を使う特別扱いにする。
+          enterMaterialTargetMode(number, 'reveal', null);
           render();
         });
       });
