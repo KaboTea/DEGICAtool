@@ -1229,7 +1229,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.8.0</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.8.1</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -1371,14 +1371,8 @@
     <div class="panel" id="practiceBoardPanel" style="display:none;">
       <div class="practice-topbar">
         <span class="mono" id="practiceHeaderLabel" style="font-size:12px;color:var(--text-dim);"></span>
-        <button class="btn" id="practiceSwitchViewBtn" style="margin-left:8px;">🔄 視点を切り替え</button>
         <button class="btn" id="practiceUndoBtn" disabled>⟲ 1手戻す</button>
         <button class="btn" id="practiceEndGameBtn">練習を終了</button>
-        <div style="margin-left:auto;display:flex;gap:8px;align-items:center;">
-          <span class="mono" id="phaseLabel" style="font-size:12px;color:var(--accent);"></span>
-          <button class="btn" id="practicePassBtn">パス</button>
-          <button class="btn primary" id="practiceNextPhaseBtn">次のフェーズへ</button>
-        </div>
       </div>
 
       <div class="evolve-mode-banner" id="evolveModeBanner">
@@ -1400,6 +1394,14 @@
           </div>
           <div class="sub-area battle-sub-area"><div class="sa-label" style="width:100%;">バトルエリア</div><div id="opponentBattleArea" style="display:contents;"></div></div>
         </div>
+      </div>
+
+      <!-- フェーズ操作(視点切替・パス・次のフェーズへ)をメモリーの直上にまとめる -->
+      <div class="practice-topbar" style="justify-content:center;margin-bottom:6px;padding-bottom:0;border-bottom:none;">
+        <button class="btn" id="practiceSwitchViewBtn">🔄 視点切り替え</button>
+        <span class="mono" id="phaseLabel" style="font-size:12px;color:var(--accent);min-width:110px;text-align:center;"></span>
+        <button class="btn" id="practicePassBtn">パス</button>
+        <button class="btn primary" id="practiceNextPhaseBtn">次のフェーズへ</button>
       </div>
 
       <!-- メモリーゲージ(数直線) -->
@@ -2432,7 +2434,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.8.0`);
+    log(`DigiCA Tool build v0.8.1`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -3079,6 +3081,17 @@
         seen.add(key);
         routes.push({ cost, label: `条件進化: コスト${cost}`, sub: conditionText });
       }
+      // "『複合条件』からN" — used when the condition combines multiple clauses
+      // (e.g. "『名称に「アグモン」を含み特徴に「恐竜型」を持つLv.3』から2")
+      const compoundRe = /【進化】『([^』]+)』から(\d+)/g;
+      while ((m = compoundRe.exec(handCard.effect))) {
+        const conditionText = m[1].replace(/\s+/g, '').trim();
+        const cost = parseInt(m[2], 10);
+        const key = `T${cost}-${conditionText}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        routes.push({ cost, label: `条件進化: コスト${cost}`, sub: conditionText });
+      }
     }
 
     return routes;
@@ -3205,6 +3218,7 @@
     snapshotPracticeState();
     const num = self.eggLibrary.shift();
     self.raising = { cards: [num], rested: false };
+    practiceState.turn.phase = 'main'; // 育成フェイズの行動は1つだけなので自動でメインへ
     renderPracticeBoard();
   }
   function moveRaisingToBattle() {
@@ -3220,6 +3234,7 @@
     snapshotPracticeState();
     self.battle.push(self.raising);
     self.raising = null;
+    practiceState.turn.phase = 'main'; // 育成フェイズの行動は1つだけなので自動でメインへ
     renderPracticeBoard();
   }
 
@@ -3231,13 +3246,6 @@
     if (!practiceState) return;
     const { turn } = practiceState;
     const turnPlayer = practiceState.players[turn.playerIndex];
-    const idx = PHASE_ORDER.indexOf(turn.phase);
-    let nextPhase = PHASE_ORDER[idx + 1];
-
-    // First player's first turn has no draw phase (6-2-2)
-    if (turn.phase === 'active' && turn.count === 1 && turn.playerIndex === 0) {
-      nextPhase = 'raising';
-    }
 
     if (turn.phase === 'main') {
       const memoryTowardOpponent = turn.playerIndex === 0 ? practiceState.memory : -practiceState.memory;
@@ -3249,22 +3257,30 @@
 
     snapshotPracticeState();
 
-    if (!nextPhase) {
-      // was 'end' -> start next turn for the other player
-      const nextPlayerIndex = 1 - turn.playerIndex;
-      practiceState.turn = { count: turn.count + 1, playerIndex: nextPlayerIndex, phase: 'active' };
-      const nextPlayer = practiceState.players[nextPlayerIndex];
-      nextPlayer.raising && (nextPlayer.raising.rested = false);
-      nextPlayer.battle.forEach(s => { s.rested = false; });
-    } else {
-      turn.phase = nextPhase;
-      if (nextPhase === 'draw') {
+    if (turn.phase === 'active') {
+      // ドローフェイズで発揮する効果は未実装のため、アクティブ→ドロー→育成を1回の操作でまとめて進める。
+      // 先攻1ターン目のみドローしない(6-2-2)。
+      const isFirstTurnNoDraw = turn.count === 1 && turn.playerIndex === 0;
+      if (!isFirstTurnNoDraw) {
         if (turnPlayer.library.length === 0) {
           showToast(`${turnPlayer.deckName} は山札切れです(敗北)`, true);
         } else {
           turnPlayer.hand.push(turnPlayer.library.shift());
         }
       }
+      turn.phase = 'raising';
+    } else if (turn.phase === 'raising') {
+      turn.phase = 'main';
+    } else if (turn.phase === 'main') {
+      turn.phase = 'end';
+    } else {
+      // was 'end' -> start next turn for the other player, and follow the viewpoint to them
+      const nextPlayerIndex = 1 - turn.playerIndex;
+      practiceState.turn = { count: turn.count + 1, playerIndex: nextPlayerIndex, phase: 'active' };
+      practiceState.viewingIndex = nextPlayerIndex;
+      const nextPlayer = practiceState.players[nextPlayerIndex];
+      nextPlayer.raising && (nextPlayer.raising.rested = false);
+      nextPlayer.battle.forEach(s => { s.rested = false; });
     }
     exitEvolveMode();
     renderPracticeBoard();
