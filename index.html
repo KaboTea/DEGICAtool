@@ -894,20 +894,28 @@
   .stack-tile {
     position: relative;
     width: 76px;
+    padding: 20px 0 0 20px;
     cursor: pointer;
   }
-  .stack-tile img {
+  .stack-fan {
+    position: relative;
     width: 100%;
     aspect-ratio: 43 / 60;
+    transition: transform 0.12s ease, filter 0.12s ease;
+  }
+  .stack-tile.rested .stack-fan {
+    transform: rotate(90deg) scale(0.82);
+    filter: brightness(0.7);
+  }
+  .stack-layer {
+    position: absolute;
+    width: 100%;
+    height: 100%;
     object-fit: cover;
     border-radius: 6px;
     border: 2px solid var(--border);
     display: block;
-    transition: transform 0.12s ease, filter 0.12s ease;
-  }
-  .stack-tile.rested img {
-    transform: rotate(90deg) scale(0.82);
-    filter: brightness(0.7);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.4);
   }
   .stack-tile .st-count {
     position: absolute;
@@ -919,8 +927,9 @@
     font-size: 10px;
     padding: 1px 5px;
     border-radius: 4px;
+    z-index: 10;
   }
-  .stack-tile.target-pick img {
+  .stack-tile.target-pick .stack-layer:last-child {
     border-color: var(--accent);
     box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
   }
@@ -1213,7 +1222,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.7.4</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.7.7</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -1377,9 +1386,9 @@
           <div class="mat-cluster" id="opponentHandCluster"></div>
           <div style="flex:1;"></div>
           <div class="mat-cluster" id="opponentEggCluster"></div>
+          <div class="sub-area raising-sub-area"><div class="sa-label">育成エリア</div><div id="opponentRaisingArea"></div></div>
         </div>
         <div class="mat-row">
-          <div class="sub-area raising-sub-area"><div class="sa-label">育成エリア</div><div id="opponentRaisingArea"></div></div>
           <div class="sub-area battle-sub-area"><div class="sa-label" style="width:100%;">バトルエリア</div><div id="opponentBattleArea" style="display:contents;"></div></div>
           <div class="mat-cluster" id="opponentSideCluster"></div>
         </div>
@@ -1392,12 +1401,12 @@
       <div class="mat-block">
         <div class="mat-row">
           <div class="mat-cluster" id="selfSideCluster"></div>
-          <div class="sub-area raising-sub-area"><div class="sa-label">育成エリア</div><div id="selfRaisingArea"></div></div>
           <div class="sub-area battle-sub-area"><div class="sa-label" style="width:100%;">バトルエリア</div><div id="selfBattleArea" style="display:contents;"></div></div>
         </div>
         <div class="db-actions" id="raisingPhaseActions" style="margin-top:8px;"></div>
         <div class="mat-row" style="margin-top:10px;">
           <div class="mat-cluster" id="selfEggCluster"></div>
+          <div class="sub-area raising-sub-area"><div class="sa-label">育成エリア</div><div id="selfRaisingArea"></div></div>
           <div style="flex:1;"></div>
         </div>
         <div class="mat-label" style="margin-top:14px;">自分(<span id="selfNameLabel"></span>) の手札</div>
@@ -2414,7 +2423,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.7.4`);
+    log(`DigiCA Tool build v0.7.7`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -2750,9 +2759,15 @@
   function buildStackTile(stack, onClick, isEvolveTarget) {
     const el = document.createElement('div');
     el.className = 'stack-tile' + (stack.rested ? ' rested' : '') + (isEvolveTarget ? ' target-pick' : '');
-    const top = stack.cards[stack.cards.length - 1];
+    const MAX_LAYERS = 10;
+    const layers = stack.cards.slice(-MAX_LAYERS); // bottom-to-top order, capped
+    const layerHtml = layers.map((num, i) => {
+      const depth = layers.length - 1 - i; // 0 = top card (no offset), increasing = further back
+      const offset = depth * 2;
+      return `<img class="stack-layer" style="z-index:${i + 1};transform:translate(${-offset}px, ${-offset}px);" src="${escapeHtml(miniCardImg(num))}" alt="" onerror="this.style.opacity=0">`;
+    }).join('');
     el.innerHTML = `
-      <img src="${escapeHtml(miniCardImg(top))}" alt="" onerror="this.style.opacity=0">
+      <div class="stack-fan">${layerHtml}</div>
       ${stack.cards.length > 1 ? `<span class="st-count mono">${stack.cards.length}</span>` : ''}
       <button type="button" class="tile-quickadd" title="レスト/アクティブ切替" style="opacity:0.55;">⟳</button>
     `;
@@ -3027,10 +3042,22 @@
     }
 
     if (handCard.effect) {
-      const blockRe = /【進化】([\s\S]*?)コスト(\d+)/g;
+      // Two cost-notation patterns appear in card text:
+      //   "【進化】...:コストN"      (standard — content must not cross into the next 【進化】block)
+      //   "【進化】「X」からN"        (shorthand, e.g. "「コロモン」から0")
+      const stdRe = /【進化】((?:(?!【進化】)[\s\S])*?)コスト(\d+)/g;
       let m;
-      while ((m = blockRe.exec(handCard.effect))) {
+      while ((m = stdRe.exec(handCard.effect))) {
         const conditionText = m[1].replace(/\s+/g, '').trim();
+        const cost = parseInt(m[2], 10);
+        const key = `T${cost}-${conditionText}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        routes.push({ cost, label: `条件進化: コスト${cost}`, sub: conditionText });
+      }
+      const shortRe = /【進化】「([^」]+)」から(\d+)/g;
+      while ((m = shortRe.exec(handCard.effect))) {
+        const conditionText = `「${m[1]}」から`;
         const cost = parseInt(m[2], 10);
         const key = `T${cost}-${conditionText}`;
         if (seen.has(key)) continue;
@@ -3126,6 +3153,11 @@
       showToast('このカードには登場コストがありません(進化でのみ場に出せます)', true);
       return;
     }
+    // Rule 17-1-3-2-1: a DP-less Digimon in the battle area is discarded by the rule check.
+    if (card.category === 'digimon' && (card.dp === null || card.dp === undefined)) {
+      showToast('DPを持たないデジモンはバトルエリアに置けません(ルールチェックで破棄されます)', true);
+      return;
+    }
     snapshotPracticeState();
     const self = practiceState.players[practiceState.viewingIndex];
     self.hand.splice(handIndex, 1);
@@ -3163,6 +3195,13 @@
   function moveRaisingToBattle() {
     const self = practiceState.players[practiceState.viewingIndex];
     if (!self.raising) { showToast('育成エリアが空です', true); return; }
+    // Rule 4-16-2: 移動はDPを持つデジモンのみ行える。
+    const topNumber = self.raising.cards[self.raising.cards.length - 1];
+    const topCard = cardIndexByNumber.get(topNumber);
+    if (!topCard || topCard.dp === null || topCard.dp === undefined) {
+      showToast('DPを持たないデジモンはバトルエリアへ移動できません', true);
+      return;
+    }
     snapshotPracticeState();
     self.battle.push(self.raising);
     self.raising = null;
@@ -3237,10 +3276,12 @@
     hatchBtn.addEventListener('click', hatchEgg);
     el.appendChild(hatchBtn);
 
+    const raisingTop = self.raising ? cardIndexByNumber.get(self.raising.cards[self.raising.cards.length - 1]) : null;
+    const canMove = !!self.raising && raisingTop && raisingTop.dp !== null && raisingTop.dp !== undefined;
     const moveBtn = document.createElement('button');
     moveBtn.className = 'btn';
-    moveBtn.textContent = '育成エリア → バトルエリアへ移動';
-    moveBtn.disabled = !self.raising;
+    moveBtn.textContent = self.raising && !canMove ? '育成エリア → バトルエリアへ移動(DPなし)' : '育成エリア → バトルエリアへ移動';
+    moveBtn.disabled = !canMove;
     moveBtn.addEventListener('click', moveRaisingToBattle);
     el.appendChild(moveBtn);
   }
