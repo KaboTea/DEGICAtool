@@ -1264,7 +1264,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.9.3</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.9.7</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -2482,7 +2482,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.9.3`);
+    log(`DigiCA Tool build v0.9.7`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -2696,6 +2696,12 @@
     return card ? card.name : number;
   }
 
+  // Stack entries are normally a plain card number (face-up). To support cards
+  // added face-down as evolution material, an entry may instead be an object
+  // { n: number, d: true }. These helpers normalize either shape.
+  function cardEntryNum(entry) { return (entry && typeof entry === 'object') ? entry.n : entry; }
+  function cardEntryFaceDown(entry) { return !!(entry && typeof entry === 'object' && entry.d); }
+
   function renderMulliganStep() {
     if (!practiceSetup) { practiceMulliganArea.innerHTML = ''; return; }
     const { order, stepIndex } = practiceSetup;
@@ -2819,20 +2825,24 @@
     const el = document.createElement('div');
     const MAX_LAYERS = 10;
     const layers = stack.cards.slice(-MAX_LAYERS); // bottom-to-top order, capped
-    const topCard = cardIndexByNumber.get(layers[layers.length - 1]);
+    const topCard = cardIndexByNumber.get(cardEntryNum(layers[layers.length - 1]));
     // デジモン/デジタマは上合わせ(材料が下にカスケード)、テイマー/オプションは下合わせ(上にカスケード)
     const fanUp = topCard && (topCard.category === 'tamer' || topCard.category === 'option');
     const OFFSET_STEP = 24;
     const maxOffset = (layers.length - 1) * OFFSET_STEP;
     el.className = 'stack-tile' + (stack.rested ? ' rested' : '') + (isEvolveTarget ? ' target-pick' : '');
     el.style.padding = fanUp ? `${maxOffset}px 0 0 0` : `0 0 ${maxOffset}px 0`;
-    const layerHtml = layers.map((num, i) => {
+    const layerHtml = layers.map((entry, i) => {
       const depth = layers.length - 1 - i; // 0 = top card (no offset), increasing = further back
       const offset = depth * OFFSET_STEP * (fanUp ? -1 : 1);
       const isTop = depth === 0;
       const restStyle = (isTop && stack.rested) ? ' rotate(90deg) scale(0.82)' : '';
       const filterStyle = (isTop && stack.rested) ? 'filter:brightness(0.7);' : '';
-      return `<img class="stack-layer" style="z-index:${i + 1};${filterStyle}transform:translateY(${offset}px)${restStyle};" src="${escapeHtml(miniCardImg(num))}" alt="" onerror="this.style.opacity=0">`;
+      const baseStyle = `z-index:${i + 1};${filterStyle}transform:translateY(${offset}px)${restStyle};`;
+      if (cardEntryFaceDown(entry)) {
+        return `<div class="stack-layer card-back" style="${baseStyle}"></div>`;
+      }
+      return `<img class="stack-layer" style="${baseStyle}" src="${escapeHtml(miniCardImg(cardEntryNum(entry)))}" alt="" onerror="this.style.opacity=0">`;
     }).join('');
     el.innerHTML = `
       <div class="stack-fan">${layerHtml}</div>
@@ -2867,7 +2877,7 @@
     const owner = findStackOwnerAndZone(stack);
     if (!owner) return;
     snapshotPracticeState();
-    const removed = stack.cards.pop();
+    const removed = cardEntryNum(stack.cards.pop());
     if (destination === 'hand') owner.player.hand.push(removed);
     else owner.player.trash.push(removed);
     if (stack.cards.length === 0) {
@@ -2881,20 +2891,22 @@
 
   function openStackDetail(stack) {
     if (stack.cards.length <= 1) {
-      const card = cardIndexByNumber.get(stack.cards[stack.cards.length - 1]);
+      const card = cardIndexByNumber.get(cardEntryNum(stack.cards[stack.cards.length - 1]));
       if (card) openCardDetail(card, true);
       return;
     }
     // Multi-card stack: show contents from top to bottom; click any card for its detail.
     currentDetailCard = null;
     document.getElementById('addToDeckFromDetail').style.display = 'none';
-    const rows = stack.cards.slice().reverse().map((number, i) => {
+    const rows = stack.cards.slice().reverse().map((entry, i) => {
       const label = i === 0 ? '一番上' : `進化元${i}`;
+      const number = cardEntryNum(entry);
+      const faceDown = cardEntryFaceDown(entry);
       return `
         <div class="deck-list-item" style="cursor:default;">
           <img src="${escapeHtml(miniCardImg(number))}" alt="" class="stack-view-row" data-number="${escapeHtml(number)}" style="width:34px;border-radius:3px;cursor:pointer;" onerror="this.style.opacity=0">
           <span class="dli-number mono">${escapeHtml(label)}</span>
-          <span class="dli-name stack-view-row" data-number="${escapeHtml(number)}" style="cursor:pointer;">${escapeHtml(miniCardName(number))}</span>
+          <span class="dli-name stack-view-row" data-number="${escapeHtml(number)}" style="cursor:pointer;">${escapeHtml(miniCardName(number))}${faceDown ? ' <span style="color:var(--text-dim);">(裏向き)</span>' : ''}</span>
           <button type="button" class="btn stack-row-move" data-row-idx="${i}" style="font-size:10px;padding:3px 6px;">送る▾</button>
         </div>`;
     }).join('');
@@ -2916,7 +2928,7 @@
         e.stopPropagation();
         const rowIdx = parseInt(btn.dataset.rowIdx, 10);
         const actualIdx = stack.cards.length - 1 - rowIdx; // rows are top-to-bottom; cards[] is bottom-to-top
-        const number = stack.cards[actualIdx];
+        const number = cardEntryNum(stack.cards[actualIdx]);
         openZonePopup(e, `「${escapeHtml(miniCardName(number))}」を送る`,
           ALL_DESTINATIONS.map(dest => ({
             label: DESTINATION_LABEL[dest],
@@ -3117,10 +3129,10 @@
           b.type = 'button';
           b.textContent = label;
           b.disabled = !!disabled;
-          b.addEventListener('click', (e) => { e.stopPropagation(); fn(); });
+          b.addEventListener('click', (e) => { e.stopPropagation(); fn(e); });
           actions.appendChild(b);
         };
-        mkBtn('登場', () => appearFromHand(index, number), card.play_cost === null || card.play_cost === undefined);
+        mkBtn('登場', (e) => appearFromHand(index, number, e), card.play_cost === null || card.play_cost === undefined);
         mkBtn('進化', () => enterEvolveMode(index, number));
         mkBtn('育成進化', () => raisingEvolveFromHand(index, number), !self.raising);
         mkBtn('捨てる', () => trashFromHand(index));
@@ -3252,7 +3264,7 @@
   function performEvolve(targetStack) {
     if (!evolveMode || !practiceState) return;
     evolveRouteTarget = targetStack;
-    const topCard = cardIndexByNumber.get(targetStack.cards[targetStack.cards.length - 1]);
+    const topCard = cardIndexByNumber.get(cardEntryNum(targetStack.cards[targetStack.cards.length - 1]));
     const routes = buildEvolveRoutes(evolveMode.card, topCard);
 
     evolveRouteSubtitle.textContent = `「${evolveMode.card.name}」→ 進化先: ${topCard ? topCard.name : '?'}`;
@@ -3301,11 +3313,11 @@
   });
 
   // ---------- Hand actions: 登場 / 進化 / 育成進化 / トラッシュ ----------
-  function appearFromHand(handIndex, handNumber) {
+  function appearFromHand(handIndex, handNumber, e) {
     const card = cardIndexByNumber.get(handNumber);
     if (!card) return;
-    const cost = card.play_cost;
-    if (cost === null || cost === undefined) {
+    const baseCost = card.play_cost;
+    if (baseCost === null || baseCost === undefined) {
       showToast('このカードには登場コストがありません(進化でのみ場に出せます)', true);
       return;
     }
@@ -3314,13 +3326,37 @@
       showToast('DPを持たないデジモンはバトルエリアに置けません(ルールチェックで破棄されます)', true);
       return;
     }
-    snapshotPracticeState();
-    const self = practiceState.players[practiceState.viewingIndex];
-    self.hand.splice(handIndex, 1);
-    self.battle.push({ cards: [handNumber], rested: false });
-    payMemory(practiceState.turn.playerIndex, cost);
-    renderPracticeBoard();
-    showToast(`「${card.name}」が登場しました(コスト${cost})`);
+
+    const finalize = (cost) => {
+      if (isNaN(cost) || cost < 0) { showToast('コストの入力が不正です', true); return; }
+      snapshotPracticeState();
+      const self = practiceState.players[practiceState.viewingIndex];
+      self.hand.splice(handIndex, 1);
+      self.battle.push({ cards: [handNumber], rested: false });
+      payMemory(practiceState.turn.playerIndex, cost);
+      renderPracticeBoard();
+      showToast(`「${card.name}」が登場しました(コスト${cost})`);
+    };
+
+    const anchorEvent = e || { clientX: window.innerWidth / 2 - 90, clientY: window.innerHeight / 2 - 60 };
+    openZonePopup(anchorEvent, `「${card.name}」を登場`, [
+      { label: `そのまま登場(コスト${baseCost})`, onClick: () => finalize(baseCost) },
+      {
+        custom: true,
+        render: (container) => {
+          container.style.cssText = 'display:flex;gap:6px;align-items:center;padding:4px 0;';
+          container.innerHTML = `
+            <input type="number" id="appearCostInput" value="${baseCost}" min="0" style="width:56px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:4px;color:var(--text);font-size:12px;">
+            <button type="button" id="appearCostGo" class="btn" style="font-size:11px;padding:6px 8px;">このコストで登場</button>
+          `;
+          container.querySelector('#appearCostGo').addEventListener('click', () => {
+            const x = parseInt(container.querySelector('#appearCostInput').value, 10);
+            closeZonePopup();
+            finalize(x);
+          });
+        },
+      },
+    ]);
   }
 
   function trashFromHand(handIndex) {
@@ -3353,7 +3389,7 @@
     const self = practiceState.players[practiceState.viewingIndex];
     if (!self.raising) { showToast('育成エリアが空です', true); return; }
     // Rule 4-16-2: 移動はDPを持つデジモンのみ行える。
-    const topNumber = self.raising.cards[self.raising.cards.length - 1];
+    const topNumber = cardEntryNum(self.raising.cards[self.raising.cards.length - 1]);
     const topCard = cardIndexByNumber.get(topNumber);
     if (!topCard || topCard.dp === null || topCard.dp === undefined) {
       showToast('DPを持たないデジモンはバトルエリアへ移動できません', true);
@@ -3381,18 +3417,47 @@
     if (self.security.length === 0) { showToast('セキュリティがありません', true); return; }
     const top = self.security[0];
     const card = cardIndexByNumber.get(top);
-    const dest = prompt(
-      `セキュリティを1枚公開: 「${card ? card.name : top}」\n行き先を入力してください。\n1 = トラッシュへ\n2 = 手札へ\n3 = セキュリティに戻す(そのまま)`,
-      '1'
-    );
-    if (dest === null) return;
-    snapshotPracticeState();
-    self.security.shift();
-    const d = dest.trim();
-    if (d === '2') self.hand.push(top);
-    else if (d === '3') self.security.unshift(top);
-    else self.trash.push(top);
-    renderPracticeBoard();
+    if (!card) { showToast('カード情報が見つかりませんでした', true); return; }
+
+    openCardDetail(card, true);
+
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'display:flex;flex-direction:column;gap:6px;margin-top:14px;padding-top:12px;border-top:1px solid var(--border);width:100%;';
+    const title = document.createElement('div');
+    title.style.cssText = 'font-size:11px;color:var(--text-dim);';
+    title.textContent = 'セキュリティ公開: 行き先を選択';
+    wrap.appendChild(title);
+
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;';
+    const mk = (label, onClick) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'btn';
+      b.style.fontSize = '11px';
+      b.textContent = label;
+      b.addEventListener('click', (e) => { e.stopPropagation(); onClick(); });
+      row.appendChild(b);
+    };
+    mk('トラッシュへ', () => {
+      snapshotPracticeState();
+      self.security.shift();
+      self.trash.push(top);
+      cardDetailModal.classList.remove('open');
+      renderPracticeBoard();
+    });
+    mk('手札へ', () => {
+      snapshotPracticeState();
+      self.security.shift();
+      self.hand.push(top);
+      cardDetailModal.classList.remove('open');
+      renderPracticeBoard();
+    });
+    mk('セキュリティに戻す(そのまま)', () => {
+      cardDetailModal.classList.remove('open');
+    });
+    wrap.appendChild(row);
+    detailBody.querySelector('.detail-info').appendChild(wrap);
   }
 
   function deckTopToSecurity() {
@@ -3478,11 +3543,11 @@
       });
     } else if (c === '3') {
       if (self.battle.length === 0) { showToast('バトルエリアにカードがありません', true); return; }
-      const tops = self.battle.map(s => s.cards[s.cards.length - 1]);
+      const tops = self.battle.map(s => cardEntryNum(s.cards[s.cards.length - 1]));
       openCardListPicker('バトルエリアの一番上から選択', tops, (idx) => {
         snapshotPracticeState();
         const stack = self.battle[idx];
-        const num = stack.cards.pop();
+        const num = cardEntryNum(stack.cards.pop());
         if (stack.cards.length === 0) self.battle.splice(idx, 1);
         onPicked(num);
       });
@@ -3668,8 +3733,8 @@
     const owner = findStackOwnerAndZone(stack);
     if (!owner) return;
     snapshotPracticeState();
-    const [removed] = stack.cards.splice(cardIndexInStack, 1);
-    sendCardToDestination(owner.player, removed, destination);
+    const [removedEntry] = stack.cards.splice(cardIndexInStack, 1);
+    sendCardToDestination(owner.player, cardEntryNum(removedEntry), destination);
     if (stack.cards.length === 0) {
       if (owner.zone === 'raising') owner.player.raising = null;
       else owner.player.battle.splice(owner.index, 1);
@@ -3679,16 +3744,40 @@
     showToast(`カードを${DESTINATION_LABEL[destination]}移動しました`);
   }
 
+  // Asks whether the card should be added face-up or face-down, using a small
+  // popup centered on screen (not tied to a specific click position).
+  function askFaceOrientation(callback) {
+    const centerEvent = { clientX: window.innerWidth / 2 - 90, clientY: window.innerHeight / 2 - 60 };
+    openZonePopup(centerEvent, '向きを選択', [
+      { label: '表向きで追加', onClick: () => callback(false) },
+      { label: '裏向きで追加', onClick: () => callback(true) },
+    ]);
+  }
+
   function addToEvolutionMaterial(stack) {
     pickSourceCard('進化元に追加するカードを選択', (num) => {
-      stack.cards.unshift(num);
-      renderPracticeBoard();
-      showToast('進化元に追加しました');
+      askFaceOrientation((faceDown) => {
+        stack.cards.unshift(faceDown ? { n: num, d: true } : num);
+        renderPracticeBoard();
+        showToast(`進化元に追加しました(${faceDown ? '裏向き' : '表向き'})`);
+      });
     });
   }
 
   // Builds the action-button panel appended below a stack's card detail, so the
   // player can read the effect text and act on it in the same view.
+  function trashEntireStack(stack) {
+    const owner = findStackOwnerAndZone(stack);
+    if (!owner) return;
+    snapshotPracticeState();
+    stack.cards.forEach(entry => owner.player.trash.push(cardEntryNum(entry)));
+    if (owner.zone === 'raising') owner.player.raising = null;
+    else owner.player.battle.splice(owner.index, 1);
+    cardDetailModal.classList.remove('open');
+    renderPracticeBoard();
+    showToast('スタックを全てトラッシュしました');
+  }
+
   function renderStackActionButtons(stack) {
     const wrap = document.createElement('div');
     wrap.style.cssText = 'display:flex;flex-direction:column;gap:6px;margin-top:14px;padding-top:12px;border-top:1px solid var(--border);width:100%;';
@@ -3721,6 +3810,7 @@
       cardDetailModal.classList.remove('open');
       addToEvolutionMaterial(stack);
     });
+    mk('スタックを全部トラッシュへ', () => trashEntireStack(stack));
     mk('一番上を手札へ', () => removeCardFromStackAt(stack, topIndex, 'hand'));
     mk('一番上をトラッシュへ', () => removeCardFromStackAt(stack, topIndex, 'trash'));
     mk('一番上をデッキへ▾', (e) => openZonePopup(e, 'デッキのどちらに置きますか?', [
@@ -3740,7 +3830,7 @@
   // text and act on it without switching screens.
   function openStackActionView(stack) {
     if (stack.cards.length <= 1) {
-      const card = cardIndexByNumber.get(stack.cards[stack.cards.length - 1]);
+      const card = cardIndexByNumber.get(cardEntryNum(stack.cards[stack.cards.length - 1]));
       if (card) openCardDetail(card, true, stack);
     } else {
       openStackDetail(stack);
@@ -3835,7 +3925,7 @@
     hatchBtn.addEventListener('click', () => hatchEgg(true));
     el.appendChild(hatchBtn);
 
-    const raisingTop = self.raising ? cardIndexByNumber.get(self.raising.cards[self.raising.cards.length - 1]) : null;
+    const raisingTop = self.raising ? cardIndexByNumber.get(cardEntryNum(self.raising.cards[self.raising.cards.length - 1])) : null;
     const canMove = !!self.raising && raisingTop && raisingTop.dp !== null && raisingTop.dp !== undefined;
     const moveBtn = document.createElement('button');
     moveBtn.className = 'btn';
