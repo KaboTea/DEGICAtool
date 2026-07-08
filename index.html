@@ -1229,7 +1229,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.8.1</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.8.2</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -1422,6 +1422,9 @@
         </div>
         <div class="mat-label" style="margin-top:14px;">自分(<span id="selfNameLabel"></span>) の手札</div>
         <div class="hand-row" id="selfHandRow"></div>
+
+        <div class="mat-label" style="margin-top:16px;">効果による操作(いつでも使用可)</div>
+        <div class="db-actions" id="utilityActions"></div>
       </div>
     </div>
   </section>
@@ -2434,7 +2437,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.8.1`);
+    log(`DigiCA Tool build v0.8.2`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -2803,6 +2806,31 @@
     return el;
   }
 
+  function findStackOwnerAndZone(stack) {
+    for (const p of practiceState.players) {
+      if (p.raising === stack) return { player: p, zone: 'raising' };
+      const idx = p.battle.indexOf(stack);
+      if (idx >= 0) return { player: p, zone: 'battle', index: idx };
+    }
+    return null;
+  }
+
+  function deEvolveTopCard(stack, destination) {
+    const owner = findStackOwnerAndZone(stack);
+    if (!owner) return;
+    snapshotPracticeState();
+    const removed = stack.cards.pop();
+    if (destination === 'hand') owner.player.hand.push(removed);
+    else owner.player.trash.push(removed);
+    if (stack.cards.length === 0) {
+      if (owner.zone === 'raising') owner.player.raising = null;
+      else owner.player.battle.splice(owner.index, 1);
+    }
+    cardDetailModal.classList.remove('open');
+    renderPracticeBoard();
+    showToast(`退化しました(${destination === 'hand' ? '手札' : 'トラッシュ'}へ)`);
+  }
+
   function openStackDetail(stack) {
     if (stack.cards.length <= 1) {
       const card = cardIndexByNumber.get(stack.cards[stack.cards.length - 1]);
@@ -2814,11 +2842,16 @@
     document.getElementById('addToDeckFromDetail').style.display = 'none';
     const rows = stack.cards.slice().reverse().map((number, i) => {
       const label = i === 0 ? '一番上' : `進化元${i}`;
+      const deEvolveBtns = i === 0
+        ? `<button type="button" class="btn deevolve-hand" style="font-size:10px;padding:3px 6px;">退化→手札</button>
+           <button type="button" class="btn deevolve-trash" style="font-size:10px;padding:3px 6px;">退化→トラッシュ</button>`
+        : '';
       return `
-        <div class="deck-list-item stack-view-row" data-number="${escapeHtml(number)}" style="cursor:pointer;">
-          <img src="${escapeHtml(miniCardImg(number))}" alt="" style="width:34px;border-radius:3px;" onerror="this.style.opacity=0">
+        <div class="deck-list-item" style="cursor:default;">
+          <img src="${escapeHtml(miniCardImg(number))}" alt="" class="stack-view-row" data-number="${escapeHtml(number)}" style="width:34px;border-radius:3px;cursor:pointer;" onerror="this.style.opacity=0">
           <span class="dli-number mono">${escapeHtml(label)}</span>
-          <span class="dli-name">${escapeHtml(miniCardName(number))}</span>
+          <span class="dli-name stack-view-row" data-number="${escapeHtml(number)}" style="cursor:pointer;">${escapeHtml(miniCardName(number))}</span>
+          ${deEvolveBtns}
         </div>`;
     }).join('');
     detailBody.innerHTML = `
@@ -2828,10 +2861,38 @@
         <div class="deck-list" style="margin-top:8px;">${rows}</div>
       </div>
     `;
-    detailBody.querySelectorAll('.stack-view-row').forEach(row => {
-      row.addEventListener('click', () => {
-        const card = cardIndexByNumber.get(row.dataset.number);
+    detailBody.querySelectorAll('.stack-view-row').forEach(el => {
+      el.addEventListener('click', () => {
+        const card = cardIndexByNumber.get(el.dataset.number);
         if (card) openCardDetail(card, true);
+      });
+    });
+    const hb = detailBody.querySelector('.deevolve-hand');
+    const tb = detailBody.querySelector('.deevolve-trash');
+    if (hb) hb.addEventListener('click', () => deEvolveTopCard(stack, 'hand'));
+    if (tb) tb.addEventListener('click', () => deEvolveTopCard(stack, 'trash'));
+    cardDetailModal.classList.add('open');
+  }
+
+  // ---------- Generic card-list picker (reused by security check, trash retrieval, etc.) ----------
+  function openCardListPicker(title, cardNumbers, onPick) {
+    currentDetailCard = null;
+    document.getElementById('addToDeckFromDetail').style.display = 'none';
+    const rows = cardNumbers.map((number, i) => `
+      <div class="deck-list-item pick-row" data-idx="${i}" style="cursor:pointer;">
+        <img src="${escapeHtml(miniCardImg(number))}" alt="" style="width:34px;border-radius:3px;" onerror="this.style.opacity=0">
+        <span class="dli-name">${escapeHtml(miniCardName(number))}</span>
+      </div>`).join('');
+    detailBody.innerHTML = `
+      <div class="detail-info" style="width:100%;">
+        <div class="d-title">${escapeHtml(title)}</div>
+        <div class="deck-list" style="margin-top:8px;">${rows || '<div class="empty-state">カードがありません</div>'}</div>
+      </div>
+    `;
+    detailBody.querySelectorAll('.pick-row').forEach(row => {
+      row.addEventListener('click', () => {
+        cardDetailModal.classList.remove('open');
+        onPick(parseInt(row.dataset.idx, 10));
       });
     });
     cardDetailModal.classList.add('open');
@@ -2967,6 +3028,7 @@
     });
 
     renderRaisingPhaseActions();
+    renderUtilityActions();
 
     const canAct = selfTurn && practiceState.turn.phase === 'main' && !evolveMode;
     const handRow = document.getElementById('selfHandRow');
@@ -3211,14 +3273,14 @@
   }
 
   // ---------- Raising phase: 孵化 / バトルエリアへ移動 ----------
-  function hatchEgg() {
+  function hatchEgg(advanceToMain) {
     const self = practiceState.players[practiceState.viewingIndex];
     if (self.raising) { showToast('育成エリアに既にデジモンがいます', true); return; }
     if (self.eggLibrary.length === 0) { showToast('デジタマデッキがありません', true); return; }
     snapshotPracticeState();
     const num = self.eggLibrary.shift();
     self.raising = { cards: [num], rested: false };
-    practiceState.turn.phase = 'main'; // 育成フェイズの行動は1つだけなので自動でメインへ
+    if (advanceToMain) practiceState.turn.phase = 'main'; // 育成フェイズの行動は1つだけなので自動でメインへ
     renderPracticeBoard();
   }
   function moveRaisingToBattle() {
@@ -3236,6 +3298,88 @@
     self.raising = null;
     practiceState.turn.phase = 'main'; // 育成フェイズの行動は1つだけなので自動でメインへ
     renderPracticeBoard();
+  }
+
+  // ---------- Utility actions (for card/keyword effects the tool can't auto-resolve) ----------
+  function manualDraw() {
+    const self = practiceState.players[practiceState.viewingIndex];
+    if (self.library.length === 0) { showToast('デッキがありません', true); return; }
+    snapshotPracticeState();
+    self.hand.push(self.library.shift());
+    renderPracticeBoard();
+    showToast('1枚ドローしました(効果)');
+  }
+
+  function manualSecurityCheck() {
+    const self = practiceState.players[practiceState.viewingIndex];
+    if (self.security.length === 0) { showToast('セキュリティがありません', true); return; }
+    const top = self.security[0];
+    const card = cardIndexByNumber.get(top);
+    const dest = prompt(
+      `セキュリティを1枚公開: 「${card ? card.name : top}」\n行き先を入力してください。\n1 = トラッシュへ\n2 = 手札へ\n3 = セキュリティに戻す(そのまま)`,
+      '1'
+    );
+    if (dest === null) return;
+    snapshotPracticeState();
+    self.security.shift();
+    const d = dest.trim();
+    if (d === '2') self.hand.push(top);
+    else if (d === '3') self.security.unshift(top);
+    else self.trash.push(top);
+    renderPracticeBoard();
+  }
+
+  function deckTopToSecurity() {
+    const self = practiceState.players[practiceState.viewingIndex];
+    if (self.library.length === 0) { showToast('デッキがありません', true); return; }
+    snapshotPracticeState();
+    self.security.unshift(self.library.shift());
+    renderPracticeBoard();
+    showToast('デッキの上からセキュリティに置きました');
+  }
+
+  function securityTopToTrash() {
+    const self = practiceState.players[practiceState.viewingIndex];
+    if (self.security.length === 0) { showToast('セキュリティがありません', true); return; }
+    snapshotPracticeState();
+    self.trash.push(self.security.shift());
+    renderPracticeBoard();
+    showToast('セキュリティの上から1枚をトラッシュしました');
+  }
+
+  function openTrashToHandPicker() {
+    const self = practiceState.players[practiceState.viewingIndex];
+    if (self.trash.length === 0) { showToast('トラッシュがありません', true); return; }
+    openCardListPicker('トラッシュから手札に戻すカードを選択', self.trash, (idx) => {
+      snapshotPracticeState();
+      const [num] = self.trash.splice(idx, 1);
+      self.hand.push(num);
+      renderPracticeBoard();
+      showToast('手札に加えました');
+    });
+  }
+
+  function renderUtilityActions() {
+    const el = document.getElementById('utilityActions');
+    if (!el) return;
+    el.innerHTML = '';
+    if (!practiceState) return;
+    const buttons = [
+      ['ドロー', manualDraw],
+      ['セキュリティ公開', manualSecurityCheck],
+      ['デッキ→セキュリティ', deckTopToSecurity],
+      ['セキュリティ→トラッシュ', securityTopToTrash],
+      ['トラッシュ→手札', openTrashToHandPicker],
+      ['孵化(効果)', () => hatchEgg(false)],
+    ];
+    buttons.forEach(([label, fn]) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'btn';
+      b.textContent = label;
+      b.addEventListener('click', fn);
+      el.appendChild(b);
+    });
   }
 
   // ---------- Turn / phase progression ----------
@@ -3305,7 +3449,7 @@
     hatchBtn.textContent = `孵化`;
     hatchBtn.title = `デジタマ${self.eggLibrary.length}枚`;
     hatchBtn.disabled = !!self.raising || self.eggLibrary.length === 0;
-    hatchBtn.addEventListener('click', hatchEgg);
+    hatchBtn.addEventListener('click', () => hatchEgg(true));
     el.appendChild(hatchBtn);
 
     const raisingTop = self.raising ? cardIndexByNumber.get(self.raising.cards[self.raising.cards.length - 1]) : null;
