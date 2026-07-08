@@ -1198,6 +1198,45 @@
     margin-top: 3px;
   }
 
+  /* ---- Zone action popup ---- */
+  .zone-popup {
+    display: none;
+    position: fixed;
+    z-index: 260;
+    background: var(--panel);
+    border: 1px solid var(--accent-dim);
+    border-radius: 8px;
+    padding: 10px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    min-width: 180px;
+    max-width: 260px;
+  }
+  .zone-popup.open { display: block; }
+  .zp-title {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-bottom: 8px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+  }
+  .zp-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .zp-actions button {
+    text-align: left;
+    background: var(--panel-raised);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 6px;
+    padding: 7px 10px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .zp-actions button:hover { border-color: var(--accent); }
+  .zp-actions button:disabled { opacity: 0.4; cursor: not-allowed; }
+
   /* ---- Toast (transient notifications, visible regardless of active tab) ---- */
   .toast {
     position: fixed;
@@ -1229,7 +1268,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.8.2</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.9.1</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -1496,6 +1535,12 @@
 <!-- Deck hover preview (shows a representative card image when hovering a deck in the list) -->
 <div class="deck-hover-preview" id="deckHoverPreview">
   <img id="deckHoverPreviewImg" src="" alt="">
+</div>
+
+<!-- Zone action popup (appears when clicking a pile/stack) -->
+<div class="zone-popup" id="zonePopup">
+  <div class="zp-title" id="zonePopupTitle"></div>
+  <div class="zp-actions" id="zonePopupActions"></div>
 </div>
 
 <!-- Toast notification -->
@@ -2437,7 +2482,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.8.2`);
+    log(`DigiCA Tool build v0.9.1`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -2799,9 +2844,9 @@
     });
     if (isEvolveTarget) {
       el.title = 'クリックしてここに進化';
-      el.addEventListener('click', () => performEvolve(stack));
+      el.addEventListener('click', (e) => { e.stopPropagation(); performEvolve(stack); });
     } else if (onClick) {
-      el.addEventListener('click', onClick);
+      el.addEventListener('click', (e) => { e.stopPropagation(); onClick(e); });
     }
     return el;
   }
@@ -2842,16 +2887,12 @@
     document.getElementById('addToDeckFromDetail').style.display = 'none';
     const rows = stack.cards.slice().reverse().map((number, i) => {
       const label = i === 0 ? '一番上' : `進化元${i}`;
-      const deEvolveBtns = i === 0
-        ? `<button type="button" class="btn deevolve-hand" style="font-size:10px;padding:3px 6px;">退化→手札</button>
-           <button type="button" class="btn deevolve-trash" style="font-size:10px;padding:3px 6px;">退化→トラッシュ</button>`
-        : '';
       return `
         <div class="deck-list-item" style="cursor:default;">
           <img src="${escapeHtml(miniCardImg(number))}" alt="" class="stack-view-row" data-number="${escapeHtml(number)}" style="width:34px;border-radius:3px;cursor:pointer;" onerror="this.style.opacity=0">
           <span class="dli-number mono">${escapeHtml(label)}</span>
           <span class="dli-name stack-view-row" data-number="${escapeHtml(number)}" style="cursor:pointer;">${escapeHtml(miniCardName(number))}</span>
-          ${deEvolveBtns}
+          <button type="button" class="btn stack-row-move" data-row-idx="${i}" style="font-size:10px;padding:3px 6px;">送る▾</button>
         </div>`;
     }).join('');
     detailBody.innerHTML = `
@@ -2867,10 +2908,20 @@
         if (card) openCardDetail(card, true);
       });
     });
-    const hb = detailBody.querySelector('.deevolve-hand');
-    const tb = detailBody.querySelector('.deevolve-trash');
-    if (hb) hb.addEventListener('click', () => deEvolveTopCard(stack, 'hand'));
-    if (tb) tb.addEventListener('click', () => deEvolveTopCard(stack, 'trash'));
+    detailBody.querySelectorAll('.stack-row-move').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const rowIdx = parseInt(btn.dataset.rowIdx, 10);
+        const actualIdx = stack.cards.length - 1 - rowIdx; // rows are top-to-bottom; cards[] is bottom-to-top
+        const number = stack.cards[actualIdx];
+        openZonePopup(e, `「${escapeHtml(miniCardName(number))}」を送る`,
+          ALL_DESTINATIONS.map(dest => ({
+            label: DESTINATION_LABEL[dest],
+            onClick: () => removeCardFromStackAt(stack, actualIdx, dest),
+          }))
+        );
+      });
+    });
     cardDetailModal.classList.add('open');
   }
 
@@ -2900,13 +2951,14 @@
 
   // A face-down pile (deck, digi-egg deck, security, opponent's hand): shows an
   // original card-back design with a count badge, not the real card contents.
-  function buildFaceDownPile(label, count) {
+  function buildFaceDownPile(label, count, onClick) {
     const wrap = document.createElement('div');
     wrap.className = 'mat-pile';
     wrap.innerHTML = `
-      <div class="card-back">${count > 0 ? `<span class="cb-count">${count}</span>` : ''}</div>
+      <div class="card-back" style="${onClick ? 'cursor:pointer;' : ''}">${count > 0 ? `<span class="cb-count">${count}</span>` : ''}</div>
       <div class="mp-label">${escapeHtml(label)}</div>
     `;
+    if (onClick) wrap.querySelector('.card-back').addEventListener('click', (e) => { e.stopPropagation(); onClick(e); });
     return wrap;
   }
 
@@ -2916,13 +2968,13 @@
     wrap.className = 'mat-pile';
     const top = cards.length > 0 ? cards[cards.length - 1] : null;
     wrap.innerHTML = `
-      <div class="stack-tile" style="width:100%;">
-        ${top ? `<img src="${escapeHtml(miniCardImg(top))}" alt="" onerror="this.style.opacity=0">` : '<div class="card-back" style="opacity:0.25;"></div>'}
+      <div class="stack-tile" style="width:100%;padding:0;">
+        <div class="stack-fan">${top ? `<img class="stack-layer" src="${escapeHtml(miniCardImg(top))}" alt="" onerror="this.style.opacity=0">` : '<div class="card-back" style="opacity:0.25;"></div>'}</div>
         ${cards.length > 1 ? `<span class="st-count mono">${cards.length}</span>` : ''}
       </div>
       <div class="mp-label">${escapeHtml(label)}(${cards.length})</div>
     `;
-    if (top && onClick) wrap.querySelector('.stack-tile').addEventListener('click', onClick);
+    if (top && onClick) wrap.querySelector('.stack-tile').addEventListener('click', (e) => { e.stopPropagation(); onClick(e); });
     return wrap;
   }
 
@@ -2940,19 +2992,24 @@
 
     // Side cluster: security (face-down) + deck (face-down) + trash (face-up top card)
     sideClusterEl.innerHTML = '';
-    sideClusterEl.appendChild(buildFaceDownPile('セキュリティ', player.security.length));
-    sideClusterEl.appendChild(buildFaceDownPile('デッキ', player.library.length));
-    sideClusterEl.appendChild(buildFaceUpPile('トラッシュ', player.trash, () => {
-      if (player.trash.length > 0) {
-        const card = cardIndexByNumber.get(player.trash[player.trash.length - 1]);
-        if (card) openCardDetail(card, true);
-      }
-    }));
+    sideClusterEl.appendChild(buildFaceDownPile('セキュリティ', player.security.length, isSelf ? (e) => openSecurityPopup(e) : null));
+    sideClusterEl.appendChild(buildFaceDownPile('デッキ', player.library.length, isSelf ? (e) => openDeckPopup(e) : null));
+    sideClusterEl.appendChild(buildFaceUpPile('トラッシュ', player.trash, isSelf
+      ? (e) => openTrashPopup(e)
+      : () => {
+          if (player.trash.length > 0) {
+            const card = cardIndexByNumber.get(player.trash[player.trash.length - 1]);
+            if (card) openCardDetail(card, true);
+          }
+        }));
 
     // Raising area (0 or 1 stack)
     raisingAreaEl.innerHTML = '';
     if (player.raising) {
-      raisingAreaEl.appendChild(buildStackTile(player.raising, () => openStackDetail(player.raising), !!allowEvolveTarget));
+      const onClick = isSelf && !allowEvolveTarget
+        ? (e) => openStackPopup(e, player.raising)
+        : () => openStackDetail(player.raising);
+      raisingAreaEl.appendChild(buildStackTile(player.raising, onClick, !!allowEvolveTarget));
     } else {
       raisingAreaEl.innerHTML = '<div class="empty-state" style="padding:14px 0;font-size:11px;">(空)</div>';
     }
@@ -2962,7 +3019,12 @@
     if (player.battle.length === 0) {
       battleAreaEl.innerHTML = '<div class="empty-state" style="padding:14px 0;">(場にデジモンがいません)</div>';
     } else {
-      player.battle.forEach(stack => battleAreaEl.appendChild(buildStackTile(stack, () => openStackDetail(stack), !!allowEvolveTarget)));
+      player.battle.forEach(stack => {
+        const onClick = isSelf && !allowEvolveTarget
+          ? (e) => openStackPopup(e, stack)
+          : () => openStackDetail(stack);
+        battleAreaEl.appendChild(buildStackTile(stack, onClick, !!allowEvolveTarget));
+      });
     }
   }
 
@@ -3359,17 +3421,245 @@
     });
   }
 
+  // ---------- Zone action popup ----------
+  const zonePopupEl = document.getElementById('zonePopup');
+  function closeZonePopup() { zonePopupEl.classList.remove('open'); }
+  function openZonePopup(e, title, actions) {
+    document.getElementById('zonePopupTitle').textContent = title;
+    const actionsEl = document.getElementById('zonePopupActions');
+    actionsEl.innerHTML = '';
+    actions.forEach(a => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = a.label;
+      b.disabled = !!a.disabled;
+      b.addEventListener('click', (ev) => { ev.stopPropagation(); closeZonePopup(); a.onClick(); });
+      actionsEl.appendChild(b);
+    });
+    zonePopupEl.classList.add('open');
+    const x = Math.min(e.clientX, window.innerWidth - 270);
+    const y = Math.min(e.clientY, window.innerHeight - 220);
+    zonePopupEl.style.left = `${Math.max(8, x)}px`;
+    zonePopupEl.style.top = `${Math.max(8, y)}px`;
+  }
+  document.addEventListener('click', (e) => {
+    if (zonePopupEl.classList.contains('open') && !zonePopupEl.contains(e.target)) closeZonePopup();
+  });
+
+  // ---------- Pick a card from hand / trash / battle-area top (used by security placement, evo-material add) ----------
+  function pickSourceCard(promptTitle, onPicked) {
+    const self = practiceState.players[practiceState.viewingIndex];
+    const choice = prompt(`${promptTitle}\n取得元を選んでください:\n1 = 手札\n2 = トラッシュ\n3 = バトルエリア(各スタックの一番上)`, '1');
+    if (choice === null) return;
+    const c = choice.trim();
+    if (c === '1') {
+      if (self.hand.length === 0) { showToast('手札がありません', true); return; }
+      openCardListPicker('手札から選択', self.hand, (idx) => {
+        snapshotPracticeState();
+        const [num] = self.hand.splice(idx, 1);
+        onPicked(num);
+      });
+    } else if (c === '2') {
+      if (self.trash.length === 0) { showToast('トラッシュがありません', true); return; }
+      openCardListPicker('トラッシュから選択', self.trash, (idx) => {
+        snapshotPracticeState();
+        const [num] = self.trash.splice(idx, 1);
+        onPicked(num);
+      });
+    } else if (c === '3') {
+      if (self.battle.length === 0) { showToast('バトルエリアにカードがありません', true); return; }
+      const tops = self.battle.map(s => s.cards[s.cards.length - 1]);
+      openCardListPicker('バトルエリアの一番上から選択', tops, (idx) => {
+        snapshotPracticeState();
+        const stack = self.battle[idx];
+        const num = stack.cards.pop();
+        if (stack.cards.length === 0) self.battle.splice(idx, 1);
+        onPicked(num);
+      });
+    }
+  }
+
+  // ---------- Deck actions ----------
+  function revealTopAndSort() {
+    const self = practiceState.players[practiceState.viewingIndex];
+    if (self.library.length === 0) { showToast('デッキがありません', true); return; }
+    const input = prompt('デッキの上から何枚公開しますか?', '3');
+    if (input === null) return;
+    const x = parseInt(input, 10);
+    if (isNaN(x) || x <= 0) { showToast('枚数の入力が不正です', true); return; }
+    snapshotPracticeState();
+    const revealed = self.library.splice(0, Math.min(x, self.library.length));
+    openRevealResolveView(revealed, self);
+  }
+
+  function openRevealResolveView(revealed, self) {
+    currentDetailCard = null;
+    document.getElementById('addToDeckFromDetail').style.display = 'none';
+    function render() {
+      const rows = revealed.map((number, i) => `
+        <div class="deck-list-item" style="cursor:default;">
+          <img src="${escapeHtml(miniCardImg(number))}" alt="" style="width:34px;border-radius:3px;" onerror="this.style.opacity=0">
+          <span class="dli-name">${escapeHtml(miniCardName(number))}</span>
+          <span class="dli-stepper" style="gap:3px;">
+            <button type="button" class="btn reveal-act" data-idx="${i}" data-dest="hand" style="font-size:10px;padding:3px 5px;">手札</button>
+            <button type="button" class="btn reveal-act" data-idx="${i}" data-dest="top" style="font-size:10px;padding:3px 5px;">山上</button>
+            <button type="button" class="btn reveal-act" data-idx="${i}" data-dest="bottom" style="font-size:10px;padding:3px 5px;">山下</button>
+            <button type="button" class="btn reveal-act" data-idx="${i}" data-dest="trash" style="font-size:10px;padding:3px 5px;">破棄</button>
+          </span>
+        </div>`).join('');
+      detailBody.innerHTML = `
+        <div class="detail-info" style="width:100%;">
+          <div class="d-title">公開したカード</div>
+          <div class="d-number mono">残り${revealed.length}枚を振り分けてください</div>
+          <div class="deck-list" style="margin-top:8px;">${rows || '<div class="empty-state">処理完了しました</div>'}</div>
+        </div>
+      `;
+      detailBody.querySelectorAll('.reveal-act').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const idx = parseInt(btn.dataset.idx, 10);
+          const dest = btn.dataset.dest;
+          const [number] = revealed.splice(idx, 1);
+          if (dest === 'hand') self.hand.push(number);
+          else if (dest === 'top') self.library.unshift(number);
+          else if (dest === 'bottom') self.library.push(number);
+          else self.trash.push(number);
+          renderPracticeBoard();
+          render();
+        });
+      });
+    }
+    render();
+    cardDetailModal.classList.add('open');
+  }
+
+  function openDeckPopup(e) {
+    const self = practiceState.players[practiceState.viewingIndex];
+    openZonePopup(e, `山札(${self.library.length}枚)`, [
+      { label: 'ドロー', onClick: manualDraw },
+      { label: 'X枚公開して振り分け', onClick: revealTopAndSort },
+      { label: '一番上をセキュリティへ', onClick: deckTopToSecurity },
+    ]);
+  }
+
+  // ---------- Security actions ----------
+  function securityBottomToHand() {
+    const self = practiceState.players[practiceState.viewingIndex];
+    if (self.security.length === 0) { showToast('セキュリティがありません', true); return; }
+    snapshotPracticeState();
+    const num = self.security.pop(); // security[0]=top, last index=bottom
+    self.hand.push(num);
+    renderPracticeBoard();
+    showToast('セキュリティの一番下を手札に加えました');
+  }
+  function placeOnSecurityTop() {
+    pickSourceCard('セキュリティの上に置くカードを選択', (num) => {
+      practiceState.players[practiceState.viewingIndex].security.unshift(num);
+      renderPracticeBoard();
+      showToast('セキュリティの上に置きました');
+    });
+  }
+  function placeOnSecurityBottom() {
+    pickSourceCard('セキュリティの下に置くカードを選択', (num) => {
+      practiceState.players[practiceState.viewingIndex].security.push(num);
+      renderPracticeBoard();
+      showToast('セキュリティの下に置きました');
+    });
+  }
+  function openSecurityPopup(e) {
+    const self = practiceState.players[practiceState.viewingIndex];
+    openZonePopup(e, `セキュリティ(${self.security.length}枚)`, [
+      { label: '1枚公開して処理', onClick: manualSecurityCheck },
+      { label: '一番下を手札へ', onClick: securityBottomToHand },
+      { label: 'カードを上に置く(手札/トラッシュ/バトルから)', onClick: placeOnSecurityTop },
+      { label: 'カードを下に置く(手札/トラッシュ/バトルから)', onClick: placeOnSecurityBottom },
+    ]);
+  }
+
+  function trashMoveFlow(destination) {
+    const self = practiceState.players[practiceState.viewingIndex];
+    if (self.trash.length === 0) { showToast('トラッシュがありません', true); return; }
+    openCardListPicker('トラッシュから選択', self.trash, (idx) => {
+      snapshotPracticeState();
+      const [num] = self.trash.splice(idx, 1);
+      sendCardToDestination(self, num, destination);
+      renderPracticeBoard();
+      showToast(`カードを${DESTINATION_LABEL[destination]}移動しました`);
+    });
+  }
+
+  function openTrashPopup(e) {
+    const self = practiceState.players[practiceState.viewingIndex];
+    openZonePopup(e, `トラッシュ(${self.trash.length}枚)`, [
+      { label: '手札へ', onClick: () => trashMoveFlow('hand') },
+      { label: 'デッキの上へ', onClick: () => trashMoveFlow('deckTop') },
+      { label: 'デッキの下へ', onClick: () => trashMoveFlow('deckBottom') },
+      { label: 'セキュリティの上へ', onClick: () => trashMoveFlow('secTop') },
+      { label: 'セキュリティの下へ', onClick: () => trashMoveFlow('secBottom') },
+    ]);
+  }
+
+  // ---------- Evolution material add (進化元に追加) ----------
+  // ---------- Generic "send card to zone" helper ----------
+  // destination: 'hand' | 'trash' | 'deckTop' | 'deckBottom' | 'secTop' | 'secBottom'
+  function sendCardToDestination(player, number, destination) {
+    if (destination === 'hand') player.hand.push(number);
+    else if (destination === 'trash') player.trash.push(number);
+    else if (destination === 'deckTop') player.library.unshift(number);
+    else if (destination === 'deckBottom') player.library.push(number);
+    else if (destination === 'secTop') player.security.unshift(number);
+    else if (destination === 'secBottom') player.security.push(number);
+  }
+  const DESTINATION_LABEL = {
+    hand: '手札へ', trash: 'トラッシュへ',
+    deckTop: 'デッキの上へ', deckBottom: 'デッキの下へ',
+    secTop: 'セキュリティの上へ', secBottom: 'セキュリティの下へ',
+  };
+  const ALL_DESTINATIONS = ['hand', 'trash', 'deckTop', 'deckBottom', 'secTop', 'secBottom'];
+
+  function removeCardFromStackAt(stack, cardIndexInStack, destination) {
+    const owner = findStackOwnerAndZone(stack);
+    if (!owner) return;
+    snapshotPracticeState();
+    const [removed] = stack.cards.splice(cardIndexInStack, 1);
+    sendCardToDestination(owner.player, removed, destination);
+    if (stack.cards.length === 0) {
+      if (owner.zone === 'raising') owner.player.raising = null;
+      else owner.player.battle.splice(owner.index, 1);
+    }
+    cardDetailModal.classList.remove('open');
+    renderPracticeBoard();
+    showToast(`カードを${DESTINATION_LABEL[destination]}移動しました`);
+  }
+
+  function addToEvolutionMaterial(stack) {
+    pickSourceCard('進化元に追加するカードを選択', (num) => {
+      stack.cards.unshift(num);
+      renderPracticeBoard();
+      showToast('進化元に追加しました');
+    });
+  }
+
+  function openStackPopup(e, stack) {
+    const topIndex = stack.cards.length - 1;
+    const moveActions = ALL_DESTINATIONS.map(dest => ({
+      label: `一番上を${DESTINATION_LABEL[dest]}`,
+      onClick: () => removeCardFromStackAt(stack, topIndex, dest),
+    }));
+    const actions = [
+      { label: '詳細を見る', onClick: () => openStackDetail(stack) },
+      { label: 'レスト/アクティブ切替', onClick: () => { snapshotPracticeState(); stack.rested = !stack.rested; renderPracticeBoard(); } },
+      { label: '進化元に追加', onClick: () => addToEvolutionMaterial(stack) },
+      ...moveActions,
+    ];
+    openZonePopup(e, 'スタック操作', actions);
+  }
+
   function renderUtilityActions() {
     const el = document.getElementById('utilityActions');
     if (!el) return;
     el.innerHTML = '';
     if (!practiceState) return;
     const buttons = [
-      ['ドロー', manualDraw],
-      ['セキュリティ公開', manualSecurityCheck],
-      ['デッキ→セキュリティ', deckTopToSecurity],
-      ['セキュリティ→トラッシュ', securityTopToTrash],
-      ['トラッシュ→手札', openTrashToHandPicker],
       ['孵化(効果)', () => hatchEgg(false)],
     ];
     buttons.forEach(([label, fn]) => {
