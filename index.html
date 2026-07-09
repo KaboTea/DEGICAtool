@@ -1164,7 +1164,7 @@
 
   .memory-line {
     display: flex;
-    justify-content: center;
+    justify-content: safe center;
     align-items: center;
     gap: 3px;
     padding: 10px 0;
@@ -1291,7 +1291,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.11.1</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.11.3</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -2530,7 +2530,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.11.1`);
+    log(`DigiCA Tool build v0.11.3`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -3197,7 +3197,11 @@
 
     // 相手のセキュリティ/消滅などの効果で、ターンを持っていない側にも登場・進化が
     // 発生することがあるため、ターン保持者に関わらず操作可能にする。
-    const canAct = practiceState.turn.phase === 'main' && !evolveMode && !materialTargetMode && !attackState;
+    // アタック処理中でも、カウンタータイミング/ブロックタイミング/ブロック時効果の
+    // タイミングでは、相手側がカウンター等を発動できるよう手札操作を許可する。
+    const attackAllowsHandAction = !attackState ||
+      ['counter', 'block', 'blockTrigger'].includes(attackState.stepName);
+    const canAct = practiceState.turn.phase === 'main' && !evolveMode && !materialTargetMode && attackAllowsHandAction;
     const handRow = document.getElementById('selfHandRow');
     handRow.innerHTML = '';
     self.hand.forEach((number, index) => {
@@ -3368,6 +3372,17 @@
   // Cancels both target-picking modes. If a card revealed from the deck was
   // pending placement (source 'reveal'), return it to the top of the deck so it
   // doesn't vanish into no-zone.
+  // 「X枚公開して振り分け」の途中で1枚を進化元へ回したとき、残りのカードを処理する
+  // 画面に戻れるようにするためのフック。
+  let revealSessionReopen = null;
+  function resumeRevealSessionIfAny() {
+    if (revealSessionReopen) {
+      const fn = revealSessionReopen;
+      revealSessionReopen = null;
+      fn();
+    }
+  }
+
   function cancelTargetModes() {
     if (materialTargetMode && materialTargetMode.source === 'reveal') {
       const self = practiceState.players[practiceState.viewingIndex];
@@ -3376,6 +3391,7 @@
     }
     exitEvolveMode();
     exitMaterialTargetMode();
+    resumeRevealSessionIfAny();
   }
 
   document.getElementById('evolveModeCancel').addEventListener('click', () => {
@@ -3395,6 +3411,7 @@
       exitMaterialTargetMode();
       renderPracticeBoard();
       showToast(`「${card.name}」を進化元に追加しました(${faceDown ? '裏向き' : '表向き'})`);
+      resumeRevealSessionIfAny();
     });
   }
 
@@ -3439,6 +3456,7 @@
     exitEvolveMode();
     renderPracticeBoard();
     showToast(`「${evolvedName}」に進化しました(コスト${cost})`);
+    resumeAttackStepIfAny();
   }
 
   document.getElementById('evolveManualApply').addEventListener('click', () => {
@@ -3473,6 +3491,7 @@
       payMemory(practiceState.turn.playerIndex, cost);
       renderPracticeBoard();
       showToast(`「${card.name}」が登場しました(コスト${cost})`);
+      resumeAttackStepIfAny();
     };
 
     const anchorEvent = e || { clientX: window.innerWidth / 2 - 90, clientY: window.innerHeight / 2 - 60 };
@@ -3611,8 +3630,9 @@
 
   // ---------- Zone action popup ----------
   const zonePopupEl = document.getElementById('zonePopup');
-  function closeZonePopup() { zonePopupEl.classList.remove('open'); }
-  function openZonePopup(e, title, actions) {
+  let zonePopupPersistent = false;
+  function closeZonePopup() { zonePopupEl.classList.remove('open'); zonePopupPersistent = false; }
+  function openZonePopup(e, title, actions, persistent) {
     document.getElementById('zonePopupTitle').textContent = title;
     const actionsEl = document.getElementById('zonePopupActions');
     actionsEl.innerHTML = '';
@@ -3630,6 +3650,7 @@
       b.addEventListener('click', (ev) => { ev.stopPropagation(); closeZonePopup(); a.onClick(ev); });
       actionsEl.appendChild(b);
     });
+    zonePopupPersistent = !!persistent;
     zonePopupEl.classList.add('open');
     const x = Math.min(e.clientX, window.innerWidth - 270);
     const y = Math.min(e.clientY, window.innerHeight - 220);
@@ -3637,7 +3658,7 @@
     zonePopupEl.style.top = `${Math.max(8, y)}px`;
   }
   document.addEventListener('click', (e) => {
-    if (zonePopupEl.classList.contains('open') && !zonePopupEl.contains(e.target)) closeZonePopup();
+    if (zonePopupEl.classList.contains('open') && !zonePopupPersistent && !zonePopupEl.contains(e.target)) closeZonePopup();
   });
 
   // ---------- Pick a card from hand / trash / battle-area top (used by security placement, evo-material add) ----------
@@ -3731,8 +3752,13 @@
           cardDetailModal.classList.remove('open');
           // このカード自体は既に公開処理の場から離れているので、進化元追加の
           // ソースは「デッキ」ではなく直接このカード番号を使う特別扱いにする。
+          // 進化元選択(または途中キャンセル)が終わったら、残りの公開カードを
+          // 処理できるようこの画面に戻ってくる。
+          revealSessionReopen = () => {
+            render();
+            cardDetailModal.classList.add('open');
+          };
           enterMaterialTargetMode(number, 'reveal', null);
-          render();
         });
       });
     }
@@ -3922,6 +3948,10 @@
   // 効果テキストの自動解決はしない方針のため、カウンタータイミングは「手動で処理してから次へ」
   // という素通りステップとして扱う。Sアタック等によるチェック枚数の増減も手動対応(後回し)。
   let attackState = null; // { attackerStack, attackerOwner, defenderOwner, targetType, targetStack }
+  let lastAttackStepFn = null; // 直近に表示したアタックステップ(他のポップアップ操作後の復帰用)
+  function resumeAttackStepIfAny() {
+    if (attackState && lastAttackStepFn) lastAttackStepFn();
+  }
 
   function centerPoint() {
     return { clientX: window.innerWidth / 2 - 130, clientY: window.innerHeight / 2 - 100 };
@@ -3939,6 +3969,8 @@
   }
 
   function showAttackTargetStep() {
+    lastAttackStepFn = showAttackTargetStep;
+    if (attackState) attackState.stepName = 'target';
     const restedTargets = attackState.defenderOwner.battle.filter(s => s.rested);
     const actions = [
       { label: `相手プレイヤーへ(セキュリティ${attackState.defenderOwner.security.length}枚)`, onClick: () => {
@@ -3958,25 +3990,32 @@
         },
       });
     });
-    openZonePopup(centerPoint(), 'アタック対象を選択(レスト状態の相手デジモンのみ選べます)', actions);
+    openZonePopup(centerPoint(), 'アタック対象を選択(レスト状態の相手デジモンのみ選べます)', actions, true);
   }
 
   // 宣言直後、カウンタータイミングより前に「アタック時」「デジモンがアタックしたとき」の
   // 効果が誘発する(ターン保持者→相手の順、11-1-3・15-4-5)。効果処理は自動化しないため
-  // 手動処理を挟む素通りステップとして扱う。
+  // 手動処理を挟む素通りステップとして扱う。persistent指定により、他の場所を操作しても
+  // (視点切替やDP増減など)このステップ表示は消えず、明示的に「次へ」を押すまで残る。
   function showAttackTriggerStep() {
+    lastAttackStepFn = showAttackTriggerStep;
+    if (attackState) attackState.stepName = 'trigger';
     openZonePopup(centerPoint(), '「アタック時」「アタックしたとき」の効果を処理(ターン保持者→相手の順)', [
       { label: '次へ(カウンタータイミングへ)', onClick: () => showAttackCounterStep() },
-    ]);
+    ], true);
   }
 
   function showAttackCounterStep() {
-    openZonePopup(centerPoint(), 'カウンタータイミング(相手の【カウンター】等があれば先に処理してください)', [
+    lastAttackStepFn = showAttackCounterStep;
+    if (attackState) attackState.stepName = 'counter';
+    openZonePopup(centerPoint(), 'カウンタータイミング(相手の【カウンター】等があれば先に処理してください。視点を切り替えて相手側を操作できます)', [
       { label: '次へ(ブロックタイミングへ)', onClick: () => showAttackBlockStep() },
-    ]);
+    ], true);
   }
 
   function showAttackBlockStep() {
+    lastAttackStepFn = showAttackBlockStep;
+    if (attackState) attackState.stepName = 'block';
     if (attackState.targetType !== 'player') { resolveAttack(); return; }
     const blockers = attackState.defenderOwner.battle.filter(s => !s.rested && s !== attackState.attackerStack);
     const actions = [{ label: 'ブロックしない', onClick: () => resolveAttack() }];
@@ -3990,11 +4029,21 @@
           attackState.targetType = 'digimon';
           attackState.targetStack = s;
           renderPracticeBoard();
-          resolveAttack();
+          showBlockTriggerStep();
         },
       });
     });
-    openZonePopup(centerPoint(), 'ブロックタイミング(≪ブロッカー≫を持つアクティブなデジモンのみ)', actions);
+    openZonePopup(centerPoint(), 'ブロックタイミング(≪ブロッカー≫を持つアクティブなデジモンのみ。視点を切り替えて相手側を操作できます)', actions, true);
+  }
+
+  // ブロック成立後、「ブロックしたとき」「レストしたとき」等の効果が誘発しうるため、
+  // 成立確認(バトル解決)へ進む前に手動処理を挟む。
+  function showBlockTriggerStep() {
+    lastAttackStepFn = showBlockTriggerStep;
+    if (attackState) attackState.stepName = 'blockTrigger';
+    openZonePopup(centerPoint(), '「ブロックしたとき」「レストしたとき」等の効果を処理してください', [
+      { label: '次へ(バトル解決へ)', onClick: () => resolveAttack() },
+    ], true);
   }
 
   function resolveBattle(a, b) {
@@ -4018,7 +4067,7 @@
   function showVictoryPopup(winnerOwner) {
     openZonePopup(centerPoint(), `🎉 ${winnerOwner.deckName} の勝利!(セキュリティ0への成立)`, [
       { label: '閉じる', onClick: () => {} },
-    ]);
+    ], true);
   }
 
   function resolveAttack() {
@@ -4055,43 +4104,56 @@
     wrap.style.cssText = 'display:flex;flex-direction:column;gap:6px;margin-top:14px;padding-top:12px;border-top:1px solid var(--border);width:100%;';
     const title = document.createElement('div');
     title.style.cssText = 'font-size:11px;color:var(--text-dim);';
-    title.textContent = 'セキュリティチェック';
+    title.textContent = 'セキュリティチェック: 解決後の行き先を選択';
     wrap.appendChild(title);
 
-    if (card.category === 'digimon') {
+    const isDigimon = card.category === 'digimon';
+    if (isDigimon) {
       const atkDP = getEffectiveDP(attackState.attackerStack);
       const secDP = card.dp ?? 0;
       const info = document.createElement('div');
       info.style.cssText = 'font-size:12px;color:var(--text-dim);';
-      info.innerHTML = `アタック側DP: <span class="mono" style="color:var(--accent);">${atkDP}</span> vs セキュリティDP: <span class="mono" style="color:var(--accent);">${secDP}</span>`;
+      info.innerHTML = `アタック側DP: <span class="mono" style="color:var(--accent);">${atkDP}</span> vs セキュリティDP: <span class="mono" style="color:var(--accent);">${secDP}</span>` +
+        (atkDP <= secDP ? ' <span style="color:var(--danger);">(アタック側が消滅します)</span>' : '');
       wrap.appendChild(info);
     }
 
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'btn primary';
-    btn.style.fontSize = '11px';
-    btn.textContent = '解決してトラッシュへ';
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;';
+    const resolve = (destination) => {
       snapshotPracticeState();
       defOwner.security.shift();
-      if (card.category === 'digimon') {
+      if (isDigimon) {
         const atkDP = getEffectiveDP(attackState.attackerStack);
         const secDP = card.dp ?? 0;
         if (atkDP <= secDP) trashEntireStack(attackState.attackerStack);
       }
-      defOwner.trash.push(top);
+      if (destination === 'hand') defOwner.hand.push(top);
+      else if (destination === 'battle') defOwner.battle.push({ cards: [top], rested: false });
+      else defOwner.trash.push(top);
       endAttack();
       renderPracticeBoard();
       showToast('セキュリティチェックが完了しました');
-    });
-    wrap.appendChild(btn);
+    };
+    const mkBtn = (label, destination, primary) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = primary ? 'btn primary' : 'btn';
+      b.style.fontSize = '11px';
+      b.textContent = label;
+      b.addEventListener('click', (e) => { e.stopPropagation(); resolve(destination); });
+      row.appendChild(b);
+    };
+    mkBtn('トラッシュへ', 'trash', true);
+    mkBtn('手札へ', 'hand');
+    if (isDigimon) mkBtn('バトルエリアへ登場(コストなし)', 'battle');
+    wrap.appendChild(row);
     detailBody.querySelector('.detail-info').appendChild(wrap);
   }
 
   function endAttack() {
     attackState = null;
+    lastAttackStepFn = null;
     cardDetailModal.classList.remove('open');
     renderPracticeBoard();
   }
@@ -4101,8 +4163,8 @@
     const topCard = getStackTopCard(stack);
     const centerEvent = { clientX: window.innerWidth / 2 - 130, clientY: window.innerHeight / 2 - 90 };
     openZonePopup(centerEvent, `「${topCard ? topCard.name : '?'}」がDP0以下になり消滅します`, [
-      { label: 'そのまま消滅(進化元ごとトラッシュへ)', onClick: () => trashEntireStack(stack) },
-      { label: '消滅効果を発揮(トラッシュに送らない)', onClick: () => showToast('消滅効果の処理は手動で行ってください') },
+      { label: 'そのまま消滅(進化元ごとトラッシュへ)', onClick: () => { trashEntireStack(stack); resumeAttackStepIfAny(); } },
+      { label: '消滅効果を発揮(トラッシュに送らない)', onClick: () => { showToast('消滅効果の処理は手動で行ってください'); resumeAttackStepIfAny(); } },
     ]);
   }
 
@@ -4116,6 +4178,7 @@
       promptDestructionChoice(stack);
     } else {
       showToast(`DPを${delta > 0 ? '+' : ''}${delta}しました(現在DP${newDP})`);
+      resumeAttackStepIfAny();
     }
   }
 
@@ -4180,6 +4243,7 @@
         cardDetailModal.classList.remove('open');
         renderPracticeBoard();
         showToast('DP増減をリセットしました');
+        resumeAttackStepIfAny();
       });
       row.appendChild(resetBtn);
     }
@@ -4394,7 +4458,6 @@
 
   document.getElementById('practiceSwitchViewBtn').addEventListener('click', () => {
     if (!practiceState) return;
-    if (attackState) { showToast('アタック処理中は視点を切り替えられません', true); return; }
     cancelTargetModes();
     practiceState.viewingIndex = 1 - practiceState.viewingIndex;
     renderPracticeBoard();
