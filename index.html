@@ -1154,6 +1154,22 @@
     text-shadow: 0 1px 2px rgba(0,0,0,0.6);
     z-index: 15;
   }
+  .st-blocker {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    font-size: 14px;
+    z-index: 16;
+    filter: drop-shadow(0 1px 2px rgba(0,0,0,0.7));
+  }
+  .st-renkei {
+    position: absolute;
+    bottom: 2px;
+    left: 2px;
+    font-size: 14px;
+    z-index: 16;
+    filter: drop-shadow(0 1px 2px rgba(0,0,0,0.7));
+  }
   .mat-side-col {
     display: flex;
     flex-direction: column;
@@ -1291,7 +1307,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.11.3</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.12.1</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -2530,7 +2546,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.11.3`);
+    log(`DigiCA Tool build v0.12.1`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -2764,6 +2780,27 @@
     return base + (stack.dpModifier || 0);
   }
 
+  // ≪ブロッカー≫は効果テキストから自動判定するが、効果で一時的に付与/剥奪されることも
+  // あるため、stack.blockerOverride(true/false/未設定)で手動上書きできるようにする。
+  function hasBlockerKeyword(stack) {
+    if (stack.blockerOverride === true || stack.blockerOverride === false) return stack.blockerOverride;
+    const c = getStackTopCard(stack);
+    return !!(c && c.effect && c.effect.includes('ブロッカー'));
+  }
+  function toggleBlocker(stack) {
+    stack.blockerOverride = !hasBlockerKeyword(stack);
+  }
+
+  // ≪連携≫も同様に効果テキストから自動判定し、stack.renkeiOverrideで手動上書きできる。
+  function hasRenkeiKeyword(stack) {
+    if (stack.renkeiOverride === true || stack.renkeiOverride === false) return stack.renkeiOverride;
+    const c = getStackTopCard(stack);
+    return !!(c && c.effect && c.effect.includes('連携'));
+  }
+  function toggleRenkei(stack) {
+    stack.renkeiOverride = !hasRenkeiKeyword(stack);
+  }
+
 
   function renderMulliganStep() {
     if (!practiceSetup) { practiceMulliganArea.innerHTML = ''; return; }
@@ -2912,6 +2949,8 @@
       <div class="stack-fan">${layerHtml}</div>
       ${stack.cards.length > 1 ? `<span class="st-count mono">${stack.cards.length}</span>` : ''}
       ${(stack.actingAsDigimon || ((stack.dpModifier || 0) !== 0 && isDigimonLikeStack(stack))) ? `<span class="st-dp">DP${getEffectiveDP(stack)}</span>` : ''}
+      ${(isDigimonLikeStack(stack) && hasBlockerKeyword(stack)) ? `<span class="st-blocker" title="ブロッカー">🛡</span>` : ''}
+      ${(isDigimonLikeStack(stack) && hasRenkeiKeyword(stack)) ? `<span class="st-renkei" title="連携">🤝</span>` : ''}
       <button type="button" class="tile-quickadd" title="レスト/アクティブ切替" style="opacity:0.55;">⟳</button>
     `;
     el.querySelector('.tile-quickadd').addEventListener('click', (e) => {
@@ -3197,10 +3236,9 @@
 
     // 相手のセキュリティ/消滅などの効果で、ターンを持っていない側にも登場・進化が
     // 発生することがあるため、ターン保持者に関わらず操作可能にする。
-    // アタック処理中でも、カウンタータイミング/ブロックタイミング/ブロック時効果の
-    // タイミングでは、相手側がカウンター等を発動できるよう手札操作を許可する。
-    const attackAllowsHandAction = !attackState ||
-      ['counter', 'block', 'blockTrigger'].includes(attackState.stepName);
+    // アタック処理中も、対象選択そのもの以外のタイミング(アタック時効果/カウンター/
+    // ブロック/ブロック時効果)では、双方が効果由来の登場・進化を行えるようにする。
+    const attackAllowsHandAction = !attackState || attackState.stepName !== 'target';
     const canAct = practiceState.turn.phase === 'main' && !evolveMode && !materialTargetMode && attackAllowsHandAction;
     const handRow = document.getElementById('selfHandRow');
     handRow.innerHTML = '';
@@ -3232,6 +3270,13 @@
       }
       handRow.appendChild(c);
     });
+
+    // 他の操作(進化・DP増減・カード移動など)によってゾーンポップアップが閉じても、
+    // アタック処理中であれば直前のステップ表示を自動的に復帰させる。個別の操作すべてに
+    // 復帰処理を書く代わりに、描画のたびにここでまとめて面倒を見る。
+    if (attackState && lastAttackStepFn && !zonePopupEl.classList.contains('open')) {
+      lastAttackStepFn();
+    }
   }
 
   // ---------- Undo (snapshot-based) ----------
@@ -3962,7 +4007,10 @@
     const defenderOwner = practiceState.players[1 - practiceState.viewingIndex];
     snapshotPracticeState();
     stack.rested = true;
-    attackState = { attackerStack: stack, attackerOwner, defenderOwner, targetType: null, targetStack: null };
+    attackState = {
+      attackerStack: stack, attackerOwner, defenderOwner, targetType: null, targetStack: null,
+      renkeiCount: 0, renkeiBonusDP: 0,
+    };
     cardDetailModal.classList.remove('open');
     renderPracticeBoard();
     showAttackTargetStep();
@@ -3997,11 +4045,54 @@
   // 効果が誘発する(ターン保持者→相手の順、11-1-3・15-4-5)。効果処理は自動化しないため
   // 手動処理を挟む素通りステップとして扱う。persistent指定により、他の場所を操作しても
   // (視点切替やDP増減など)このステップ表示は消えず、明示的に「次へ」を押すまで残る。
+  // ---------- 連携: 他のアクティブなデジモンをレストしてDPと追加セキュリティチェックを得る ----------
+  // 「連携を持っているか」の判定は行わず、実行の仕組みのみ提供する。
+  function renkeiActionLabel() {
+    const n = attackState.renkeiCount || 0;
+    const dp = attackState.renkeiBonusDP || 0;
+    return n > 0 ? `🤝 連携する(現在+${dp}DP・チェック+${n}枚)` : '🤝 連携する';
+  }
+
+  // アタック側デジモンが≪連携≫を持つ場合のみ、連携ボタンをアクション一覧に含める。
+  function renkeiActionItems() {
+    if (!hasRenkeiKeyword(attackState.attackerStack)) return [];
+    return [{ label: renkeiActionLabel(), onClick: () => showRenkeiPicker() }];
+  }
+
+  function showRenkeiPicker() {
+    const self = attackState.attackerOwner;
+    const candidates = self.battle.filter(s =>
+      !s.rested && s !== attackState.attackerStack && isDigimonLikeStack(s)
+    );
+    const actions = candidates.map(s => {
+      const c = getStackTopCard(s);
+      const dp = getEffectiveDP(s);
+      return {
+        label: `${c ? c.name : '?'}(DP${dp})をレストして連携`,
+        onClick: () => {
+          snapshotPracticeState();
+          s.rested = true;
+          attackState.renkeiCount = (attackState.renkeiCount || 0) + 1;
+          attackState.renkeiBonusDP = (attackState.renkeiBonusDP || 0) + dp;
+          renderPracticeBoard();
+          showToast(`連携: 「${c ? c.name : '?'}」をレスト(合計+${attackState.renkeiBonusDP}DP、セキュリティチェック+${attackState.renkeiCount}枚)`);
+          resumeAttackStepIfAny();
+        },
+      };
+    });
+    if (candidates.length === 0) {
+      actions.push({ label: 'レストできるデジモンがいません', onClick: () => resumeAttackStepIfAny() });
+    }
+    actions.push({ label: 'キャンセル', onClick: () => resumeAttackStepIfAny() });
+    openZonePopup(centerPoint(), '連携: レストするデジモンを選択', actions, true);
+  }
+
   function showAttackTriggerStep() {
     lastAttackStepFn = showAttackTriggerStep;
     if (attackState) attackState.stepName = 'trigger';
     openZonePopup(centerPoint(), '「アタック時」「アタックしたとき」の効果を処理(ターン保持者→相手の順)', [
       { label: '次へ(カウンタータイミングへ)', onClick: () => showAttackCounterStep() },
+      ...renkeiActionItems(),
     ], true);
   }
 
@@ -4010,6 +4101,7 @@
     if (attackState) attackState.stepName = 'counter';
     openZonePopup(centerPoint(), 'カウンタータイミング(相手の【カウンター】等があれば先に処理してください。視点を切り替えて相手側を操作できます)', [
       { label: '次へ(ブロックタイミングへ)', onClick: () => showAttackBlockStep() },
+      ...renkeiActionItems(),
     ], true);
   }
 
@@ -4017,8 +4109,13 @@
     lastAttackStepFn = showAttackBlockStep;
     if (attackState) attackState.stepName = 'block';
     if (attackState.targetType !== 'player') { resolveAttack(); return; }
-    const blockers = attackState.defenderOwner.battle.filter(s => !s.rested && s !== attackState.attackerStack);
-    const actions = [{ label: 'ブロックしない', onClick: () => resolveAttack() }];
+    const blockers = attackState.defenderOwner.battle.filter(s =>
+      !s.rested && s !== attackState.attackerStack && isDigimonLikeStack(s) && hasBlockerKeyword(s)
+    );
+    const actions = [
+      { label: 'ブロックしない', onClick: () => resolveAttack() },
+      ...renkeiActionItems(),
+    ];
     blockers.forEach(s => {
       const c = getStackTopCard(s);
       actions.push({
@@ -4043,12 +4140,14 @@
     if (attackState) attackState.stepName = 'blockTrigger';
     openZonePopup(centerPoint(), '「ブロックしたとき」「レストしたとき」等の効果を処理してください', [
       { label: '次へ(バトル解決へ)', onClick: () => resolveAttack() },
+      ...renkeiActionItems(),
     ], true);
   }
 
   function resolveBattle(a, b) {
-    const dpA = getEffectiveDP(a);
-    const dpB = getEffectiveDP(b);
+    const renkeiBonus = attackState ? (attackState.renkeiBonusDP || 0) : 0;
+    const dpA = getEffectiveDP(a) + (attackState && a === attackState.attackerStack ? renkeiBonus : 0);
+    const dpB = getEffectiveDP(b) + (attackState && b === attackState.attackerStack ? renkeiBonus : 0);
     const nameA = getStackTopCard(a) ? getStackTopCard(a).name : '?';
     const nameB = getStackTopCard(b) ? getStackTopCard(b).name : '?';
     if (dpA > dpB) {
@@ -4071,6 +4170,9 @@
   }
 
   function resolveAttack() {
+    // ここから先は「ステップ待ち」ではなく解決処理そのものなので、解決中に発生する
+    // 再描画で直前のステップ(ブロック等)が誤って再表示されないようにしておく。
+    lastAttackStepFn = null;
     if (attackState.targetType === 'digimon') {
       resolveBattle(attackState.attackerStack, attackState.targetStack);
       endAttack();
@@ -4083,18 +4185,21 @@
       showVictoryPopup(winner);
       return;
     }
+    attackState.securityChecksRemaining = 1 + (attackState.renkeiCount || 0);
     doSecurityCheckForAttack();
   }
 
   function doSecurityCheckForAttack() {
     const defOwner = attackState.defenderOwner;
+    const remaining = attackState.securityChecksRemaining || 1;
     const top = defOwner.security[0];
     const card = cardIndexByNumber.get(top);
+    const renkeiBonus = attackState.renkeiBonusDP || 0;
     if (!card) {
       // DB未登録カード等の保険: そのままトラッシュへ流す
       defOwner.security.shift();
       defOwner.trash.push(top);
-      endAttack();
+      advanceSecurityCheck();
       showToast('セキュリティを1枚トラッシュしました(カード情報なし)');
       return;
     }
@@ -4104,16 +4209,16 @@
     wrap.style.cssText = 'display:flex;flex-direction:column;gap:6px;margin-top:14px;padding-top:12px;border-top:1px solid var(--border);width:100%;';
     const title = document.createElement('div');
     title.style.cssText = 'font-size:11px;color:var(--text-dim);';
-    title.textContent = 'セキュリティチェック: 解決後の行き先を選択';
+    title.textContent = `セキュリティチェック(残り${remaining}枚): 解決後の行き先を選択`;
     wrap.appendChild(title);
 
     const isDigimon = card.category === 'digimon';
     if (isDigimon) {
-      const atkDP = getEffectiveDP(attackState.attackerStack);
+      const atkDP = getEffectiveDP(attackState.attackerStack) + renkeiBonus;
       const secDP = card.dp ?? 0;
       const info = document.createElement('div');
       info.style.cssText = 'font-size:12px;color:var(--text-dim);';
-      info.innerHTML = `アタック側DP: <span class="mono" style="color:var(--accent);">${atkDP}</span> vs セキュリティDP: <span class="mono" style="color:var(--accent);">${secDP}</span>` +
+      info.innerHTML = `アタック側DP: <span class="mono" style="color:var(--accent);">${atkDP}</span>${renkeiBonus ? `<span class="mono" style="color:var(--c-red);">(連携+${renkeiBonus})</span>` : ''} vs セキュリティDP: <span class="mono" style="color:var(--accent);">${secDP}</span>` +
         (atkDP <= secDP ? ' <span style="color:var(--danger);">(アタック側が消滅します)</span>' : '');
       wrap.appendChild(info);
     }
@@ -4124,16 +4229,16 @@
       snapshotPracticeState();
       defOwner.security.shift();
       if (isDigimon) {
-        const atkDP = getEffectiveDP(attackState.attackerStack);
+        const atkDP = getEffectiveDP(attackState.attackerStack) + renkeiBonus;
         const secDP = card.dp ?? 0;
         if (atkDP <= secDP) trashEntireStack(attackState.attackerStack);
       }
       if (destination === 'hand') defOwner.hand.push(top);
       else if (destination === 'battle') defOwner.battle.push({ cards: [top], rested: false });
       else defOwner.trash.push(top);
-      endAttack();
       renderPracticeBoard();
       showToast('セキュリティチェックが完了しました');
+      advanceSecurityCheck();
     };
     const mkBtn = (label, destination, primary) => {
       const b = document.createElement('button');
@@ -4149,6 +4254,20 @@
     if (isDigimon) mkBtn('バトルエリアへ登場(コストなし)', 'battle');
     wrap.appendChild(row);
     detailBody.querySelector('.detail-info').appendChild(wrap);
+  }
+
+  // 連携(≪Sアタック≫等)によるチェック枚数の残りを見て、次のセキュリティチェックに
+  // 進むか、成立確認を終えてアタックを終了するかを判断する。攻撃側が消滅した場合や
+  // セキュリティが尽きた場合はそこで打ち切る。
+  function advanceSecurityCheck() {
+    if (!attackState) return;
+    attackState.securityChecksRemaining = (attackState.securityChecksRemaining || 1) - 1;
+    const attackerAlive = !!findStackOwnerAndZone(attackState.attackerStack);
+    if (attackState.securityChecksRemaining > 0 && attackerAlive && attackState.defenderOwner.security.length > 0) {
+      doSecurityCheckForAttack();
+    } else {
+      endAttack();
+    }
   }
 
   function endAttack() {
@@ -4281,6 +4400,20 @@
     if (isTurnPlayersOwnBattleStack && !stack.rested && practiceState.turn.phase === 'main' &&
         !evolveMode && !materialTargetMode && !attackState && isDigimonLikeStack(stack)) {
       mk('⚔️ アタック宣言', () => declareAttack(stack));
+    }
+    if (isDigimonLikeStack(stack) && stackOwner && stackOwner.zone === 'battle') {
+      mk(hasBlockerKeyword(stack) ? '🛡 ブロッカーを解除' : '🛡 ブロッカーを付与', () => {
+        toggleBlocker(stack);
+        cardDetailModal.classList.remove('open');
+        renderPracticeBoard();
+        showToast(hasBlockerKeyword(stack) ? 'ブロッカーを付与しました' : 'ブロッカーを解除しました');
+      });
+      mk(hasRenkeiKeyword(stack) ? '🤝 連携を解除' : '🤝 連携を付与', () => {
+        toggleRenkei(stack);
+        cardDetailModal.classList.remove('open');
+        renderPracticeBoard();
+        showToast(hasRenkeiKeyword(stack) ? '連携を付与しました' : '連携を解除しました');
+      });
     }
     mk('レスト/アクティブ切替', () => {
       snapshotPracticeState();
