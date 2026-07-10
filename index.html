@@ -1307,7 +1307,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.13.0</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.13.1</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -1476,7 +1476,7 @@
       <!-- フェーズ操作(視点切替・パス・次のフェーズへ)をメモリーの直上にまとめる -->
       <div class="practice-topbar" style="justify-content:center;margin-bottom:6px;padding-bottom:0;border-bottom:none;">
         <button class="btn" id="practiceSwitchViewBtn">🔄 視点切り替え</button>
-        <span class="mono" id="phaseLabel" style="font-size:12px;color:var(--accent);min-width:110px;text-align:center;"></span>
+        <span class="mono" id="phaseLabel" style="font-size:18px;font-weight:700;color:var(--accent);min-width:140px;text-align:center;"></span>
         <button class="btn" id="practicePassBtn">パス</button>
         <button class="btn primary" id="practiceNextPhaseBtn">次のフェーズへ</button>
       </div>
@@ -2018,11 +2018,13 @@
     if (stackContext) {
       const owner = findStackOwnerAndZone(stackContext);
       const isOwn = owner && practiceState && owner.player === practiceState.players[practiceState.viewingIndex];
+      const detailInfo = detailBody.querySelector('.detail-info');
+      const dpPanel = renderDPModifierPanel(stackContext);
+      if (dpPanel) detailInfo.prepend(dpPanel);
       if (isOwn) {
-        detailBody.querySelector('.detail-info').appendChild(renderStackActionButtons(stackContext));
+        detailInfo.appendChild(renderStackActionButtons(stackContext));
       } else {
-        const dpPanel = renderDPModifierPanel(stackContext);
-        if (dpPanel) detailBody.querySelector('.detail-info').appendChild(dpPanel);
+        detailInfo.appendChild(renderOpponentStackActions(stackContext));
       }
     }
 
@@ -2546,7 +2548,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.13.0`);
+    log(`DigiCA Tool build v0.13.1`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -3029,22 +3031,33 @@
     // Multi-card stack: show contents from top to bottom; click any card for its detail.
     currentDetailCard = null;
     document.getElementById('addToDeckFromDetail').style.display = 'none';
+    const costLabel = (number) => {
+      const c = cardIndexByNumber.get(number);
+      if (!c) return '';
+      const cost = c.play_cost ?? (c.dual ? c.dual.use_cost : null);
+      return (cost !== null && cost !== undefined) ? `コスト${cost}` : '';
+    };
     const rows = stack.cards.slice().reverse().map((entry, i) => {
-      const label = i === 0 ? '一番上' : `進化元${i}`;
+      const isTop = i === 0;
+      const label = isTop ? '一番上' : `進化元${i}`;
       const number = cardEntryNum(entry);
       const faceDown = cardEntryFaceDown(entry);
+      const cost = costLabel(number);
       return `
-        <div class="deck-list-item" style="cursor:default;">
-          <img src="${escapeHtml(miniCardImg(number))}" alt="" class="stack-view-row" data-number="${escapeHtml(number)}" style="width:34px;border-radius:3px;cursor:pointer;" onerror="this.style.opacity=0">
-          <span class="dli-number mono">${escapeHtml(label)}</span>
-          <span class="dli-name stack-view-row" data-number="${escapeHtml(number)}" style="cursor:pointer;">${escapeHtml(miniCardName(number))}${faceDown ? ' <span style="color:var(--text-dim);">(裏向き)</span>' : ''}</span>
+        <div class="deck-list-item" style="cursor:default;${isTop ? `border-color:var(--accent);background:var(--panel);` : ''}">
+          <img src="${escapeHtml(miniCardImg(number))}" alt="" class="stack-view-row" data-number="${escapeHtml(number)}" style="width:${isTop ? 52 : 40}px;border-radius:4px;cursor:pointer;flex-shrink:0;" onerror="this.style.opacity=0">
+          <span class="dli-number mono" style="${isTop ? 'color:var(--accent);font-weight:700;' : ''}">${escapeHtml(label)}</span>
+          <span class="dli-name stack-view-row" data-number="${escapeHtml(number)}" style="cursor:pointer;${isTop ? 'font-weight:700;' : ''}">${escapeHtml(miniCardName(number))}${faceDown ? ' <span style="color:var(--text-dim);">(裏向き)</span>' : ''}</span>
+          ${cost ? `<span class="mono" style="font-size:11px;color:var(--text-dim);">${escapeHtml(cost)}</span>` : ''}
           <button type="button" class="btn stack-row-move" data-row-idx="${i}" style="font-size:10px;padding:3px 6px;">送る▾</button>
         </div>`;
     }).join('');
+    const topNumber = cardEntryNum(stack.cards[stack.cards.length - 1]);
+    const topTitle = `${miniCardName(topNumber)} ${costLabel(topNumber)}`.trim();
     detailBody.innerHTML = `
       <div class="detail-info" style="width:100%;">
-        <div class="d-title">進化元の中身(上から順)</div>
-        <div class="d-number mono">${stack.cards.length}枚${stack.rested ? '・レスト中' : ''}</div>
+        <div class="d-title">${escapeHtml(topTitle)}</div>
+        <div class="d-number mono">進化元 ${stack.cards.length}枚(上から順)${stack.rested ? '・レスト中' : ''}</div>
         <div class="deck-list" style="margin-top:8px;">${rows}</div>
       </div>
     `;
@@ -3071,11 +3084,13 @@
     cardDetailModal.classList.add('open');
     const owner = findStackOwnerAndZone(stack);
     const isOwn = owner && practiceState && owner.player === practiceState.players[practiceState.viewingIndex];
+    const detailInfo = detailBody.querySelector('.detail-info');
+    const dpPanel = renderDPModifierPanel(stack);
+    if (dpPanel) detailInfo.prepend(dpPanel);
     if (isOwn) {
-      detailBody.querySelector('.detail-info').appendChild(renderStackActionButtons(stack));
+      detailInfo.appendChild(renderStackActionButtons(stack));
     } else {
-      const dpPanel = renderDPModifierPanel(stack);
-      if (dpPanel) detailBody.querySelector('.detail-info').appendChild(dpPanel);
+      detailInfo.appendChild(renderOpponentStackActions(stack));
     }
   }
 
@@ -4445,12 +4460,12 @@
   function renderDPModifierPanel(stack) {
     if (!isDigimonLikeStack(stack)) return null;
     const wrap = document.createElement('div');
-    wrap.style.cssText = 'display:flex;flex-direction:column;gap:6px;margin-top:14px;padding-top:12px;border-top:1px solid var(--border);width:100%;';
+    wrap.style.cssText = 'display:flex;flex-direction:column;gap:8px;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--border);width:100%;';
     const mod = stack.dpModifier || 0;
     const info = document.createElement('div');
-    info.style.cssText = 'font-size:12px;color:var(--text-dim);display:flex;gap:8px;align-items:center;';
-    info.innerHTML = `現在DP: <span class="mono" style="color:var(--accent);">${getEffectiveDP(stack)}</span>` +
-      (mod !== 0 ? `<span class="mono" style="color:${mod > 0 ? 'var(--c-red)' : 'var(--c-blue)'};">(${mod > 0 ? '+' : ''}${mod})</span>` : '');
+    info.style.cssText = 'font-size:16px;color:var(--text-dim);display:flex;gap:10px;align-items:center;';
+    info.innerHTML = `現在DP: <span class="mono" style="font-size:22px;font-weight:800;color:var(--accent);">${getEffectiveDP(stack)}</span>` +
+      (mod !== 0 ? `<span class="mono" style="font-size:15px;color:${mod > 0 ? 'var(--c-red)' : 'var(--c-blue)'};">(${mod > 0 ? '+' : ''}${mod})</span>` : '');
     wrap.appendChild(info);
 
     const row = document.createElement('div');
@@ -4479,6 +4494,42 @@
       });
       row.appendChild(resetBtn);
     }
+    wrap.appendChild(row);
+    return wrap;
+  }
+
+  // 相手の進化元に対しても、効果で発生しうる基本的な移動操作(手札/トラッシュ/デッキ下)
+  // だけを許可する簡易パネル。進化・アタック宣言・ブロッカー付与など自分専用の操作は含めない。
+  function renderOpponentStackActions(stack) {
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'display:flex;flex-direction:column;gap:6px;margin-top:14px;padding-top:12px;border-top:1px solid var(--border);width:100%;';
+    const title = document.createElement('div');
+    title.style.cssText = 'font-size:11px;color:var(--text-dim);';
+    title.textContent = '相手の進化元への操作(効果用)';
+    wrap.appendChild(title);
+
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;';
+    const mk = (label, onClick) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'btn';
+      b.style.fontSize = '11px';
+      b.textContent = label;
+      b.addEventListener('click', (e) => { e.stopPropagation(); onClick(e); });
+      row.appendChild(b);
+    };
+    const topIndex = stack.cards.length - 1;
+    mk('レスト/アクティブ切替', () => {
+      snapshotPracticeState();
+      stack.rested = !stack.rested;
+      cardDetailModal.classList.remove('open');
+      renderPracticeBoard();
+    });
+    mk('一番上を手札へ', () => removeCardFromStackAt(stack, topIndex, 'hand'));
+    mk('一番上をトラッシュへ', () => removeCardFromStackAt(stack, topIndex, 'trash'));
+    mk('一番上をデッキの下へ', () => removeCardFromStackAt(stack, topIndex, 'deckBottom'));
+    mk('進化元を全部トラッシュへ', () => trashEntireStack(stack));
     wrap.appendChild(row);
     return wrap;
   }
@@ -4586,8 +4637,6 @@
       { label: '下へ', onClick: () => removeCardFromStackAt(stack, topIndex, 'secBottom') },
     ]));
     wrap.appendChild(row);
-    const dpPanel = renderDPModifierPanel(stack);
-    if (dpPanel) wrap.appendChild(dpPanel);
     return wrap;
   }
 
