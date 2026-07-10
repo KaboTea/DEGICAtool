@@ -1307,7 +1307,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.12.1</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.13.0</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -2007,8 +2007,8 @@
         <div class="d-number mono">${escapeHtml(card.number)}</div>
         <div class="detail-tags">${tags.map(t => `<span>${escapeHtml(t)}</span>`).join('')}</div>
         ${evoHtml}
-        ${card.inherited ? `<div class="detail-effect"><span class="label">${card.inherited.includes('リンク') ? 'リンク効果' : '進化元効果'}</span>${escapeHtml(card.inherited)}</div>` : ''}
         ${card.effect ? `<div class="detail-effect"><span class="label">効果</span>${escapeHtml(card.effect)}</div>` : ''}
+        ${card.inherited ? `<div class="detail-effect"><span class="label">${card.inherited.includes('リンク') ? 'リンク効果' : '進化元効果'}</span>${escapeHtml(card.inherited)}</div>` : ''}
         ${card.security_effect ? `<div class="detail-effect"><span class="label">セキュリティ効果</span>${escapeHtml(card.security_effect)}</div>` : ''}
         ${dualHtml}
       </div>
@@ -2546,7 +2546,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.12.1`);
+    log(`DigiCA Tool build v0.13.0`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -2782,10 +2782,10 @@
 
   // ≪ブロッカー≫は効果テキストから自動判定するが、効果で一時的に付与/剥奪されることも
   // あるため、stack.blockerOverride(true/false/未設定)で手動上書きできるようにする。
+  // ≪ブロッカー≫は「進化元に◯◯が4枚以上あれば」のような条件付き付与のカードも多く、
+  // 効果テキストの文言だけでは正しく自動判定できないため、自動検出はせず完全手動にする。
   function hasBlockerKeyword(stack) {
-    if (stack.blockerOverride === true || stack.blockerOverride === false) return stack.blockerOverride;
-    const c = getStackTopCard(stack);
-    return !!(c && c.effect && c.effect.includes('ブロッカー'));
+    return stack.blockerOverride === true;
   }
   function toggleBlocker(stack) {
     stack.blockerOverride = !hasBlockerKeyword(stack);
@@ -2997,10 +2997,33 @@
     showToast(`退化しました(${destination === 'hand' ? '手札' : 'トラッシュ'}へ)`);
   }
 
-  function openStackDetail(stack) {
+  // 進化元が9枚以上あるときは、まず一番上のカード(通常の詳細+操作パネル)だけを表示し、
+  // 展開ボタンを押したときだけ全件リストを表示する(重なりが多いスタックの詳細が
+  // 毎回大量表示になるのを避けるため)。
+  function showCollapsedMaterialView(stack) {
+    const topCard = cardIndexByNumber.get(cardEntryNum(stack.cards[stack.cards.length - 1]));
+    if (!topCard) return;
+    openCardDetail(topCard, true, stack);
+    const expandWrap = document.createElement('div');
+    expandWrap.style.cssText = 'margin-top:10px;';
+    const expandBtn = document.createElement('button');
+    expandBtn.type = 'button';
+    expandBtn.className = 'btn primary';
+    expandBtn.style.fontSize = '11px';
+    expandBtn.textContent = `📚 進化元一覧を見る(${stack.cards.length}枚)`;
+    expandBtn.addEventListener('click', (e) => { e.stopPropagation(); openStackDetail(stack, true); });
+    expandWrap.appendChild(expandBtn);
+    detailBody.querySelector('.detail-info').appendChild(expandWrap);
+  }
+
+  function openStackDetail(stack, forceExpand) {
     if (stack.cards.length <= 1) {
       const card = cardIndexByNumber.get(cardEntryNum(stack.cards[stack.cards.length - 1]));
       if (card) openCardDetail(card, true, stack);
+      return;
+    }
+    if (!forceExpand && stack.cards.length >= 9) {
+      showCollapsedMaterialView(stack);
       return;
     }
     // Multi-card stack: show contents from top to bottom; click any card for its detail.
@@ -3238,8 +3261,11 @@
     // 発生することがあるため、ターン保持者に関わらず操作可能にする。
     // アタック処理中も、対象選択そのもの以外のタイミング(アタック時効果/カウンター/
     // ブロック/ブロック時効果)では、双方が効果由来の登場・進化を行えるようにする。
+    // ターン開始時(アクティブフェイズ、ドロー前)・ターン終了時(エンドフェイズ)の
+    // 効果もあるため、メインフェイズ以外でもこれらのフェイズでは操作を許可する。
     const attackAllowsHandAction = !attackState || attackState.stepName !== 'target';
-    const canAct = practiceState.turn.phase === 'main' && !evolveMode && !materialTargetMode && attackAllowsHandAction;
+    const phaseAllowsHandAction = ['active', 'main', 'end'].includes(practiceState.turn.phase);
+    const canAct = phaseAllowsHandAction && !evolveMode && !materialTargetMode && attackAllowsHandAction;
     const handRow = document.getElementById('selfHandRow');
     handRow.innerHTML = '';
     self.hand.forEach((number, index) => {
@@ -3510,6 +3536,8 @@
   document.getElementById('evolveRouteCancel').addEventListener('click', () => {
     evolveRouteModal.classList.remove('open');
     evolveRouteTarget = null;
+    cancelTargetModes();
+    renderPracticeBoard();
   });
 
   // ---------- Hand actions: 登場 / 進化 / 育成進化 / トラッシュ ----------
@@ -3645,6 +3673,13 @@
       snapshotPracticeState();
       self.security.shift();
       self.hand.push(top);
+      cardDetailModal.classList.remove('open');
+      renderPracticeBoard();
+    });
+    mk('バトルエリアへ登場(コストなし)', () => {
+      snapshotPracticeState();
+      self.security.shift();
+      self.battle.push({ cards: [top], rested: false });
       cardDetailModal.classList.remove('open');
       renderPracticeBoard();
     });
@@ -3864,10 +3899,73 @@
     const self = practiceState.players[practiceState.viewingIndex];
     openZonePopup(e, `セキュリティ(${self.security.length}枚)`, [
       { label: '1枚公開して処理', onClick: manualSecurityCheck },
+      { label: 'セキュリティを全て見る', onClick: openSecurityListView },
       { label: '一番下を手札へ', onClick: securityBottomToHand },
       { label: 'カードを上に置く(手札/トラッシュ/バトルから)', onClick: placeOnSecurityTop },
       { label: 'カードを下に置く(手札/トラッシュ/バトルから)', onClick: placeOnSecurityBottom },
     ]);
+  }
+
+  // セキュリティを全部見て、任意の枚数を好きなゾーンへ移動し、最後に残りをシャッフルして
+  // セキュリティへ戻す(「セキュリティを全て見て1〜5枚を移動、その後シャッフルして戻す」
+  // といった効果に対応)。
+  function openSecurityListView() {
+    const self = practiceState.players[practiceState.viewingIndex];
+    currentDetailCard = null;
+    document.getElementById('addToDeckFromDetail').style.display = 'none';
+
+    function render() {
+      const rows = self.security.map((number, idx) => `
+        <div class="deck-list-item" style="cursor:default;">
+          <img src="${escapeHtml(miniCardImg(number))}" alt="" class="sec-list-img" data-idx="${idx}" style="width:34px;border-radius:3px;cursor:pointer;" onerror="this.style.opacity=0">
+          <span class="dli-name sec-list-name" data-idx="${idx}" style="cursor:pointer;">${escapeHtml(miniCardName(number))}</span>
+          <button type="button" class="btn sec-row-move" data-idx="${idx}" style="font-size:10px;padding:3px 6px;">送る▾</button>
+        </div>`).join('');
+      detailBody.innerHTML = `
+        <div class="detail-info" style="width:100%;">
+          <div class="d-title">セキュリティ(${self.security.length}枚、上から順)</div>
+          <div class="deck-list" style="margin-top:8px;">${rows || '<div class="empty-state">セキュリティは空です</div>'}</div>
+          <button type="button" class="btn primary" id="secShuffleBtn" style="margin-top:10px;">残りをシャッフルしてセキュリティに戻す</button>
+        </div>
+      `;
+      detailBody.querySelectorAll('.sec-list-img, .sec-list-name').forEach(el => {
+        el.addEventListener('click', () => {
+          const idx = parseInt(el.dataset.idx, 10);
+          const card = cardIndexByNumber.get(self.security[idx]);
+          if (card) openCardDetail(card, true);
+        });
+      });
+      detailBody.querySelectorAll('.sec-row-move').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const idx = parseInt(btn.dataset.idx, 10);
+          const number = self.security[idx];
+          openZonePopup(e, `「${escapeHtml(miniCardName(number))}」を送る`,
+            ALL_DESTINATIONS.filter(d => d !== 'secTop' && d !== 'secBottom').map(dest => ({
+              label: DESTINATION_LABEL[dest],
+              onClick: () => {
+                snapshotPracticeState();
+                self.security.splice(idx, 1);
+                sendCardToDestination(self, number, dest);
+                renderPracticeBoard();
+                render();
+                cardDetailModal.classList.add('open');
+              },
+            }))
+          );
+        });
+      });
+      detailBody.querySelector('#secShuffleBtn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        snapshotPracticeState();
+        self.security = shuffleArray(self.security);
+        renderPracticeBoard();
+        showToast('セキュリティをシャッフルしました');
+        cardDetailModal.classList.remove('open');
+      });
+    }
+    render();
+    cardDetailModal.classList.add('open');
   }
 
   // トラッシュをクリックすると中身の一覧が直接開き、カードごとに「送る▾」(移動先選択)
@@ -4019,7 +4117,9 @@
   function showAttackTargetStep() {
     lastAttackStepFn = showAttackTargetStep;
     if (attackState) attackState.stepName = 'target';
-    const restedTargets = attackState.defenderOwner.battle.filter(s => s.rested);
+    const enemyDigimon = attackState.defenderOwner.battle.filter(s => isDigimonLikeStack(s));
+    const restedTargets = enemyDigimon.filter(s => s.rested);
+    const activeTargets = enemyDigimon.filter(s => !s.rested);
     const actions = [
       { label: `相手プレイヤーへ(セキュリティ${attackState.defenderOwner.security.length}枚)`, onClick: () => {
         attackState.targetType = 'player';
@@ -4038,7 +4138,20 @@
         },
       });
     });
-    openZonePopup(centerPoint(), 'アタック対象を選択(レスト状態の相手デジモンのみ選べます)', actions, true);
+    // 通常は対象にできないが、「衝突」等アクティブなデジモンを対象にする効果もあるため、
+    // 効果用の選択肢として別枠で用意しておく(判定はプレイヤーに委ねる)。
+    activeTargets.forEach(s => {
+      const c = getStackTopCard(s);
+      actions.push({
+        label: `(効果)${c ? c.name : '?'}(DP${getEffectiveDP(s)})へ`,
+        onClick: () => {
+          attackState.targetType = 'digimon';
+          attackState.targetStack = s;
+          showAttackTriggerStep();
+        },
+      });
+    });
+    openZonePopup(centerPoint(), 'アタック対象を選択(通常はレスト状態のデジモンのみ。(効果)はアクティブなデジモンを対象にする効果用)', actions, true);
   }
 
   // 宣言直後、カウンタータイミングより前に「アタック時」「デジモンがアタックしたとき」の
@@ -4251,7 +4364,7 @@
     };
     mkBtn('トラッシュへ', 'trash', true);
     mkBtn('手札へ', 'hand');
-    if (isDigimon) mkBtn('バトルエリアへ登場(コストなし)', 'battle');
+    mkBtn('バトルエリアへ登場(コストなし)', 'battle');
     wrap.appendChild(row);
     detailBody.querySelector('.detail-info').appendChild(wrap);
   }
@@ -4482,12 +4595,7 @@
   // with stack action buttons attached below so the player can read the card
   // text and act on it without switching screens.
   function openStackActionView(stack) {
-    if (stack.cards.length <= 1) {
-      const card = cardIndexByNumber.get(cardEntryNum(stack.cards[stack.cards.length - 1]));
-      if (card) openCardDetail(card, true, stack);
-    } else {
-      openStackDetail(stack);
-    }
+    openStackDetail(stack);
   }
 
   function renderUtilityActions() {
