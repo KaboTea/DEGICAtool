@@ -1307,7 +1307,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.13.1</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.13.2</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -2020,7 +2020,11 @@
       const isOwn = owner && practiceState && owner.player === practiceState.players[practiceState.viewingIndex];
       const detailInfo = detailBody.querySelector('.detail-info');
       const dpPanel = renderDPModifierPanel(stackContext);
-      if (dpPanel) detailInfo.prepend(dpPanel);
+      if (dpPanel) {
+        const tagsEl = detailInfo.querySelector('.detail-tags');
+        if (tagsEl && tagsEl.nextSibling) tagsEl.parentNode.insertBefore(dpPanel, tagsEl.nextSibling);
+        else detailInfo.appendChild(dpPanel);
+      }
       if (isOwn) {
         detailInfo.appendChild(renderStackActionButtons(stackContext));
       } else {
@@ -2548,7 +2552,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.13.1`);
+    log(`DigiCA Tool build v0.13.2`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -2767,6 +2771,10 @@
   // { n: number, d: true }. These helpers normalize either shape.
   function cardEntryNum(entry) { return (entry && typeof entry === 'object') ? entry.n : entry; }
   function cardEntryFaceDown(entry) { return !!(entry && typeof entry === 'object' && entry.d); }
+
+  // セキュリティは通常裏向きが基本のため、進化元とは逆に「表向きのものだけ」を
+  // {n, u:true} という特別な形で持たせる(それ以外は普通の番号=裏向き)。
+  function cardEntryFaceUp(entry) { return !!(entry && typeof entry === 'object' && entry.u); }
 
   // ---------- DP helpers (used by both battle-area rendering and the DP modify feature) ----------
   function getStackTopCard(stack) {
@@ -3086,7 +3094,11 @@
     const isOwn = owner && practiceState && owner.player === practiceState.players[practiceState.viewingIndex];
     const detailInfo = detailBody.querySelector('.detail-info');
     const dpPanel = renderDPModifierPanel(stack);
-    if (dpPanel) detailInfo.prepend(dpPanel);
+    if (dpPanel) {
+      const titleEl = detailInfo.querySelector('.d-title');
+      if (titleEl && titleEl.nextSibling) titleEl.parentNode.insertBefore(dpPanel, titleEl.nextSibling);
+      else detailInfo.appendChild(dpPanel);
+    }
     if (isOwn) {
       detailInfo.appendChild(renderStackActionButtons(stack));
     } else {
@@ -3653,7 +3665,8 @@
   function manualSecurityCheck() {
     const self = practiceState.players[practiceState.viewingIndex];
     if (self.security.length === 0) { showToast('セキュリティがありません', true); return; }
-    const top = self.security[0];
+    const topEntry = self.security[0];
+    const top = cardEntryNum(topEntry);
     const card = cardIndexByNumber.get(top);
     if (!card) { showToast('カード情報が見つかりませんでした', true); return; }
 
@@ -3891,23 +3904,27 @@
     const self = practiceState.players[practiceState.viewingIndex];
     if (self.security.length === 0) { showToast('セキュリティがありません', true); return; }
     snapshotPracticeState();
-    const num = self.security.pop(); // security[0]=top, last index=bottom
+    const num = cardEntryNum(self.security.pop()); // security[0]=top, last index=bottom
     self.hand.push(num);
     renderPracticeBoard();
     showToast('セキュリティの一番下を手札に加えました');
   }
   function placeOnSecurityTop() {
     pickSourceCard('セキュリティの上に置くカードを選択', (num) => {
-      practiceState.players[practiceState.viewingIndex].security.unshift(num);
-      renderPracticeBoard();
-      showToast('セキュリティの上に置きました');
+      askFaceOrientation((faceDown) => {
+        practiceState.players[practiceState.viewingIndex].security.unshift(faceDown ? num : { n: num, u: true });
+        renderPracticeBoard();
+        showToast(`セキュリティの上に置きました(${faceDown ? '裏向き' : '表向き'})`);
+      });
     });
   }
   function placeOnSecurityBottom() {
     pickSourceCard('セキュリティの下に置くカードを選択', (num) => {
-      practiceState.players[practiceState.viewingIndex].security.push(num);
-      renderPracticeBoard();
-      showToast('セキュリティの下に置きました');
+      askFaceOrientation((faceDown) => {
+        practiceState.players[practiceState.viewingIndex].security.push(faceDown ? num : { n: num, u: true });
+        renderPracticeBoard();
+        showToast(`セキュリティの下に置きました(${faceDown ? '裏向き' : '表向き'})`);
+      });
     });
   }
   function openSecurityPopup(e) {
@@ -3930,12 +3947,16 @@
     document.getElementById('addToDeckFromDetail').style.display = 'none';
 
     function render() {
-      const rows = self.security.map((number, idx) => `
-        <div class="deck-list-item" style="cursor:default;">
+      const rows = self.security.map((entry, idx) => {
+        const number = cardEntryNum(entry);
+        const faceUp = cardEntryFaceUp(entry);
+        return `
+        <div class="deck-list-item" style="cursor:default;${faceUp ? 'border-color:var(--accent);' : ''}">
           <img src="${escapeHtml(miniCardImg(number))}" alt="" class="sec-list-img" data-idx="${idx}" style="width:34px;border-radius:3px;cursor:pointer;" onerror="this.style.opacity=0">
-          <span class="dli-name sec-list-name" data-idx="${idx}" style="cursor:pointer;">${escapeHtml(miniCardName(number))}</span>
+          <span class="dli-name sec-list-name" data-idx="${idx}" style="cursor:pointer;">${escapeHtml(miniCardName(number))}${faceUp ? ' <span style="color:var(--accent);">(表向き)</span>' : ''}</span>
           <button type="button" class="btn sec-row-move" data-idx="${idx}" style="font-size:10px;padding:3px 6px;">送る▾</button>
-        </div>`).join('');
+        </div>`;
+      }).join('');
       detailBody.innerHTML = `
         <div class="detail-info" style="width:100%;">
           <div class="d-title">セキュリティ(${self.security.length}枚、上から順)</div>
@@ -3946,7 +3967,7 @@
       detailBody.querySelectorAll('.sec-list-img, .sec-list-name').forEach(el => {
         el.addEventListener('click', () => {
           const idx = parseInt(el.dataset.idx, 10);
-          const card = cardIndexByNumber.get(self.security[idx]);
+          const card = cardIndexByNumber.get(cardEntryNum(self.security[idx]));
           if (card) openCardDetail(card, true);
         });
       });
@@ -3954,7 +3975,7 @@
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
           const idx = parseInt(btn.dataset.idx, 10);
-          const number = self.security[idx];
+          const number = cardEntryNum(self.security[idx]);
           openZonePopup(e, `「${escapeHtml(miniCardName(number))}」を送る`,
             ALL_DESTINATIONS.filter(d => d !== 'secTop' && d !== 'secBottom').map(dest => ({
               label: DESTINATION_LABEL[dest],
@@ -4020,12 +4041,19 @@
             ALL_DESTINATIONS.map(dest => ({
               label: DESTINATION_LABEL[dest],
               onClick: () => {
-                snapshotPracticeState();
-                self.trash.splice(idx, 1);
-                sendCardToDestination(self, number, dest);
-                cardDetailModal.classList.remove('open');
-                renderPracticeBoard();
-                showToast(`カードを${DESTINATION_LABEL[dest]}移動しました`);
+                const finish = (faceUp) => {
+                  snapshotPracticeState();
+                  self.trash.splice(idx, 1);
+                  sendCardToDestination(self, number, dest, faceUp);
+                  cardDetailModal.classList.remove('open');
+                  renderPracticeBoard();
+                  showToast(`カードを${DESTINATION_LABEL[dest]}移動しました`);
+                };
+                if (dest === 'secTop' || dest === 'secBottom') {
+                  askFaceOrientation((faceDown) => finish(!faceDown));
+                } else {
+                  finish(false);
+                }
               },
             }))
           );
@@ -4048,13 +4076,14 @@
   // ---------- Evolution material add (進化元に追加) ----------
   // ---------- Generic "send card to zone" helper ----------
   // destination: 'hand' | 'trash' | 'deckTop' | 'deckBottom' | 'secTop' | 'secBottom'
-  function sendCardToDestination(player, number, destination) {
+  // faceUp: セキュリティへ送る場合のみ有効。true なら表向きで入れる(通常は裏向き)。
+  function sendCardToDestination(player, number, destination, faceUp) {
     if (destination === 'hand') player.hand.push(number);
     else if (destination === 'trash') player.trash.push(number);
     else if (destination === 'deckTop') player.library.unshift(number);
     else if (destination === 'deckBottom') player.library.push(number);
-    else if (destination === 'secTop') player.security.unshift(number);
-    else if (destination === 'secBottom') player.security.push(number);
+    else if (destination === 'secTop') player.security.unshift(faceUp ? { n: number, u: true } : number);
+    else if (destination === 'secBottom') player.security.push(faceUp ? { n: number, u: true } : number);
   }
   const DESTINATION_LABEL = {
     hand: '手札へ', trash: 'トラッシュへ',
@@ -4066,16 +4095,23 @@
   function removeCardFromStackAt(stack, cardIndexInStack, destination) {
     const owner = findStackOwnerAndZone(stack);
     if (!owner) return;
-    snapshotPracticeState();
-    const [removedEntry] = stack.cards.splice(cardIndexInStack, 1);
-    sendCardToDestination(owner.player, cardEntryNum(removedEntry), destination);
-    if (stack.cards.length === 0) {
-      if (owner.zone === 'raising') owner.player.raising = null;
-      else owner.player.battle.splice(owner.index, 1);
+    const finish = (faceUp) => {
+      snapshotPracticeState();
+      const [removedEntry] = stack.cards.splice(cardIndexInStack, 1);
+      sendCardToDestination(owner.player, cardEntryNum(removedEntry), destination, faceUp);
+      if (stack.cards.length === 0) {
+        if (owner.zone === 'raising') owner.player.raising = null;
+        else owner.player.battle.splice(owner.index, 1);
+      }
+      cardDetailModal.classList.remove('open');
+      renderPracticeBoard();
+      showToast(`カードを${DESTINATION_LABEL[destination]}移動しました`);
+    };
+    if (destination === 'secTop' || destination === 'secBottom') {
+      askFaceOrientation((faceDown) => finish(!faceDown));
+    } else {
+      finish(false);
     }
-    cardDetailModal.classList.remove('open');
-    renderPracticeBoard();
-    showToast(`カードを${DESTINATION_LABEL[destination]}移動しました`);
   }
 
   // Asks whether the card should be added face-up or face-down, using a small
@@ -4320,7 +4356,7 @@
   function doSecurityCheckForAttack() {
     const defOwner = attackState.defenderOwner;
     const remaining = attackState.securityChecksRemaining || 1;
-    const top = defOwner.security[0];
+    const top = cardEntryNum(defOwner.security[0]);
     const card = cardIndexByNumber.get(top);
     const renkeiBonus = attackState.renkeiBonusDP || 0;
     if (!card) {
@@ -4464,7 +4500,7 @@
     const mod = stack.dpModifier || 0;
     const info = document.createElement('div');
     info.style.cssText = 'font-size:16px;color:var(--text-dim);display:flex;gap:10px;align-items:center;';
-    info.innerHTML = `現在DP: <span class="mono" style="font-size:22px;font-weight:800;color:var(--accent);">${getEffectiveDP(stack)}</span>` +
+    info.innerHTML = `現在DP: <span class="mono" style="font-size:18px;font-weight:800;color:var(--accent);">${getEffectiveDP(stack)}</span>` +
       (mod !== 0 ? `<span class="mono" style="font-size:15px;color:${mod > 0 ? 'var(--c-red)' : 'var(--c-blue)'};">(${mod > 0 ? '+' : ''}${mod})</span>` : '');
     wrap.appendChild(info);
 
