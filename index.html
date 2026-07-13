@@ -929,6 +929,11 @@
     border-color: var(--accent);
     box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
   }
+  .stack-tile.burst-evolved .stack-fan {
+    outline: 2px solid #ff9800;
+    outline-offset: 2px;
+    border-radius: 8px;
+  }
   .stack-actions {
     display: flex;
     gap: 4px;
@@ -1320,7 +1325,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.14.2</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.15.1</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -2565,7 +2570,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.14.2`);
+    log(`DigiCA Tool build v0.15.1`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -2954,7 +2959,7 @@
     const fanUp = topCard && (topCard.category === 'tamer' || topCard.category === 'option') && !stack.actingAsDigimon;
     const OFFSET_STEP = 24;
     const maxOffset = (layers.length - 1) * OFFSET_STEP;
-    el.className = 'stack-tile' + (stack.rested ? ' rested' : '') + (isEvolveTarget ? ' target-pick' : '');
+    el.className = 'stack-tile' + (stack.rested ? ' rested' : '') + (isEvolveTarget ? ' target-pick' : '') + (stack.burstEvolved ? ' burst-evolved' : '');
     el.style.padding = fanUp ? `${maxOffset}px 0 0 0` : `0 0 ${maxOffset}px 0`;
     const layerHtml = layers.map((entry, i) => {
       const depth = layers.length - 1 - i; // 0 = top card (no offset), increasing = further back
@@ -3305,7 +3310,7 @@
     // 効果もあるため、メインフェイズ以外でもこれらのフェイズでは操作を許可する。
     const attackAllowsHandAction = !attackState || attackState.stepName !== 'target';
     const phaseAllowsHandAction = ['active', 'main', 'end'].includes(practiceState.turn.phase);
-    const canAct = phaseAllowsHandAction && !evolveMode && !materialTargetMode && attackAllowsHandAction;
+    const canAct = phaseAllowsHandAction && !evolveMode && !materialTargetMode && !multiEvolveMode && !assemblyMode && attackAllowsHandAction;
     const handRow = document.getElementById('selfHandRow');
     handRow.innerHTML = '';
     self.hand.forEach((number, index) => {
@@ -3329,8 +3334,8 @@
           b.addEventListener('click', (e) => { e.stopPropagation(); fn(e); });
           actions.appendChild(b);
         };
-        mkBtn('登場', (e) => appearFromHand(index, number, e), card.play_cost === null || card.play_cost === undefined);
-        mkBtn('進化', () => enterEvolveMode(index, number));
+        mkBtn('登場', (e) => showAppearTypeMenu(index, number, e), card.play_cost === null || card.play_cost === undefined);
+        mkBtn('進化', (e) => showEvolveTypeMenu(index, number, e));
         mkBtn('進化元に追加', () => enterMaterialTargetMode(number, 'hand', index));
         mkBtn('捨てる', () => trashFromHand(index));
       }
@@ -3444,9 +3449,11 @@
   }
 
   // ---------- Evolve / add-material target-picking mode ----------
-  let evolveMode = null; // { handIndex, handNumber, card }
+  let evolveMode = null; // { handIndex, handNumber, card, burst }
   let materialTargetMode = null; // { source: 'hand'|'trash', index, number, card }
-  let evolveRouteTarget = null; // stack currently chosen as the evolution target
+  let evolveRouteTarget = null; // stack currently chosen as the evolution target (single-target flow)
+  let multiEvolveMode = null; // { handIndex, handNumber, card, mode: 'jogress'|'digixros', selected: [] }
+  let pendingEvolveResolve = null; // (cost) => void, set by whichever flow opened the route modal
   const evolveModeBanner = document.getElementById('evolveModeBanner');
   const evolveModeText = document.getElementById('evolveModeText');
   const evolveRouteModal = document.getElementById('evolveRouteModal');
@@ -3454,11 +3461,13 @@
   const evolveRouteSubtitle = document.getElementById('evolveRouteSubtitle');
   const evolveManualCost = document.getElementById('evolveManualCost');
 
-  function enterEvolveMode(handIndex, handNumber) {
+  function enterEvolveMode(handIndex, handNumber, burst) {
     const card = cardIndexByNumber.get(handNumber);
     if (!card) return;
-    evolveMode = { handIndex, handNumber, card };
-    evolveModeText.textContent = `「${card.name}」の進化先を、バトルエリア/育成エリアの進化元から選んでください`;
+    evolveMode = { handIndex, handNumber, card, burst: !!burst };
+    evolveModeText.textContent = burst
+      ? `「${card.name}」をバースト進化させる先を、バトルエリア/育成エリアの進化元から選んでください(解決後にテイマーを手札へ戻せます。ターン終了までに破棄が必要です)`
+      : `「${card.name}」の進化先を、バトルエリア/育成エリアの進化元から選んでください`;
     evolveModeBanner.classList.add('active');
     renderPracticeBoard();
   }
@@ -3500,8 +3509,16 @@
       self.library.unshift(materialTargetMode.number);
       showToast('公開したカードをデッキの上に戻しました');
     }
+    if (assemblyMode) {
+      const self = practiceState.players[practiceState.viewingIndex];
+      self.hand.push(assemblyMode.number);
+      assemblyMode.materialNumbers.forEach(n => self.hand.push(n));
+      showToast('アセンブリを中断し、カードを手札に戻しました');
+      assemblyMode = null;
+    }
     exitEvolveMode();
     exitMaterialTargetMode();
+    multiEvolveMode = null;
     resumeRevealSessionIfAny();
   }
 
@@ -3526,13 +3543,12 @@
     });
   }
 
-  function performEvolve(targetStack) {
-    if (!evolveMode || !practiceState) return;
-    evolveRouteTarget = targetStack;
-    const topCard = cardIndexByNumber.get(cardEntryNum(targetStack.cards[targetStack.cards.length - 1]));
-    const routes = buildEvolveRoutes(evolveMode.card, topCard);
-
-    evolveRouteSubtitle.textContent = `「${evolveMode.card.name}」→ 進化先: ${topCard ? topCard.name : '?'}`;
+  // 進化ルート選択モーダルを汎用化: 通常進化(1体)・ジョグレス/デジクロス(複数体)の
+  // どちらからも呼べるようにし、コストが決まったら onResolve(cost) を呼ぶだけにする。
+  function openEvolveRouteModal(card, topCardForMatching, subtitleText, onResolve) {
+    pendingEvolveResolve = onResolve;
+    const routes = buildEvolveRoutes(card, topCardForMatching);
+    evolveRouteSubtitle.textContent = subtitleText;
     evolveManualCost.value = '0';
     evolveRouteList.innerHTML = '';
     if (routes.length === 0) {
@@ -3543,24 +3559,44 @@
         btn.type = 'button';
         btn.className = 'evolve-route-item';
         btn.innerHTML = `<span class="eri-cost">コスト${r.cost}</span>${escapeHtml(r.label)}${r.sub ? `<span class="eri-text">${escapeHtml(r.sub)}</span>` : ''}`;
-        btn.addEventListener('click', () => finalizeEvolve(r.cost));
+        btn.addEventListener('click', () => {
+          evolveRouteModal.classList.remove('open');
+          if (pendingEvolveResolve) pendingEvolveResolve(r.cost);
+        });
         evolveRouteList.appendChild(btn);
       });
     }
     evolveRouteModal.classList.add('open');
   }
 
+  function performEvolve(targetStack) {
+    if (!evolveMode || !practiceState) return;
+    evolveRouteTarget = targetStack;
+    const topCard = cardIndexByNumber.get(cardEntryNum(targetStack.cards[targetStack.cards.length - 1]));
+    openEvolveRouteModal(
+      evolveMode.card, topCard,
+      `「${evolveMode.card.name}」→ 進化先: ${topCard ? topCard.name : '?'}`,
+      (cost) => finalizeEvolve(cost)
+    );
+  }
+
   function finalizeEvolve(cost) {
     if (!evolveMode || !evolveRouteTarget || !practiceState) return;
     if (isNaN(cost) || cost < 0) { showToast('コストの入力が不正です', true); return; }
     const self = practiceState.players[practiceState.viewingIndex];
+    const isBurst = evolveMode.burst;
+    const targetStack = evolveRouteTarget;
 
     snapshotPracticeState();
     self.hand.splice(evolveMode.handIndex, 1);
-    evolveRouteTarget.cards.push(evolveMode.handNumber);
+    // このスタックが以前バースト進化で保留中だった場合、さらに進化することで
+    // 「ターン終了時に破棄」の保留は解消される。
+    if (targetStack.burstEvolved) targetStack.burstEvolved = false;
+    targetStack.cards.push(evolveMode.handNumber);
     payMemory(practiceState.turn.playerIndex, cost);
     if (self.library.length > 0) self.hand.push(self.library.shift()); // 進化解決時に1ドロー
     const evolvedName = evolveMode.card.name;
+    if (isBurst) targetStack.burstEvolved = true;
 
     evolveRouteModal.classList.remove('open');
     evolveRouteTarget = null;
@@ -3568,14 +3604,234 @@
     renderPracticeBoard();
     showToast(`「${evolvedName}」に進化しました(コスト${cost})`);
     resumeAttackStepIfAny();
+    if (isBurst) promptBurstTamerReturn(targetStack, self);
+  }
+
+  // ---------- ジョグレス進化・デジクロス(複数体を材料に進化) ----------
+  // 材料選択はポップアップで1体ずつ選ぶ方式。ジョグレスは2体で自動確定、
+  // デジクロスは1体以上で任意のタイミングに確定できる。
+  function enterMultiEvolveMode(handIndex, handNumber, mode) {
+    const card = cardIndexByNumber.get(handNumber);
+    if (!card) return;
+    multiEvolveMode = { handIndex, handNumber, card, mode, selected: [] };
+    showMultiEvolvePicker();
+  }
+
+  function showMultiEvolvePicker() {
+    const self = practiceState.players[practiceState.viewingIndex];
+    const pool = [...self.battle, ...(self.raising ? [self.raising] : [])]
+      .filter(s => !multiEvolveMode.selected.includes(s) && isDigimonLikeStack(s));
+    const isJogress = multiEvolveMode.mode === 'jogress';
+    const actions = pool.map(s => {
+      const c = getStackTopCard(s);
+      return {
+        label: `${c ? c.name : '?'}(DP${getEffectiveDP(s)})を材料に選ぶ`,
+        onClick: () => {
+          multiEvolveMode.selected.push(s);
+          if (isJogress && multiEvolveMode.selected.length >= 2) {
+            finalizeMultiEvolveTargetSelection();
+          } else {
+            showMultiEvolvePicker();
+          }
+        },
+      };
+    });
+    const footer = [];
+    if (!isJogress && multiEvolveMode.selected.length >= 1) {
+      footer.push({ label: `✅ この${multiEvolveMode.selected.length}体で確定`, onClick: () => finalizeMultiEvolveTargetSelection() });
+    }
+    footer.push({ label: 'キャンセル', onClick: () => { multiEvolveMode = null; renderPracticeBoard(); } });
+    const title = isJogress
+      ? `ジョグレス進化「${multiEvolveMode.card.name}」: 材料を2体選択(${multiEvolveMode.selected.length}/2)`
+      : `デジクロス「${multiEvolveMode.card.name}」: 材料を選択(現在${multiEvolveMode.selected.length}体)`;
+    openZonePopup(centerPoint(), title, [...actions, ...footer], true);
+  }
+
+  function finalizeMultiEvolveTargetSelection() {
+    if (!multiEvolveMode || multiEvolveMode.selected.length === 0) return;
+    const refTopCard = getStackTopCard(multiEvolveMode.selected[0]);
+    const namesText = multiEvolveMode.selected.map(s => { const c = getStackTopCard(s); return c ? c.name : '?'; }).join('・');
+    openEvolveRouteModal(
+      multiEvolveMode.card, refTopCard,
+      `「${multiEvolveMode.card.name}」→ 材料: ${namesText}`,
+      (cost) => finalizeMultiEvolve(cost)
+    );
+  }
+
+  function finalizeMultiEvolve(cost) {
+    if (!multiEvolveMode || !practiceState) return;
+    if (isNaN(cost) || cost < 0) { showToast('コストの入力が不正です', true); return; }
+    const self = practiceState.players[practiceState.viewingIndex];
+    const { handIndex, handNumber, card, selected, mode } = multiEvolveMode;
+
+    snapshotPracticeState();
+    self.hand.splice(handIndex, 1);
+
+    // 選んだ進化元スタックを全て合体させ、新しいカードを一番上に乗せる。
+    // ジョグレス/デジクロスいずれも「強制的にアクティブになる」扱いで統一している。
+    let mergedCards = [];
+    selected.forEach(s => { mergedCards = mergedCards.concat(s.cards); });
+    mergedCards.push(handNumber);
+    const newStack = { cards: mergedCards, rested: false };
+
+    selected.forEach(s => {
+      if (self.raising === s) self.raising = null;
+      else {
+        const idx = self.battle.indexOf(s);
+        if (idx >= 0) self.battle.splice(idx, 1);
+      }
+    });
+    self.battle.push(newStack);
+
+    payMemory(practiceState.turn.playerIndex, cost);
+    // ジョグレスは進化なので進化解決時ドローがあるが、デジクロスは「登場」の一種のためドローしない。
+    if (mode === 'jogress' && self.library.length > 0) self.hand.push(self.library.shift());
+
+    multiEvolveMode = null;
+    renderPracticeBoard();
+    showToast(mode === 'jogress'
+      ? `「${card.name}」にジョグレス進化しました(コスト${cost}・強制アクティブ)`
+      : `「${card.name}」がデジクロスで登場しました(コスト${cost}・強制アクティブ)`);
+    resumeAttackStepIfAny();
+  }
+
+  // ---------- バースト進化: 解決後にテイマーを手札に戻す ----------
+  function promptBurstTamerReturn(stack, self) {
+    const tamers = self.battle.filter(s => {
+      const c = getStackTopCard(s);
+      return c && c.category === 'tamer' && s !== stack;
+    });
+    const actions = tamers.map(s => {
+      const c = getStackTopCard(s);
+      return {
+        label: `「${c.name}」を手札に戻す`,
+        onClick: () => {
+          snapshotPracticeState();
+          const idx = self.battle.indexOf(s);
+          const topNum = cardEntryNum(s.cards.pop());
+          self.hand.push(topNum);
+          if (s.cards.length === 0 && idx >= 0) self.battle.splice(idx, 1);
+          renderPracticeBoard();
+          showToast(`「${c.name}」を手札に戻しました`);
+        },
+      };
+    });
+    actions.push({ label: 'テイマーを戻さない', onClick: () => {} });
+    openZonePopup(centerPoint(), 'バースト進化: 手札に戻すテイマーを選択(不要ならスキップ)', actions);
+  }
+
+  // ---------- 進化/登場のサブメニュー ----------
+  function showEvolveTypeMenu(index, number, e) {
+    const card = cardIndexByNumber.get(number);
+    openZonePopup(e || centerPoint(), `「${card ? card.name : ''}」の進化方法を選択`, [
+      { label: '通常進化', onClick: () => enterEvolveMode(index, number) },
+      { label: 'バースト進化', onClick: () => enterEvolveMode(index, number, true) },
+      { label: 'ジョグレス進化', onClick: () => enterMultiEvolveMode(index, number, 'jogress') },
+    ]);
+  }
+
+  function showAppearTypeMenu(index, number, e) {
+    const card = cardIndexByNumber.get(number);
+    openZonePopup(e || centerPoint(), `「${card ? card.name : ''}」の登場方法を選択`, [
+      { label: '通常登場', onClick: () => appearFromHand(index, number, e) },
+      { label: 'デジクロス', onClick: () => enterMultiEvolveMode(index, number, 'digixros') },
+      { label: 'アセンブリ', onClick: () => enterAssemblyMode(index, number) },
+    ]);
+  }
+
+  // ---------- アセンブリ: 手札/トラッシュから名称一致カードを複数選び、進化元として
+  // 従えた状態で登場する(進化ではないためドローはしない) ----------
+  let assemblyMode = null; // { number, card, materialNumbers: [] }
+
+  function enterAssemblyMode(index, number) {
+    const card = cardIndexByNumber.get(number);
+    if (!card) return;
+    const self = practiceState.players[practiceState.viewingIndex];
+    snapshotPracticeState();
+    self.hand.splice(index, 1);
+    assemblyMode = { number, card, materialNumbers: [] };
+    renderPracticeBoard();
+    showAssemblyPicker();
+  }
+
+  function showAssemblyPicker() {
+    const self = practiceState.players[practiceState.viewingIndex];
+    const actions = [];
+    if (self.hand.length > 0) {
+      actions.push({
+        label: '手札から選ぶ',
+        onClick: () => openCardListPicker('手札から選択', self.hand, (idx) => {
+          const [num] = self.hand.splice(idx, 1);
+          assemblyMode.materialNumbers.push(num);
+          renderPracticeBoard();
+          showAssemblyPicker();
+        }),
+      });
+    }
+    if (self.trash.length > 0) {
+      actions.push({
+        label: 'トラッシュから選ぶ',
+        onClick: () => openCardListPicker('トラッシュから選択', self.trash, (idx) => {
+          const [num] = self.trash.splice(idx, 1);
+          assemblyMode.materialNumbers.push(num);
+          renderPracticeBoard();
+          showAssemblyPicker();
+        }),
+      });
+    }
+    if (assemblyMode.materialNumbers.length >= 1) {
+      actions.push({ label: `✅ この${assemblyMode.materialNumbers.length}枚で確定`, onClick: () => finalizeAssemblySelection() });
+    }
+    actions.push({ label: 'キャンセル(材料を手札に戻す)', onClick: () => cancelAssembly() });
+    openZonePopup(
+      centerPoint(),
+      `アセンブリ「${assemblyMode.card.name}」: 材料を選択(現在${assemblyMode.materialNumbers.length}枚)`,
+      actions, true
+    );
+  }
+
+  function cancelAssembly() {
+    if (!assemblyMode) return;
+    const self = practiceState.players[practiceState.viewingIndex];
+    self.hand.push(assemblyMode.number);
+    assemblyMode.materialNumbers.forEach(n => self.hand.push(n));
+    assemblyMode = null;
+    renderPracticeBoard();
+    showToast('アセンブリをキャンセルし、カードを手札に戻しました');
+  }
+
+  function finalizeAssemblySelection() {
+    if (!assemblyMode || assemblyMode.materialNumbers.length === 0) return;
+    openEvolveRouteModal(
+      assemblyMode.card, null,
+      `「${assemblyMode.card.name}」→ アセンブリ材料: ${assemblyMode.materialNumbers.length}枚`,
+      (cost) => finalizeAssembly(cost)
+    );
+  }
+
+  function finalizeAssembly(cost) {
+    if (!assemblyMode || !practiceState) return;
+    if (isNaN(cost) || cost < 0) { showToast('コストの入力が不正です', true); return; }
+    const self = practiceState.players[practiceState.viewingIndex];
+    const newStack = { cards: [...assemblyMode.materialNumbers, assemblyMode.number], rested: false };
+    self.battle.push(newStack);
+    payMemory(practiceState.turn.playerIndex, cost);
+    const cardName = assemblyMode.card.name;
+    assemblyMode = null;
+    renderPracticeBoard();
+    showToast(`「${cardName}」がアセンブリで登場しました(コスト${cost})`);
+    resumeAttackStepIfAny();
   }
 
   document.getElementById('evolveManualApply').addEventListener('click', () => {
-    finalizeEvolve(parseInt(evolveManualCost.value, 10));
+    const cost = parseInt(evolveManualCost.value, 10);
+    evolveRouteModal.classList.remove('open');
+    if (pendingEvolveResolve) pendingEvolveResolve(cost);
   });
   document.getElementById('evolveRouteCancel').addEventListener('click', () => {
     evolveRouteModal.classList.remove('open');
     evolveRouteTarget = null;
+    pendingEvolveResolve = null;
     cancelTargetModes();
     renderPracticeBoard();
   });
@@ -4404,7 +4660,11 @@
     lastAttackStepFn = () => showBattleResultStep(message, onProceed);
     if (attackState) attackState.stepName = 'battleResult';
     openZonePopup(centerPoint(), message, [
-      { label: '次へ(消滅処理へ)', onClick: onProceed },
+      { label: '次へ(消滅処理へ)', onClick: () => {
+        // 消滅処理中の再描画でこのステップが自動復帰しないよう、先に解除しておく
+        lastAttackStepFn = null;
+        onProceed();
+      } },
     ], true);
   }
 
@@ -4442,6 +4702,11 @@
       0,
       1 + (attackState.renkeiCount || 0) + (attackState.sAttackModifier || 0)
     );
+    if (attackState.securityChecksRemaining === 0) {
+      endAttack();
+      showToast('セキュリティチェック枚数が0のため、チェックは行われませんでした');
+      return;
+    }
     doSecurityCheckForAttack();
   }
 
@@ -4536,6 +4801,7 @@
   function endAttack() {
     attackState = null;
     lastAttackStepFn = null;
+    closeZonePopup();
     cardDetailModal.classList.remove('open');
     renderPracticeBoard();
   }
@@ -4678,6 +4944,13 @@
     title.textContent = 'デジモン操作';
     wrap.appendChild(title);
 
+    if (stack.burstEvolved) {
+      const burstNotice = document.createElement('div');
+      burstNotice.style.cssText = 'font-size:11px;color:#ff9800;';
+      burstNotice.textContent = '🔥 バースト進化中: このターンの終了までに破棄が必要です(さらに進化すれば解消されます)';
+      wrap.appendChild(burstNotice);
+    }
+
     const row = document.createElement('div');
     row.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;';
     const mk = (label, onClick, disabled) => {
@@ -4700,6 +4973,9 @@
     if (isTurnPlayersOwnBattleStack && !stack.rested && ['main', 'end'].includes(practiceState.turn.phase) &&
         !evolveMode && !materialTargetMode && !attackState && isDigimonLikeStack(stack)) {
       mk('⚔️ アタック宣言', () => declareAttack(stack));
+    }
+    if (stack.burstEvolved) {
+      mk('🔥 バースト進化を解除(破棄)', () => trashEntireStack(stack));
     }
     if (isDigimonLikeStack(stack) && stackOwner && stackOwner.zone === 'battle') {
       mk(hasBlockerKeyword(stack) ? '🛡 ブロッカーを解除' : '🛡 ブロッカーを付与', () => {
@@ -4855,6 +5131,10 @@
       turn.phase = 'main';
     } else if (turn.phase === 'main') {
       turn.phase = 'end';
+      const burstPending = turnPlayer.battle.some(s => s.burstEvolved);
+      if (burstPending) {
+        showToast('🔥 バースト進化中のデジモンがいます。ターン終了までに破棄が必要です', true);
+      }
     } else {
       // turn.phase === 'end'
       // ターン終了時効果(アタック等)でメモリーが自分側に戻ることがある。その場合は
