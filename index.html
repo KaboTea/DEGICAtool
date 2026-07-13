@@ -1156,11 +1156,24 @@
   }
   .st-blocker {
     position: absolute;
-    top: 2px;
+    top: 50%;
     left: 2px;
-    font-size: 14px;
+    transform: translateY(-50%);
+    width: 20px;
+    height: 23px;
+    background: var(--c-red);
+    border: 1px solid rgba(255,255,255,0.35);
+    clip-path: polygon(50% 0%, 100% 16%, 100% 55%, 50% 100%, 0% 55%, 0% 16%);
+    color: #fff;
+    font-size: 9px;
+    font-weight: 800;
+    font-family: 'JetBrains Mono', monospace;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding-top: 1px;
     z-index: 16;
-    filter: drop-shadow(0 1px 2px rgba(0,0,0,0.7));
+    box-shadow: 0 1px 3px rgba(0,0,0,0.7);
   }
   .st-renkei {
     position: absolute;
@@ -1307,7 +1320,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.13.4</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.14.2</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -2552,7 +2565,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.13.4`);
+    log(`DigiCA Tool build v0.14.2`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -2959,7 +2972,7 @@
       <div class="stack-fan">${layerHtml}</div>
       ${stack.cards.length > 1 ? `<span class="st-count mono">${stack.cards.length}</span>` : ''}
       ${(stack.actingAsDigimon || ((stack.dpModifier || 0) !== 0 && isDigimonLikeStack(stack))) ? `<span class="st-dp">DP${getEffectiveDP(stack)}</span>` : ''}
-      ${(isDigimonLikeStack(stack) && hasBlockerKeyword(stack)) ? `<span class="st-blocker" title="ブロッカー">🛡</span>` : ''}
+      ${(isDigimonLikeStack(stack) && hasBlockerKeyword(stack)) ? `<span class="st-blocker" title="ブロッカー">B</span>` : ''}
       ${(isDigimonLikeStack(stack) && hasRenkeiKeyword(stack)) ? `<span class="st-renkei" title="連携">🤝</span>` : ''}
       <button type="button" class="tile-quickadd" title="レスト/アクティブ切替" style="opacity:0.55;">⟳</button>
     `;
@@ -4158,7 +4171,7 @@
     stack.rested = true;
     attackState = {
       attackerStack: stack, attackerOwner, defenderOwner, targetType: null, targetStack: null,
-      renkeiCount: 0, renkeiBonusDP: 0, sAttackModifier: 0,
+      renkeiCount: 0, renkeiBonusDP: 0, sAttackModifier: stack.sAttackBonus || 0,
     };
     cardDetailModal.classList.remove('open');
     renderPracticeBoard();
@@ -4357,17 +4370,42 @@
     const dpB = getEffectiveDP(b) + (attackState && b === attackState.attackerStack ? renkeiBonus : 0);
     const nameA = getStackTopCard(a) ? getStackTopCard(a).name : '?';
     const nameB = getStackTopCard(b) ? getStackTopCard(b).name : '?';
-    if (dpA > dpB) {
-      trashEntireStack(b);
-      showToast(`「${nameA}」(DP${dpA}) が「${nameB}」(DP${dpB}) に勝利、相手が消滅しました`);
-    } else if (dpB > dpA) {
-      trashEntireStack(a);
-      showToast(`「${nameB}」(DP${dpB}) が「${nameA}」(DP${dpA}) に勝利、相手が消滅しました`);
-    } else {
-      trashEntireStack(a);
-      trashEntireStack(b);
-      showToast(`DPが同じ(${dpA})ため相打ちで両者消滅しました`);
+
+    if (dpA === dpB) {
+      showBattleResultStep(
+        `DPが同じ(${dpA})のため相打ちになります。「ブロックしたとき」「レストしたとき」「バトルに勝ったとき」等の効果があれば、消滅処理の前に処理してください`,
+        () => {
+          trashEntireStack(a);
+          trashEntireStack(b);
+          showToast(`DPが同じ(${dpA})のため相打ちで両者消滅しました`);
+          endAttack();
+        }
+      );
+      return;
     }
+    const aWins = dpA > dpB;
+    const winnerName = aWins ? nameA : nameB;
+    const loser = aWins ? b : a;
+    const winnerDP = aWins ? dpA : dpB;
+    const loserDP = aWins ? dpB : dpA;
+    showBattleResultStep(
+      `「${winnerName}」がバトルに勝利(DP${winnerDP} vs ${loserDP})。「ブロックしたとき」「レストしたとき」「バトルに勝ったとき」等の効果があれば、消滅処理の前に処理してください`,
+      () => {
+        trashEntireStack(loser);
+        showToast(`「${winnerName}」の勝利で相手が消滅しました`);
+        endAttack();
+      }
+    );
+  }
+
+  // バトルの勝敗が決まった直後、実際に消滅処理を行う前に一旦立ち止まるステップ。
+  // 「ブロックしたとき」「レストしたとき」「バトルに勝ったとき」等はここで処理する。
+  function showBattleResultStep(message, onProceed) {
+    lastAttackStepFn = () => showBattleResultStep(message, onProceed);
+    if (attackState) attackState.stepName = 'battleResult';
+    openZonePopup(centerPoint(), message, [
+      { label: '次へ(消滅処理へ)', onClick: onProceed },
+    ], true);
   }
 
   function showVictoryPopup(winnerOwner) {
@@ -4390,8 +4428,7 @@
 
     if (attackState.targetType === 'digimon') {
       resolveBattle(attackState.attackerStack, attackState.targetStack);
-      endAttack();
-      return;
+      return; // 消滅処理・endAttack()はshowBattleResultStepの「次へ」で行う
     }
     // targetType === 'player'
     if (attackState.defenderOwner.security.length === 0) {
@@ -4603,7 +4640,7 @@
     wrap.style.cssText = 'display:flex;flex-direction:column;gap:6px;margin-top:14px;padding-top:12px;border-top:1px solid var(--border);width:100%;';
     const title = document.createElement('div');
     title.style.cssText = 'font-size:11px;color:var(--text-dim);';
-    title.textContent = '相手の進化元への操作(効果用)';
+    title.textContent = '相手のデジモンへの操作(効果用)';
     wrap.appendChild(title);
 
     const row = document.createElement('div');
@@ -4624,9 +4661,10 @@
       cardDetailModal.classList.remove('open');
       renderPracticeBoard();
     });
-    mk('一番上を手札へ', () => removeCardFromStackAt(stack, topIndex, 'hand'));
-    mk('一番上をトラッシュへ', () => removeCardFromStackAt(stack, topIndex, 'trash'));
-    mk('一番上をデッキの下へ', () => removeCardFromStackAt(stack, topIndex, 'deckBottom'));
+    mk('一番上を送る▾', (e) => openZonePopup(e, '一番上のカードを送る', ALL_DESTINATIONS.map(dest => ({
+      label: DESTINATION_LABEL[dest],
+      onClick: () => removeCardFromStackAt(stack, topIndex, dest),
+    }))));
     mk('進化元を全部トラッシュへ', () => trashEntireStack(stack));
     wrap.appendChild(row);
     return wrap;
@@ -4637,7 +4675,7 @@
     wrap.style.cssText = 'display:flex;flex-direction:column;gap:6px;margin-top:14px;padding-top:12px;border-top:1px solid var(--border);width:100%;';
     const title = document.createElement('div');
     title.style.cssText = 'font-size:11px;color:var(--text-dim);';
-    title.textContent = '進化元 操作';
+    title.textContent = 'デジモン操作';
     wrap.appendChild(title);
 
     const row = document.createElement('div');
@@ -4659,7 +4697,7 @@
     const isTurnPlayersOwnBattleStack = stackOwner && stackOwner.zone === 'battle' &&
       practiceState.viewingIndex === practiceState.turn.playerIndex &&
       stackOwner.player === practiceState.players[practiceState.viewingIndex];
-    if (isTurnPlayersOwnBattleStack && !stack.rested && practiceState.turn.phase === 'main' &&
+    if (isTurnPlayersOwnBattleStack && !stack.rested && ['main', 'end'].includes(practiceState.turn.phase) &&
         !evolveMode && !materialTargetMode && !attackState && isDigimonLikeStack(stack)) {
       mk('⚔️ アタック宣言', () => declareAttack(stack));
     }
@@ -4675,6 +4713,31 @@
         cardDetailModal.classList.remove('open');
         renderPracticeBoard();
         showToast(hasRenkeiKeyword(stack) ? '連携を付与しました' : '連携を解除しました');
+      });
+      mk(`🔢 Sアタック枚数を設定(現在${(stack.sAttackBonus || 0) >= 0 ? '+' : ''}${stack.sAttackBonus || 0})`, (e) => {
+        openZonePopup(e, 'このデジモンのSアタック枚数(アタック時に自動で加算)', [
+          {
+            custom: true,
+            render: (container) => {
+              container.style.cssText = 'display:flex;gap:6px;align-items:center;';
+              container.innerHTML = `
+                <input type="number" id="sAttackBonusInput" value="${stack.sAttackBonus || 0}" style="width:56px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:4px;color:var(--text);font-size:12px;">
+                <button type="button" id="sAttackBonusGo" class="btn" style="font-size:11px;padding:6px 8px;">設定</button>
+              `;
+              container.querySelector('#sAttackBonusGo').addEventListener('click', (ev) => {
+                ev.stopPropagation();
+                const v = parseInt(container.querySelector('#sAttackBonusInput').value, 10);
+                if (isNaN(v)) { showToast('数値が不正です', true); return; }
+                closeZonePopup();
+                snapshotPracticeState();
+                stack.sAttackBonus = v;
+                cardDetailModal.classList.remove('open');
+                renderPracticeBoard();
+                showToast(`Sアタック枚数を${v >= 0 ? '+' : ''}${v}に設定しました`);
+              });
+            },
+          },
+        ]);
       });
     }
     mk('レスト/アクティブ切替', () => {
@@ -4724,16 +4787,10 @@
       }
     }
     mk('進化元を全部トラッシュへ', () => trashEntireStack(stack));
-    mk('一番上を手札へ', () => removeCardFromStackAt(stack, topIndex, 'hand'));
-    mk('一番上をトラッシュへ', () => removeCardFromStackAt(stack, topIndex, 'trash'));
-    mk('一番上をデッキへ▾', (e) => openZonePopup(e, 'デッキのどちらに置きますか?', [
-      { label: '上へ', onClick: () => removeCardFromStackAt(stack, topIndex, 'deckTop') },
-      { label: '下へ', onClick: () => removeCardFromStackAt(stack, topIndex, 'deckBottom') },
-    ]));
-    mk('一番上をセキュリティへ▾', (e) => openZonePopup(e, 'セキュリティのどちらに置きますか?', [
-      { label: '上へ', onClick: () => removeCardFromStackAt(stack, topIndex, 'secTop') },
-      { label: '下へ', onClick: () => removeCardFromStackAt(stack, topIndex, 'secBottom') },
-    ]));
+    mk('一番上を送る▾', (e) => openZonePopup(e, '一番上のカードを送る', ALL_DESTINATIONS.map(dest => ({
+      label: DESTINATION_LABEL[dest],
+      onClick: () => removeCardFromStackAt(stack, topIndex, dest),
+    }))));
     wrap.appendChild(row);
     return wrap;
   }
