@@ -192,6 +192,11 @@
   }
   .modal-backdrop.open { display: flex; }
 
+  /* カード詳細モーダルは、アタック処理中に手札の進化・登場ボタンへアクセスできるよう、
+     背景部分のクリックを素通しにする(モーダル本体はそのまま操作可能)。 */
+  .modal-backdrop.detail-modal { pointer-events: none; }
+  .modal-backdrop.detail-modal .modal { pointer-events: auto; }
+
   .modal {
     background: var(--panel);
     border: 1px solid var(--border);
@@ -1325,7 +1330,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.15.1</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.15.3</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -2570,7 +2575,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.15.1`);
+    log(`DigiCA Tool build v0.15.3`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -3512,9 +3517,14 @@
     if (assemblyMode) {
       const self = practiceState.players[practiceState.viewingIndex];
       self.hand.push(assemblyMode.number);
-      assemblyMode.materialNumbers.forEach(n => self.hand.push(n));
-      showToast('アセンブリを中断し、カードを手札に戻しました');
+      assemblyMode.materialNumbers.forEach(n => self.trash.push(n));
+      showToast('アセンブリを中断し、カードを手札とトラッシュに戻しました');
       assemblyMode = null;
+    }
+    if (multiEvolveMode && multiEvolveMode.handMaterials && multiEvolveMode.handMaterials.length > 0) {
+      const self = practiceState.players[practiceState.viewingIndex];
+      multiEvolveMode.handMaterials.forEach(n => self.hand.push(n));
+      showToast('選択していた手札の材料を戻しました');
     }
     exitEvolveMode();
     exitMaterialTargetMode();
@@ -3613,8 +3623,19 @@
   function enterMultiEvolveMode(handIndex, handNumber, mode) {
     const card = cardIndexByNumber.get(handNumber);
     if (!card) return;
-    multiEvolveMode = { handIndex, handNumber, card, mode, selected: [] };
+    multiEvolveMode = { handIndex, handNumber, card, mode, selected: [], handMaterials: [] };
     showMultiEvolvePicker();
+  }
+
+  function cancelMultiEvolve() {
+    if (!multiEvolveMode) return;
+    if (multiEvolveMode.handMaterials.length > 0) {
+      const self = practiceState.players[practiceState.viewingIndex];
+      multiEvolveMode.handMaterials.forEach(n => self.hand.push(n));
+      showToast('選択していた手札の材料を戻しました');
+    }
+    multiEvolveMode = null;
+    renderPracticeBoard();
   }
 
   function showMultiEvolvePicker() {
@@ -3622,13 +3643,14 @@
     const pool = [...self.battle, ...(self.raising ? [self.raising] : [])]
       .filter(s => !multiEvolveMode.selected.includes(s) && isDigimonLikeStack(s));
     const isJogress = multiEvolveMode.mode === 'jogress';
+    const totalCount = multiEvolveMode.selected.length + multiEvolveMode.handMaterials.length;
     const actions = pool.map(s => {
       const c = getStackTopCard(s);
       return {
-        label: `${c ? c.name : '?'}(DP${getEffectiveDP(s)})を材料に選ぶ`,
+        label: `${c ? c.name : '?'}(DP${getEffectiveDP(s)})を材料に選ぶ(場)`,
         onClick: () => {
           multiEvolveMode.selected.push(s);
-          if (isJogress && multiEvolveMode.selected.length >= 2) {
+          if (isJogress && multiEvolveMode.selected.length + multiEvolveMode.handMaterials.length >= 2) {
             finalizeMultiEvolveTargetSelection();
           } else {
             showMultiEvolvePicker();
@@ -3636,21 +3658,35 @@
         },
       };
     });
-    const footer = [];
-    if (!isJogress && multiEvolveMode.selected.length >= 1) {
-      footer.push({ label: `✅ この${multiEvolveMode.selected.length}体で確定`, onClick: () => finalizeMultiEvolveTargetSelection() });
+    // デジクロスは手札のデジモンも材料にできる(ジョグレスは場のデジモン限定)
+    if (!isJogress && self.hand.length > 0) {
+      actions.push({
+        label: '手札から材料を選ぶ',
+        onClick: () => openCardListPicker('手札から選択', self.hand, (idx) => {
+          const [num] = self.hand.splice(idx, 1);
+          multiEvolveMode.handMaterials.push(num);
+          renderPracticeBoard();
+          showMultiEvolvePicker();
+        }),
+      });
     }
-    footer.push({ label: 'キャンセル', onClick: () => { multiEvolveMode = null; renderPracticeBoard(); } });
+    const footer = [];
+    if (!isJogress && totalCount >= 1) {
+      footer.push({ label: `✅ この${totalCount}体で確定`, onClick: () => finalizeMultiEvolveTargetSelection() });
+    }
+    footer.push({ label: 'キャンセル', onClick: () => cancelMultiEvolve() });
     const title = isJogress
-      ? `ジョグレス進化「${multiEvolveMode.card.name}」: 材料を2体選択(${multiEvolveMode.selected.length}/2)`
-      : `デジクロス「${multiEvolveMode.card.name}」: 材料を選択(現在${multiEvolveMode.selected.length}体)`;
+      ? `ジョグレス進化「${multiEvolveMode.card.name}」: 材料を2体選択(${totalCount}/2)`
+      : `デジクロス「${multiEvolveMode.card.name}」: 材料を選択(現在${totalCount}体)`;
     openZonePopup(centerPoint(), title, [...actions, ...footer], true);
   }
 
   function finalizeMultiEvolveTargetSelection() {
-    if (!multiEvolveMode || multiEvolveMode.selected.length === 0) return;
-    const refTopCard = getStackTopCard(multiEvolveMode.selected[0]);
-    const namesText = multiEvolveMode.selected.map(s => { const c = getStackTopCard(s); return c ? c.name : '?'; }).join('・');
+    if (!multiEvolveMode || (multiEvolveMode.selected.length + multiEvolveMode.handMaterials.length) === 0) return;
+    const refTopCard = multiEvolveMode.selected.length > 0 ? getStackTopCard(multiEvolveMode.selected[0]) : null;
+    const stackNames = multiEvolveMode.selected.map(s => { const c = getStackTopCard(s); return c ? c.name : '?'; });
+    const handNames = multiEvolveMode.handMaterials.map(n => miniCardName(n));
+    const namesText = [...stackNames, ...handNames].join('・');
     openEvolveRouteModal(
       multiEvolveMode.card, refTopCard,
       `「${multiEvolveMode.card.name}」→ 材料: ${namesText}`,
@@ -3662,15 +3698,16 @@
     if (!multiEvolveMode || !practiceState) return;
     if (isNaN(cost) || cost < 0) { showToast('コストの入力が不正です', true); return; }
     const self = practiceState.players[practiceState.viewingIndex];
-    const { handIndex, handNumber, card, selected, mode } = multiEvolveMode;
+    const { handIndex, handNumber, card, selected, mode, handMaterials } = multiEvolveMode;
 
     snapshotPracticeState();
     self.hand.splice(handIndex, 1);
 
-    // 選んだ進化元スタックを全て合体させ、新しいカードを一番上に乗せる。
+    // 選んだ進化元スタック+手札材料を全て合体させ、新しいカードを一番上に乗せる。
     // ジョグレス/デジクロスいずれも「強制的にアクティブになる」扱いで統一している。
     let mergedCards = [];
     selected.forEach(s => { mergedCards = mergedCards.concat(s.cards); });
+    mergedCards = mergedCards.concat(handMaterials);
     mergedCards.push(handNumber);
     const newStack = { cards: mergedCards, rested: false };
 
@@ -3696,6 +3733,12 @@
   }
 
   // ---------- バースト進化: 解決後にテイマーを手札に戻す ----------
+  // バースト進化の解除は「一番上のカードだけ」を破棄する(進化元は残る)
+  function discardBurstTop(stack) {
+    stack.burstEvolved = false;
+    removeCardFromStackAt(stack, stack.cards.length - 1, 'trash');
+  }
+
   function promptBurstTamerReturn(stack, self) {
     const tamers = self.battle.filter(s => {
       const c = getStackTopCard(s);
@@ -3754,48 +3797,68 @@
     showAssemblyPicker();
   }
 
+  // アセンブリはルール上トラッシュのカードのみを材料にできる。1枚ずつのポップアップ
+  // 選択ではなく、トラッシュの中身をチェックボックスで複数選択し、まとめてOKする形式にする。
   function showAssemblyPicker() {
     const self = practiceState.players[practiceState.viewingIndex];
-    const actions = [];
-    if (self.hand.length > 0) {
-      actions.push({
-        label: '手札から選ぶ',
-        onClick: () => openCardListPicker('手札から選択', self.hand, (idx) => {
-          const [num] = self.hand.splice(idx, 1);
-          assemblyMode.materialNumbers.push(num);
-          renderPracticeBoard();
-          showAssemblyPicker();
-        }),
+    currentDetailCard = null;
+    document.getElementById('addToDeckFromDetail').style.display = 'none';
+    const checked = new Set();
+
+    function render() {
+      const rows = self.trash.map((number, idx) => `
+        <div class="deck-list-item assembly-row" data-idx="${idx}" style="cursor:pointer;${checked.has(idx) ? 'border-color:var(--accent);' : ''}">
+          <input type="checkbox" class="assembly-check" data-idx="${idx}" ${checked.has(idx) ? 'checked' : ''} style="width:16px;height:16px;flex-shrink:0;">
+          <img src="${escapeHtml(miniCardImg(number))}" alt="" style="width:34px;border-radius:3px;" onerror="this.style.opacity=0">
+          <span class="dli-name">${escapeHtml(miniCardName(number))}</span>
+        </div>`).join('');
+      detailBody.innerHTML = `
+        <div class="detail-info" style="width:100%;">
+          <div class="d-title">アセンブリ「${assemblyMode.card.name}」</div>
+          <div class="d-number mono">トラッシュから材料を選択(選択中: ${checked.size}枚)</div>
+          <div class="deck-list" style="margin-top:8px;max-height:360px;overflow-y:auto;">${rows || '<div class="empty-state">トラッシュにカードがありません</div>'}</div>
+          <div style="display:flex;gap:8px;margin-top:12px;">
+            <button type="button" class="btn" id="assemblyCancelBtn">キャンセル</button>
+            <button type="button" class="btn primary" id="assemblyOkBtn">この内容でOK</button>
+          </div>
+        </div>
+      `;
+      const toggle = (idx) => {
+        if (checked.has(idx)) checked.delete(idx); else checked.add(idx);
+        render();
+      };
+      detailBody.querySelectorAll('.assembly-check').forEach(cb => {
+        cb.addEventListener('click', (e) => { e.stopPropagation(); toggle(parseInt(cb.dataset.idx, 10)); });
+      });
+      detailBody.querySelectorAll('.assembly-row').forEach(row => {
+        row.addEventListener('click', (e) => {
+          if (e.target.classList.contains('assembly-check')) return;
+          toggle(parseInt(row.dataset.idx, 10));
+        });
+      });
+      detailBody.querySelector('#assemblyCancelBtn').addEventListener('click', (e) => { e.stopPropagation(); cancelAssembly(); });
+      detailBody.querySelector('#assemblyOkBtn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (checked.size === 0) { showToast('材料にするカードを選んでください', true); return; }
+        const indices = [...checked].sort((a, b) => b - a); // 後ろから抜いてインデックスずれを防ぐ
+        const removed = [];
+        indices.forEach(idx => { removed.push(self.trash.splice(idx, 1)[0]); });
+        assemblyMode.materialNumbers = removed.reverse(); // 元の並び順に戻す
+        cardDetailModal.classList.remove('open');
+        finalizeAssemblySelection();
       });
     }
-    if (self.trash.length > 0) {
-      actions.push({
-        label: 'トラッシュから選ぶ',
-        onClick: () => openCardListPicker('トラッシュから選択', self.trash, (idx) => {
-          const [num] = self.trash.splice(idx, 1);
-          assemblyMode.materialNumbers.push(num);
-          renderPracticeBoard();
-          showAssemblyPicker();
-        }),
-      });
-    }
-    if (assemblyMode.materialNumbers.length >= 1) {
-      actions.push({ label: `✅ この${assemblyMode.materialNumbers.length}枚で確定`, onClick: () => finalizeAssemblySelection() });
-    }
-    actions.push({ label: 'キャンセル(材料を手札に戻す)', onClick: () => cancelAssembly() });
-    openZonePopup(
-      centerPoint(),
-      `アセンブリ「${assemblyMode.card.name}」: 材料を選択(現在${assemblyMode.materialNumbers.length}枚)`,
-      actions, true
-    );
+    render();
+    cardDetailModal.classList.add('open');
   }
 
   function cancelAssembly() {
     if (!assemblyMode) return;
     const self = practiceState.players[practiceState.viewingIndex];
     self.hand.push(assemblyMode.number);
-    assemblyMode.materialNumbers.forEach(n => self.hand.push(n));
+    assemblyMode.materialNumbers.forEach(n => self.trash.push(n));
     assemblyMode = null;
+    cardDetailModal.classList.remove('open');
     renderPracticeBoard();
     showToast('アセンブリをキャンセルし、カードを手札に戻しました');
   }
@@ -4219,10 +4282,19 @@
       const rows = self.security.map((entry, idx) => {
         const number = cardEntryNum(entry);
         const faceUp = cardEntryFaceUp(entry);
+        if (!faceUp) {
+          return `
+          <div class="deck-list-item" style="cursor:default;">
+            <div class="card-back" style="width:34px;aspect-ratio:43/60;border-radius:3px;flex-shrink:0;"></div>
+            <span class="dli-name" style="color:var(--text-dim);">裏向き</span>
+            <button type="button" class="btn sec-row-reveal" data-idx="${idx}" style="font-size:10px;padding:3px 6px;">表にする</button>
+            <button type="button" class="btn sec-row-move" data-idx="${idx}" style="font-size:10px;padding:3px 6px;">送る▾</button>
+          </div>`;
+        }
         return `
-        <div class="deck-list-item" style="cursor:default;${faceUp ? 'border-color:var(--accent);' : ''}">
+        <div class="deck-list-item" style="cursor:default;border-color:var(--accent);">
           <img src="${escapeHtml(miniCardImg(number))}" alt="" class="sec-list-img" data-idx="${idx}" style="width:34px;border-radius:3px;cursor:pointer;" onerror="this.style.opacity=0">
-          <span class="dli-name sec-list-name" data-idx="${idx}" style="cursor:pointer;">${escapeHtml(miniCardName(number))}${faceUp ? ' <span style="color:var(--accent);">(表向き)</span>' : ''}</span>
+          <span class="dli-name sec-list-name" data-idx="${idx}" style="cursor:pointer;">${escapeHtml(miniCardName(number))} <span style="color:var(--accent);">(表向き)</span></span>
           <button type="button" class="btn sec-row-move" data-idx="${idx}" style="font-size:10px;padding:3px 6px;">送る▾</button>
         </div>`;
       }).join('');
@@ -4230,7 +4302,7 @@
         <div class="detail-info" style="width:100%;">
           <div class="d-title">セキュリティ(${self.security.length}枚、上から順)</div>
           <div class="deck-list" style="margin-top:8px;">${rows || '<div class="empty-state">セキュリティは空です</div>'}</div>
-          <button type="button" class="btn primary" id="secShuffleBtn" style="margin-top:10px;">残りをシャッフルしてセキュリティに戻す</button>
+          <button type="button" class="btn primary" id="secShuffleBtn" style="margin-top:10px;">残りをシャッフルしてセキュリティに戻す(裏向きになります)</button>
         </div>
       `;
       detailBody.querySelectorAll('.sec-list-img, .sec-list-name').forEach(el => {
@@ -4238,6 +4310,17 @@
           const idx = parseInt(el.dataset.idx, 10);
           const card = cardIndexByNumber.get(cardEntryNum(self.security[idx]));
           if (card) openCardDetail(card, true);
+        });
+      });
+      detailBody.querySelectorAll('.sec-row-reveal').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const idx = parseInt(btn.dataset.idx, 10);
+          snapshotPracticeState();
+          self.security[idx] = { n: cardEntryNum(self.security[idx]), u: true };
+          renderPracticeBoard();
+          render();
+          cardDetailModal.classList.add('open');
         });
       });
       detailBody.querySelectorAll('.sec-row-move').forEach(btn => {
@@ -4263,9 +4346,10 @@
       detailBody.querySelector('#secShuffleBtn').addEventListener('click', (e) => {
         e.stopPropagation();
         snapshotPracticeState();
-        self.security = shuffleArray(self.security);
+        // シャッフル後は全て裏向きに戻す
+        self.security = shuffleArray(self.security.map(entry => cardEntryNum(entry)));
         renderPracticeBoard();
-        showToast('セキュリティをシャッフルしました');
+        showToast('セキュリティをシャッフルし、裏向きに戻しました');
         cardDetailModal.classList.remove('open');
       });
     }
@@ -4353,13 +4437,15 @@
     else if (destination === 'deckBottom') player.library.push(number);
     else if (destination === 'secTop') player.security.unshift(faceUp ? { n: number, u: true } : number);
     else if (destination === 'secBottom') player.security.push(faceUp ? { n: number, u: true } : number);
+    else if (destination === 'battle') player.battle.push({ cards: [number], rested: false });
   }
   const DESTINATION_LABEL = {
     hand: '手札へ', trash: 'トラッシュへ',
     deckTop: 'デッキの上へ', deckBottom: 'デッキの下へ',
     secTop: 'セキュリティの上へ', secBottom: 'セキュリティの下へ',
+    battle: 'バトルエリアへ登場(コストなし)',
   };
-  const ALL_DESTINATIONS = ['hand', 'trash', 'deckTop', 'deckBottom', 'secTop', 'secBottom'];
+  const ALL_DESTINATIONS = ['hand', 'trash', 'deckTop', 'deckBottom', 'secTop', 'secBottom', 'battle'];
 
   function removeCardFromStackAt(stack, cardIndexInStack, destination) {
     const owner = findStackOwnerAndZone(stack);
@@ -4838,7 +4924,7 @@
         render: (container) => {
           container.style.cssText = 'display:flex;gap:6px;align-items:center;';
           container.innerHTML = `
-            <input type="number" id="dpDeltaInput" value="1000" min="0" step="500" style="width:74px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:4px;color:var(--text);font-size:12px;">
+            <input type="number" id="dpDeltaInput" value="1000" min="0" step="1000" style="width:74px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:4px;color:var(--text);font-size:12px;">
             <button type="button" id="dpPlusBtn" class="btn" style="font-size:11px;padding:6px 8px;">+適用</button>
             <button type="button" id="dpMinusBtn" class="btn" style="font-size:11px;padding:6px 8px;">-適用</button>
           `;
@@ -4975,7 +5061,7 @@
       mk('⚔️ アタック宣言', () => declareAttack(stack));
     }
     if (stack.burstEvolved) {
-      mk('🔥 バースト進化を解除(破棄)', () => trashEntireStack(stack));
+      mk('🔥 バースト進化を解除(一番上を破棄)', () => discardBurstTop(stack));
     }
     if (isDigimonLikeStack(stack) && stackOwner && stackOwner.zone === 'battle') {
       mk(hasBlockerKeyword(stack) ? '🛡 ブロッカーを解除' : '🛡 ブロッカーを付与', () => {
@@ -5042,7 +5128,7 @@
               render: (container) => {
                 container.style.cssText = 'display:flex;gap:6px;align-items:center;';
                 container.innerHTML = `
-                  <input type="number" id="tamerDpInput" value="3000" min="0" step="500" style="width:74px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:4px;color:var(--text);font-size:12px;">
+                  <input type="number" id="tamerDpInput" value="3000" min="0" step="1000" style="width:74px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:4px;color:var(--text);font-size:12px;">
                   <button type="button" id="tamerDpGo" class="btn" style="font-size:11px;padding:6px 8px;">決定</button>
                 `;
                 container.querySelector('#tamerDpGo').addEventListener('click', (e) => {
