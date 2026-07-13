@@ -1307,7 +1307,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.13.2</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.13.4</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -2552,7 +2552,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.13.2`);
+    log(`DigiCA Tool build v0.13.4`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -4158,7 +4158,7 @@
     stack.rested = true;
     attackState = {
       attackerStack: stack, attackerOwner, defenderOwner, targetType: null, targetStack: null,
-      renkeiCount: 0, renkeiBonusDP: 0,
+      renkeiCount: 0, renkeiBonusDP: 0, sAttackModifier: 0,
     };
     cardDetailModal.classList.remove('open');
     renderPracticeBoard();
@@ -4223,6 +4223,45 @@
     return [{ label: renkeiActionLabel(), onClick: () => showRenkeiPicker() }];
   }
 
+  // ---------- Sアタック±(連携とは別に、効果でセキュリティチェック枚数が増減するケース) ----------
+  // 「持っているか」の判定はせず、いつでも増減できる仕組みだけを提供する。実際の枚数は
+  // セキュリティチェックが始まる直前(resolveAttack)にまとめて反映する。
+  function sAttackActionLabel() {
+    const n = attackState.sAttackModifier || 0;
+    return n !== 0 ? `🔢 セキュリティチェック枚数を変更(現在${n > 0 ? '+' : ''}${n}枚)` : '🔢 セキュリティチェック枚数を変更';
+  }
+  function sAttackActionItems() {
+    return [{ label: sAttackActionLabel(), onClick: () => showSAttackModifyPopup() }];
+  }
+  function showSAttackModifyPopup() {
+    openZonePopup(centerPoint(), 'セキュリティチェック枚数を増減', [
+      {
+        custom: true,
+        render: (container) => {
+          container.style.cssText = 'display:flex;gap:6px;align-items:center;';
+          container.innerHTML = `
+            <input type="number" id="sAttackDeltaInput" value="1" min="0" style="width:56px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:4px;color:var(--text);font-size:12px;">
+            <button type="button" id="sAttackPlus" class="btn" style="font-size:11px;padding:6px 8px;">+適用</button>
+            <button type="button" id="sAttackMinus" class="btn" style="font-size:11px;padding:6px 8px;">-適用</button>
+          `;
+          const apply = (sign) => {
+            const v = parseInt(container.querySelector('#sAttackDeltaInput').value, 10);
+            if (isNaN(v) || v < 0) { showToast('数値が不正です', true); return; }
+            closeZonePopup();
+            snapshotPracticeState();
+            attackState.sAttackModifier = (attackState.sAttackModifier || 0) + sign * v;
+            renderPracticeBoard();
+            const n = attackState.sAttackModifier;
+            showToast(`セキュリティチェック枚数を${sign > 0 ? '+' : '-'}${v}しました(現在${n > 0 ? '+' : ''}${n}枚)`);
+            resumeAttackStepIfAny();
+          };
+          container.querySelector('#sAttackPlus').addEventListener('click', (e) => { e.stopPropagation(); apply(1); });
+          container.querySelector('#sAttackMinus').addEventListener('click', (e) => { e.stopPropagation(); apply(-1); });
+        },
+      },
+    ], true);
+  }
+
   function showRenkeiPicker() {
     const self = attackState.attackerOwner;
     const candidates = self.battle.filter(s =>
@@ -4257,6 +4296,7 @@
     openZonePopup(centerPoint(), '「アタック時」「アタックしたとき」の効果を処理(ターン保持者→相手の順)', [
       { label: '次へ(カウンタータイミングへ)', onClick: () => showAttackCounterStep() },
       ...renkeiActionItems(),
+      ...sAttackActionItems(),
     ], true);
   }
 
@@ -4266,6 +4306,7 @@
     openZonePopup(centerPoint(), 'カウンタータイミング(相手の【カウンター】等があれば先に処理してください。視点を切り替えて相手側を操作できます)', [
       { label: '次へ(ブロックタイミングへ)', onClick: () => showAttackBlockStep() },
       ...renkeiActionItems(),
+      ...sAttackActionItems(),
     ], true);
   }
 
@@ -4279,6 +4320,7 @@
     const actions = [
       { label: 'ブロックしない', onClick: () => resolveAttack() },
       ...renkeiActionItems(),
+      ...sAttackActionItems(),
     ];
     blockers.forEach(s => {
       const c = getStackTopCard(s);
@@ -4305,6 +4347,7 @@
     openZonePopup(centerPoint(), '「ブロックしたとき」「レストしたとき」等の効果を処理してください', [
       { label: '次へ(バトル解決へ)', onClick: () => resolveAttack() },
       ...renkeiActionItems(),
+      ...sAttackActionItems(),
     ], true);
   }
 
@@ -4337,6 +4380,14 @@
     // ここから先は「ステップ待ち」ではなく解決処理そのものなので、解決中に発生する
     // 再描画で直前のステップ(ブロック等)が誤って再表示されないようにしておく。
     lastAttackStepFn = null;
+
+    // 対象宣言後、効果で対象のデジモンが場からいなくなっていることがあるため、
+    // 解決の直前に存在確認し、いなければ対象を選び直すか終了するかを選ばせる。
+    if (attackState.targetType === 'digimon' && !findStackOwnerAndZone(attackState.targetStack)) {
+      showTargetLostPopup();
+      return;
+    }
+
     if (attackState.targetType === 'digimon') {
       resolveBattle(attackState.attackerStack, attackState.targetStack);
       endAttack();
@@ -4349,8 +4400,19 @@
       showVictoryPopup(winner);
       return;
     }
-    attackState.securityChecksRemaining = 1 + (attackState.renkeiCount || 0);
+    // Sアタック・連携によるチェック枚数の増減は、実際にチェックが始まる直前に確定する。
+    attackState.securityChecksRemaining = Math.max(
+      0,
+      1 + (attackState.renkeiCount || 0) + (attackState.sAttackModifier || 0)
+    );
     doSecurityCheckForAttack();
+  }
+
+  function showTargetLostPopup() {
+    openZonePopup(centerPoint(), '対象にしていたデジモンが場からいなくなりました。どうしますか?', [
+      { label: '対象を選び直す', onClick: () => showAttackTargetStep() },
+      { label: 'アタック不成立として終了', onClick: () => endAttack() },
+    ], true);
   }
 
   function doSecurityCheckForAttack() {
@@ -4737,6 +4799,18 @@
     } else if (turn.phase === 'main') {
       turn.phase = 'end';
     } else {
+      // turn.phase === 'end'
+      // ターン終了時効果(アタック等)でメモリーが自分側に戻ることがある。その場合は
+      // ターン終了条件(メモリーが相手側1以上)を満たさなくなるため、ターンは終了せず
+      // メインフェイズに戻る(6-6-4)。
+      const memoryTowardOpponent = turn.playerIndex === 0 ? practiceState.memory : -practiceState.memory;
+      if (memoryTowardOpponent < 1) {
+        turn.phase = 'main';
+        showToast('メモリーが自分側に戻ったためターンは終了せず、メインフェイズに戻ります');
+        cancelTargetModes();
+        renderPracticeBoard();
+        return;
+      }
       // was 'end' -> start next turn for the other player, and follow the viewpoint to them
       const nextPlayerIndex = 1 - turn.playerIndex;
       practiceState.turn = { count: turn.count + 1, playerIndex: nextPlayerIndex, phase: 'active' };
