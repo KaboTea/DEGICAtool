@@ -918,6 +918,14 @@
     box-shadow: 0 1px 3px rgba(0,0,0,0.4);
     transition: transform 0.12s ease, filter 0.12s ease;
   }
+  /* .card-back は単体では position:relative を持つため、進化元のずらし表示(.stack-layer)
+     と組み合わせたときに位置がずれてしまう。ここで確実に絶対配置に上書きする。 */
+  .stack-layer.card-back {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    aspect-ratio: auto;
+  }
   .stack-tile .st-count {
     position: absolute;
     bottom: 2px;
@@ -1352,7 +1360,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.16.2</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.16.5</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -2614,7 +2622,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.16.2`);
+    log(`DigiCA Tool build v0.16.5`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -3257,10 +3265,15 @@
     // Raising area (0 or 1 stack)
     raisingAreaEl.innerHTML = '';
     if (player.raising) {
-      const onClick = isSelf && !allowEvolveTarget
+      // オプションは進化先として選べない(テイマーは選べる=進化する場合があるため)。
+      const stackIsTarget = !!allowEvolveTarget && !(evolveMode && (() => {
+        const c = getStackTopCard(player.raising);
+        return c && c.category === 'option';
+      })());
+      const onClick = isSelf && !stackIsTarget
         ? () => openStackActionView(player.raising)
         : () => openStackDetail(player.raising);
-      raisingAreaEl.appendChild(buildStackTile(player.raising, onClick, !!allowEvolveTarget));
+      raisingAreaEl.appendChild(buildStackTile(player.raising, onClick, stackIsTarget));
     } else {
       raisingAreaEl.innerHTML = '<div class="empty-state" style="padding:14px 0;font-size:11px;">(空)</div>';
     }
@@ -3275,11 +3288,13 @@
       const bottomGroup = document.createElement('div');
       bottomGroup.className = 'battle-bottom-group';
       player.battle.forEach(stack => {
-        const onClick = isSelf && !allowEvolveTarget
+        const topCard = cardIndexByNumber.get(cardEntryNum(stack.cards[stack.cards.length - 1]));
+        // オプションは進化先として選べない(テイマーは選べる=進化する場合があるため)。
+        const stackIsTarget = !!allowEvolveTarget && !(evolveMode && topCard && topCard.category === 'option');
+        const onClick = isSelf && !stackIsTarget
           ? () => openStackActionView(stack)
           : () => openStackDetail(stack);
-        const tile = buildStackTile(stack, onClick, !!allowEvolveTarget);
-        const topCard = cardIndexByNumber.get(cardEntryNum(stack.cards[stack.cards.length - 1]));
+        const tile = buildStackTile(stack, onClick, stackIsTarget);
         const isHumanGroup = topCard && (topCard.category === 'tamer' || topCard.category === 'option') && !stack.actingAsDigimon;
         (isHumanGroup ? bottomGroup : topGroup).appendChild(tile);
       });
@@ -3385,8 +3400,10 @@
           b.addEventListener('click', (e) => { e.stopPropagation(); fn(e); });
           actions.appendChild(b);
         };
-        mkBtn('登場', (e) => appearFromHand(index, number, e));
-        mkBtn('進化', () => enterEvolveMode(index, number));
+        mkBtn(card.category === 'option' ? '使用' : '登場', (e) => appearFromHand(index, number, e));
+        if (card.category !== 'tamer' && card.category !== 'option') {
+          mkBtn('進化', () => enterEvolveMode(index, number));
+        }
         mkBtn('進化元に追加', () => enterMaterialTargetMode(number, 'hand', index));
         mkBtn('捨てる', () => trashFromHand(index));
       }
@@ -3601,12 +3618,14 @@
 
   // 進化ルート選択モーダルを汎用化: 通常進化(1体)・ジョグレス/デジクロス(複数体)の
   // どちらからも呼べるようにし、コストが決まったら onResolve(cost) を呼ぶだけにする。
-  function openEvolveRouteModal(card, topCardForMatching, subtitleText, onResolve, showSpecialOptions) {
+  function openEvolveRouteModal(card, topCardForMatching, subtitleText, onResolve, showSpecialOptions, actionLabel) {
     pendingEvolveResolve = onResolve;
     const routes = buildEvolveRoutes(card, topCardForMatching);
     evolveRouteSubtitle.textContent = subtitleText;
     evolveManualCost.value = '0';
     evolveRouteList.innerHTML = '';
+    const label = actionLabel || '進化';
+    document.getElementById('evolveManualApply').textContent = `この内容で${label}`;
     if (routes.length === 0) {
       evolveRouteList.innerHTML = '<div class="empty-state" style="padding:8px 0;">条件に一致するルートが見つかりませんでした。下の手動入力を使ってください。</div>';
     } else {
@@ -3738,7 +3757,9 @@
     openEvolveRouteModal(
       multiEvolveMode.card, refTopCard,
       `「${multiEvolveMode.card.name}」→ 材料: ${namesText}`,
-      (cost) => finalizeMultiEvolve(cost)
+      (cost) => finalizeMultiEvolve(cost),
+      false,
+      multiEvolveMode.mode === 'jogress' ? '進化' : '登場'
     );
   }
 
@@ -3899,7 +3920,8 @@
     openEvolveRouteModal(
       assemblyMode.card, null,
       `「${assemblyMode.card.name}」→ アセンブリ材料: ${assemblyMode.materialNumbers.length}枚`,
-      (cost) => finalizeAssembly(cost)
+      (cost) => finalizeAssembly(cost),
+      false, '登場'
     );
   }
 
@@ -3991,10 +4013,12 @@
     resumeAttackStepIfAny();
   }
 
-  // ---------- Hand actions: 登場 / 進化 / 育成進化 / トラッシュ ----------
+  // ---------- Hand actions: 登場/使用 / 進化 / 育成進化 / トラッシュ ----------
   function appearFromHand(handIndex, handNumber, e) {
     const card = cardIndexByNumber.get(handNumber);
     if (!card) return;
+    const isOption = card.category === 'option';
+    const verb = isOption ? '使用' : '登場';
     const baseCost = card.play_cost;
     // Rule 17-1-3-2-1: a DP-less Digimon in the battle area is discarded by the rule check.
     const dpLessDigimon = card.category === 'digimon' && (card.dp === null || card.dp === undefined);
@@ -4011,14 +4035,14 @@
       self.battle.push({ cards: [handNumber], rested: false });
       payMemory(practiceState.turn.playerIndex, cost);
       renderPracticeBoard();
-      showToast(`「${card.name}」が登場しました(コスト${cost})`);
+      showToast(`「${card.name}」を${verb}しました(コスト${cost})`);
       resumeAttackStepIfAny();
     };
 
     const anchorEvent = e || centerPoint();
     const actions = [];
     if (baseCost !== null && baseCost !== undefined) {
-      actions.push({ label: `そのまま登場(コスト${baseCost})`, onClick: () => finalize(baseCost) });
+      actions.push({ label: `そのまま${verb}(コスト${baseCost})`, onClick: () => finalize(baseCost) });
     }
     actions.push({
       custom: true,
@@ -4026,7 +4050,7 @@
         container.style.cssText = 'display:flex;gap:6px;align-items:center;padding:4px 0;';
         container.innerHTML = `
           <input type="number" id="appearCostInput" value="0" min="0" style="width:56px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:4px;color:var(--text);font-size:12px;">
-          <button type="button" id="appearCostGo" class="btn" style="font-size:11px;padding:6px 8px;">このコストで登場</button>
+          <button type="button" id="appearCostGo" class="btn" style="font-size:11px;padding:6px 8px;">このコストで${verb}</button>
         `;
         container.querySelector('#appearCostGo').addEventListener('click', (ev) => {
           ev.stopPropagation();
@@ -4036,9 +4060,11 @@
         });
       },
     });
-    actions.push({ label: 'デジクロスにする', onClick: () => enterMultiEvolveMode(handIndex, handNumber, 'digixros') });
-    actions.push({ label: 'アセンブリにする', onClick: () => enterAssemblyMode(handIndex, handNumber) });
-    openZonePopup(anchorEvent, `「${card.name}」を登場`, actions);
+    if (card.category !== 'option' && card.category !== 'tamer') {
+      actions.push({ label: 'デジクロスにする', onClick: () => enterMultiEvolveMode(handIndex, handNumber, 'digixros') });
+      actions.push({ label: 'アセンブリにする', onClick: () => enterAssemblyMode(handIndex, handNumber) });
+    }
+    openZonePopup(anchorEvent, `「${card.name}」を${verb}`, actions);
   }
 
   function trashFromHand(handIndex) {
