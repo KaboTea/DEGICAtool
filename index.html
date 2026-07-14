@@ -1091,11 +1091,31 @@
     width: 60px;
     flex-shrink: 0;
     text-align: center;
+    overflow: visible;
   }
   .mat-pile .mp-label {
     font-size: 10px;
     color: var(--text-dim);
     margin-top: 3px;
+  }
+  .mat-pile-row {
+    position: relative;
+  }
+  .face-up-peek {
+    position: absolute;
+    top: 0;
+    left: 100%;
+    height: 100%;
+  }
+  .face-up-peek img {
+    position: absolute;
+    top: 0;
+    width: 38px;
+    aspect-ratio: 43 / 60;
+    object-fit: cover;
+    border-radius: 4px;
+    border: 1px solid var(--accent);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.6);
   }
   .mat-battle-area {
     flex: 1;
@@ -1272,6 +1292,8 @@
     box-shadow: 0 8px 24px rgba(0,0,0,0.5);
     min-width: 180px;
     max-width: 260px;
+    max-height: 80vh;
+    overflow-y: auto;
   }
   .zone-popup.open { display: block; }
   .zp-title {
@@ -1330,7 +1352,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.15.3</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.16.0</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -1622,6 +1644,12 @@
       <div style="display:flex;gap:8px;">
         <input type="number" id="evolveManualCost" min="0" value="0" style="flex:1;">
         <button class="btn" id="evolveManualApply">この内容で進化</button>
+      </div>
+    </div>
+    <div class="field" id="evolveSpecialRow" style="margin-top:8px;display:none;">
+      <div style="display:flex;gap:8px;">
+        <button class="btn" id="evolveBurstBtn" style="flex:1;">🔥 バースト進化にする</button>
+        <button class="btn" id="evolveJogressBtn" style="flex:1;">🔗 ジョグレス進化にする</button>
       </div>
     </div>
     <div class="modal-actions">
@@ -1973,8 +2001,16 @@
   // ---------- Card detail modal ----------
   const cardDetailModal = document.getElementById('cardDetailModal');
   const detailBody = document.getElementById('detailBody');
-  document.getElementById('closeDetail').addEventListener('click', () => cardDetailModal.classList.remove('open'));
-  cardDetailModal.addEventListener('click', (e) => { if (e.target === cardDetailModal) cardDetailModal.classList.remove('open'); });
+  document.getElementById('closeDetail').addEventListener('click', () => {
+    cardDetailModal.classList.remove('open');
+    resumeAttackStepIfAny();
+  });
+  cardDetailModal.addEventListener('click', (e) => {
+    if (e.target === cardDetailModal) {
+      cardDetailModal.classList.remove('open');
+      resumeAttackStepIfAny();
+    }
+  });
 
   let currentDetailCard = null;
   document.getElementById('addToDeckFromDetail').addEventListener('click', () => {
@@ -1988,6 +2024,9 @@
   }
 
   function openCardDetail(card, hideAddButton, stackContext) {
+    // アタック処理中の永続ポップアップと画面中央で重なって読めなくなるのを防ぐため、
+    // カード詳細を開くタイミングで一旦隠す(閉じたときに自動で復帰する)。
+    closeZonePopup();
     currentDetailCard = card;
     document.getElementById('addToDeckFromDetail').style.display = hideAddButton ? 'none' : '';
     const tags = [];
@@ -2575,7 +2614,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.15.3`);
+    log(`DigiCA Tool build v0.16.0`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -3050,6 +3089,7 @@
   }
 
   function openStackDetail(stack, forceExpand) {
+    closeZonePopup();
     if (stack.cards.length <= 1) {
       const card = cardIndexByNumber.get(cardEntryNum(stack.cards[stack.cards.length - 1]));
       if (card) openCardDetail(card, true, stack);
@@ -3104,11 +3144,8 @@
         const rowIdx = parseInt(btn.dataset.rowIdx, 10);
         const actualIdx = stack.cards.length - 1 - rowIdx; // rows are top-to-bottom; cards[] is bottom-to-top
         const number = cardEntryNum(stack.cards[actualIdx]);
-        openZonePopup(e, `「${escapeHtml(miniCardName(number))}」を送る`,
-          ALL_DESTINATIONS.map(dest => ({
-            label: DESTINATION_LABEL[dest],
-            onClick: () => removeCardFromStackAt(stack, actualIdx, dest),
-          }))
+        openHierarchicalDestinationPicker(e, `「${escapeHtml(miniCardName(number))}」を送る`,
+          (dest) => removeCardFromStackAt(stack, actualIdx, dest)
         );
       });
     });
@@ -3155,11 +3192,18 @@
 
   // A face-down pile (deck, digi-egg deck, security, opponent's hand): shows an
   // original card-back design with a count badge, not the real card contents.
-  function buildFaceDownPile(label, count, onClick) {
+  function buildFaceDownPile(label, count, onClick, faceUpExtras) {
     const wrap = document.createElement('div');
     wrap.className = 'mat-pile';
+    const extras = (faceUpExtras || []).slice(0, 5);
+    const peekHtml = extras.length > 0
+      ? `<div class="face-up-peek">${extras.map((num, i) => `<img src="${escapeHtml(miniCardImg(num))}" style="z-index:${i + 1};left:${i * 10}px;" alt="" onerror="this.style.opacity=0">`).join('')}</div>`
+      : '';
     wrap.innerHTML = `
-      <div class="card-back" style="${onClick ? 'cursor:pointer;' : ''}">${count > 0 ? `<span class="cb-count">${count}</span>` : ''}</div>
+      <div class="mat-pile-row">
+        <div class="card-back" style="${onClick ? 'cursor:pointer;' : ''}">${count > 0 ? `<span class="cb-count">${count}</span>` : ''}</div>
+        ${peekHtml}
+      </div>
       <div class="mp-label">${escapeHtml(label)}</div>
     `;
     if (onClick) wrap.querySelector('.card-back').addEventListener('click', (e) => { e.stopPropagation(); onClick(e); });
@@ -3196,7 +3240,10 @@
 
     // Side cluster: security (face-down) + deck (face-down) + trash (face-up top card)
     sideClusterEl.innerHTML = '';
-    sideClusterEl.appendChild(buildFaceDownPile('セキュリティ', player.security.length, isSelf ? (e) => openSecurityPopup(e) : null));
+    sideClusterEl.appendChild(buildFaceDownPile(
+      'セキュリティ', player.security.length, isSelf ? (e) => openSecurityPopup(e) : null,
+      player.security.filter(entry => cardEntryFaceUp(entry)).map(entry => cardEntryNum(entry))
+    ));
     sideClusterEl.appendChild(buildFaceDownPile('デッキ', player.library.length, isSelf ? (e) => openDeckPopup(e) : null));
     sideClusterEl.appendChild(buildFaceUpPile('トラッシュ', player.trash, isSelf
       ? () => openTrashListView()
@@ -3339,8 +3386,8 @@
           b.addEventListener('click', (e) => { e.stopPropagation(); fn(e); });
           actions.appendChild(b);
         };
-        mkBtn('登場', (e) => showAppearTypeMenu(index, number, e), card.play_cost === null || card.play_cost === undefined);
-        mkBtn('進化', (e) => showEvolveTypeMenu(index, number, e));
+        mkBtn('登場', (e) => appearFromHand(index, number, e));
+        mkBtn('進化', () => enterEvolveMode(index, number));
         mkBtn('進化元に追加', () => enterMaterialTargetMode(number, 'hand', index));
         mkBtn('捨てる', () => trashFromHand(index));
       }
@@ -3555,7 +3602,7 @@
 
   // 進化ルート選択モーダルを汎用化: 通常進化(1体)・ジョグレス/デジクロス(複数体)の
   // どちらからも呼べるようにし、コストが決まったら onResolve(cost) を呼ぶだけにする。
-  function openEvolveRouteModal(card, topCardForMatching, subtitleText, onResolve) {
+  function openEvolveRouteModal(card, topCardForMatching, subtitleText, onResolve, showSpecialOptions) {
     pendingEvolveResolve = onResolve;
     const routes = buildEvolveRoutes(card, topCardForMatching);
     evolveRouteSubtitle.textContent = subtitleText;
@@ -3576,6 +3623,7 @@
         evolveRouteList.appendChild(btn);
       });
     }
+    document.getElementById('evolveSpecialRow').style.display = showSpecialOptions ? '' : 'none';
     evolveRouteModal.classList.add('open');
   }
 
@@ -3586,7 +3634,8 @@
     openEvolveRouteModal(
       evolveMode.card, topCard,
       `「${evolveMode.card.name}」→ 進化先: ${topCard ? topCard.name : '?'}`,
-      (cost) => finalizeEvolve(cost)
+      (cost) => finalizeEvolve(cost),
+      true
     );
   }
 
@@ -3764,23 +3813,6 @@
   }
 
   // ---------- 進化/登場のサブメニュー ----------
-  function showEvolveTypeMenu(index, number, e) {
-    const card = cardIndexByNumber.get(number);
-    openZonePopup(e || centerPoint(), `「${card ? card.name : ''}」の進化方法を選択`, [
-      { label: '通常進化', onClick: () => enterEvolveMode(index, number) },
-      { label: 'バースト進化', onClick: () => enterEvolveMode(index, number, true) },
-      { label: 'ジョグレス進化', onClick: () => enterMultiEvolveMode(index, number, 'jogress') },
-    ]);
-  }
-
-  function showAppearTypeMenu(index, number, e) {
-    const card = cardIndexByNumber.get(number);
-    openZonePopup(e || centerPoint(), `「${card ? card.name : ''}」の登場方法を選択`, [
-      { label: '通常登場', onClick: () => appearFromHand(index, number, e) },
-      { label: 'デジクロス', onClick: () => enterMultiEvolveMode(index, number, 'digixros') },
-      { label: 'アセンブリ', onClick: () => enterAssemblyMode(index, number) },
-    ]);
-  }
 
   // ---------- アセンブリ: 手札/トラッシュから名称一致カードを複数選び、進化元として
   // 従えた状態で登場する(進化ではないためドローはしない) ----------
@@ -3891,6 +3923,19 @@
     evolveRouteModal.classList.remove('open');
     if (pendingEvolveResolve) pendingEvolveResolve(cost);
   });
+  document.getElementById('evolveBurstBtn').addEventListener('click', () => {
+    if (!evolveMode) { showToast('この操作は通常の進化からのみ使えます', true); return; }
+    const cost = parseInt(evolveManualCost.value, 10) || 0;
+    evolveMode.burst = true;
+    evolveRouteModal.classList.remove('open');
+    if (pendingEvolveResolve) pendingEvolveResolve(cost);
+  });
+  document.getElementById('evolveJogressBtn').addEventListener('click', () => {
+    if (!evolveMode || !evolveRouteTarget) { showToast('この操作は通常の進化からのみ使えます', true); return; }
+    const cost = parseInt(evolveManualCost.value, 10) || 0;
+    evolveRouteModal.classList.remove('open');
+    showJogressSecondMaterialPicker(cost);
+  });
   document.getElementById('evolveRouteCancel').addEventListener('click', () => {
     evolveRouteModal.classList.remove('open');
     evolveRouteTarget = null;
@@ -3899,23 +3944,68 @@
     renderPracticeBoard();
   });
 
+  // ジョグレス進化: 進化ルート画面で「ジョグレス進化にする」を選んだ後、もう1体の
+  // 進化元を選ばせ、既に選択済みの進化元と合体させて1つのスタックとして進化させる。
+  function showJogressSecondMaterialPicker(cost) {
+    const self = practiceState.players[practiceState.viewingIndex];
+    const primary = evolveRouteTarget;
+    const pool = [...self.battle, ...(self.raising ? [self.raising] : [])]
+      .filter(s => s !== primary && isDigimonLikeStack(s));
+    const actions = pool.map(s => {
+      const c = getStackTopCard(s);
+      return {
+        label: `${c ? c.name : '?'}(DP${getEffectiveDP(s)})を材料に選ぶ`,
+        onClick: () => finalizeJogressFromEvolve(cost, s),
+      };
+    });
+    if (pool.length === 0) {
+      actions.push({ label: '他に選べる進化元がありません', onClick: () => {}, disabled: true });
+    }
+    actions.push({ label: 'キャンセル', onClick: () => { cancelTargetModes(); renderPracticeBoard(); } });
+    openZonePopup(centerPoint(), 'ジョグレス進化: もう1つの進化元を選択', actions, true);
+  }
+
+  function finalizeJogressFromEvolve(cost, secondStack) {
+    if (!evolveMode || !evolveRouteTarget || !practiceState) return;
+    if (isNaN(cost) || cost < 0) { showToast('コストの入力が不正です', true); return; }
+    const self = practiceState.players[practiceState.viewingIndex];
+    const primary = evolveRouteTarget;
+
+    snapshotPracticeState();
+    self.hand.splice(evolveMode.handIndex, 1);
+    const mergedCards = [...primary.cards, ...secondStack.cards, evolveMode.handNumber];
+    const newStack = { cards: mergedCards, rested: false }; // ジョグレスは強制アクティブ
+    [primary, secondStack].forEach(s => {
+      if (self.raising === s) self.raising = null;
+      else { const idx = self.battle.indexOf(s); if (idx >= 0) self.battle.splice(idx, 1); }
+    });
+    self.battle.push(newStack);
+
+    payMemory(practiceState.turn.playerIndex, cost);
+    if (self.library.length > 0) self.hand.push(self.library.shift()); // 進化解決時に1ドロー
+    const evolvedName = evolveMode.card.name;
+
+    evolveRouteTarget = null;
+    exitEvolveMode();
+    renderPracticeBoard();
+    showToast(`「${evolvedName}」にジョグレス進化しました(コスト${cost}・強制アクティブ)`);
+    resumeAttackStepIfAny();
+  }
+
   // ---------- Hand actions: 登場 / 進化 / 育成進化 / トラッシュ ----------
   function appearFromHand(handIndex, handNumber, e) {
     const card = cardIndexByNumber.get(handNumber);
     if (!card) return;
     const baseCost = card.play_cost;
-    if (baseCost === null || baseCost === undefined) {
-      showToast('このカードには登場コストがありません(進化でのみ場に出せます)', true);
-      return;
-    }
     // Rule 17-1-3-2-1: a DP-less Digimon in the battle area is discarded by the rule check.
-    if (card.category === 'digimon' && (card.dp === null || card.dp === undefined)) {
-      showToast('DPを持たないデジモンはバトルエリアに置けません(ルールチェックで破棄されます)', true);
-      return;
-    }
+    const dpLessDigimon = card.category === 'digimon' && (card.dp === null || card.dp === undefined);
 
     const finalize = (cost) => {
       if (isNaN(cost) || cost < 0) { showToast('コストの入力が不正です', true); return; }
+      if (dpLessDigimon) {
+        showToast('DPを持たないデジモンはバトルエリアに置けません(ルールチェックで破棄されます)', true);
+        return;
+      }
       snapshotPracticeState();
       const self = practiceState.players[practiceState.viewingIndex];
       self.hand.splice(handIndex, 1);
@@ -3926,26 +4016,30 @@
       resumeAttackStepIfAny();
     };
 
-    const anchorEvent = e || { clientX: window.innerWidth / 2 - 90, clientY: window.innerHeight / 2 - 60 };
-    openZonePopup(anchorEvent, `「${card.name}」を登場`, [
-      { label: `そのまま登場(コスト${baseCost})`, onClick: () => finalize(baseCost) },
-      {
-        custom: true,
-        render: (container) => {
-          container.style.cssText = 'display:flex;gap:6px;align-items:center;padding:4px 0;';
-          container.innerHTML = `
-            <input type="number" id="appearCostInput" value="0" min="0" style="width:56px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:4px;color:var(--text);font-size:12px;">
-            <button type="button" id="appearCostGo" class="btn" style="font-size:11px;padding:6px 8px;">このコストで登場</button>
-          `;
-          container.querySelector('#appearCostGo').addEventListener('click', (e) => {
-            e.stopPropagation();
-            const x = parseInt(container.querySelector('#appearCostInput').value, 10);
-            closeZonePopup();
-            finalize(x);
-          });
-        },
+    const anchorEvent = e || centerPoint();
+    const actions = [];
+    if (baseCost !== null && baseCost !== undefined) {
+      actions.push({ label: `そのまま登場(コスト${baseCost})`, onClick: () => finalize(baseCost) });
+    }
+    actions.push({
+      custom: true,
+      render: (container) => {
+        container.style.cssText = 'display:flex;gap:6px;align-items:center;padding:4px 0;';
+        container.innerHTML = `
+          <input type="number" id="appearCostInput" value="0" min="0" style="width:56px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:4px;color:var(--text);font-size:12px;">
+          <button type="button" id="appearCostGo" class="btn" style="font-size:11px;padding:6px 8px;">このコストで登場</button>
+        `;
+        container.querySelector('#appearCostGo').addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          const x = parseInt(container.querySelector('#appearCostInput').value, 10);
+          closeZonePopup();
+          finalize(x);
+        });
       },
-    ]);
+    });
+    actions.push({ label: 'デジクロスにする', onClick: () => enterMultiEvolveMode(handIndex, handNumber, 'digixros') });
+    actions.push({ label: 'アセンブリにする', onClick: () => enterAssemblyMode(handIndex, handNumber) });
+    openZonePopup(anchorEvent, `「${card.name}」を登場`, actions);
   }
 
   function trashFromHand(handIndex) {
@@ -4145,6 +4239,7 @@
   }
 
   function openRevealResolveView(revealed, self) {
+    closeZonePopup();
     currentDetailCard = null;
     document.getElementById('addToDeckFromDetail').style.display = 'none';
     function render() {
@@ -4274,6 +4369,7 @@
   // セキュリティへ戻す(「セキュリティを全て見て1〜5枚を移動、その後シャッフルして戻す」
   // といった効果に対応)。
   function openSecurityListView() {
+    closeZonePopup();
     const self = practiceState.players[practiceState.viewingIndex];
     currentDetailCard = null;
     document.getElementById('addToDeckFromDetail').style.display = 'none';
@@ -4328,18 +4424,16 @@
           e.stopPropagation();
           const idx = parseInt(btn.dataset.idx, 10);
           const number = cardEntryNum(self.security[idx]);
-          openZonePopup(e, `「${escapeHtml(miniCardName(number))}」を送る`,
-            ALL_DESTINATIONS.filter(d => d !== 'secTop' && d !== 'secBottom').map(dest => ({
-              label: DESTINATION_LABEL[dest],
-              onClick: () => {
-                snapshotPracticeState();
-                self.security.splice(idx, 1);
-                sendCardToDestination(self, number, dest);
-                renderPracticeBoard();
-                render();
-                cardDetailModal.classList.add('open');
-              },
-            }))
+          openHierarchicalDestinationPicker(e, `「${escapeHtml(miniCardName(number))}」を送る`,
+            (dest) => {
+              snapshotPracticeState();
+              self.security.splice(idx, 1);
+              sendCardToDestination(self, number, dest);
+              renderPracticeBoard();
+              render();
+              cardDetailModal.classList.add('open');
+            },
+            { excludeSecurity: true }
           );
         });
       });
@@ -4360,6 +4454,7 @@
   // トラッシュをクリックすると中身の一覧が直接開き、カードごとに「送る▾」(移動先選択)
   // と「進化元へ」(進化元へ追加のターゲット選択モードに入る)を選べる。
   function openTrashListView() {
+    closeZonePopup();
     const self = practiceState.players[practiceState.viewingIndex];
     currentDetailCard = null;
     document.getElementById('addToDeckFromDetail').style.display = 'none';
@@ -4390,25 +4485,23 @@
           e.stopPropagation();
           const idx = parseInt(btn.dataset.idx, 10);
           const number = self.trash[idx];
-          openZonePopup(e, `「${escapeHtml(miniCardName(number))}」を送る`,
-            ALL_DESTINATIONS.map(dest => ({
-              label: DESTINATION_LABEL[dest],
-              onClick: () => {
-                const finish = (faceUp) => {
-                  snapshotPracticeState();
-                  self.trash.splice(idx, 1);
-                  sendCardToDestination(self, number, dest, faceUp);
-                  cardDetailModal.classList.remove('open');
-                  renderPracticeBoard();
-                  showToast(`カードを${DESTINATION_LABEL[dest]}移動しました`);
-                };
-                if (dest === 'secTop' || dest === 'secBottom') {
-                  askFaceOrientation((faceDown) => finish(!faceDown));
-                } else {
-                  finish(false);
-                }
-              },
-            }))
+          openHierarchicalDestinationPicker(e, `「${escapeHtml(miniCardName(number))}」を送る`,
+            (dest) => {
+              const finish = (faceUp) => {
+                snapshotPracticeState();
+                self.trash.splice(idx, 1);
+                sendCardToDestination(self, number, dest, faceUp);
+                cardDetailModal.classList.remove('open');
+                renderPracticeBoard();
+                showToast(`カードを${DESTINATION_LABEL[dest]}移動しました`);
+              };
+              if (dest === 'secTop' || dest === 'secBottom') {
+                askFaceOrientation((faceDown) => finish(!faceDown));
+              } else {
+                finish(false);
+              }
+            },
+            { excludeTrash: true }
           );
         });
       });
@@ -4446,6 +4539,34 @@
     battle: 'バトルエリアへ登場(コストなし)',
   };
   const ALL_DESTINATIONS = ['hand', 'trash', 'deckTop', 'deckBottom', 'secTop', 'secBottom', 'battle'];
+
+  // 使用感向上のため、送り先ポップアップを「手札/デッキ/セキュリティ/バトルエリア」の
+  // 大分類→(デッキ/セキュリティなら)上下→の階層構造にする。トラッシュへ送る操作は
+  // 「退化」として別ボタンに独立させたため、ここには含めない。
+  function openHierarchicalDestinationPicker(anchorEvent, title, onDestination, options) {
+    const opts = options || {};
+    const actions = [
+      { label: '手札へ', onClick: () => onDestination('hand') },
+    ];
+    if (!opts.excludeTrash) {
+      actions.push({ label: 'トラッシュへ', onClick: () => onDestination('trash') });
+    }
+    actions.push({ label: 'デッキへ▾', onClick: (e) => openZonePopup(e, 'デッキのどちらに置きますか?', [
+      { label: '上へ', onClick: () => onDestination('deckTop') },
+      { label: '下へ', onClick: () => onDestination('deckBottom') },
+    ]) });
+    if (!opts.excludeSecurity) {
+      actions.push({ label: 'セキュリティへ▾', onClick: (e) => openZonePopup(e, 'セキュリティのどちらに置きますか?', [
+        { label: '上へ', onClick: () => onDestination('secTop') },
+        { label: '下へ', onClick: () => onDestination('secBottom') },
+      ]) });
+    }
+    if (!opts.excludeBattle) {
+      actions.push({ label: 'バトルエリアへ登場', onClick: () => onDestination('battle') });
+    }
+    openZonePopup(anchorEvent, title, actions);
+  }
+
 
   function removeCardFromStackAt(stack, cardIndexInStack, destination) {
     const owner = findStackOwnerAndZone(stack);
@@ -5013,10 +5134,8 @@
       cardDetailModal.classList.remove('open');
       renderPracticeBoard();
     });
-    mk('一番上を送る▾', (e) => openZonePopup(e, '一番上のカードを送る', ALL_DESTINATIONS.map(dest => ({
-      label: DESTINATION_LABEL[dest],
-      onClick: () => removeCardFromStackAt(stack, topIndex, dest),
-    }))));
+    mk('退化(一番上をトラッシュへ)', () => removeCardFromStackAt(stack, topIndex, 'trash'));
+    mk('一番上を移動▾', (e) => openHierarchicalDestinationPicker(e, '一番上のカードを送る', (dest) => removeCardFromStackAt(stack, topIndex, dest)));
     mk('進化元を全部トラッシュへ', () => trashEntireStack(stack));
     wrap.appendChild(row);
     return wrap;
@@ -5149,10 +5268,8 @@
       }
     }
     mk('進化元を全部トラッシュへ', () => trashEntireStack(stack));
-    mk('一番上を送る▾', (e) => openZonePopup(e, '一番上のカードを送る', ALL_DESTINATIONS.map(dest => ({
-      label: DESTINATION_LABEL[dest],
-      onClick: () => removeCardFromStackAt(stack, topIndex, dest),
-    }))));
+    mk('退化(一番上をトラッシュへ)', () => removeCardFromStackAt(stack, topIndex, 'trash'));
+    mk('一番上を移動▾', (e) => openHierarchicalDestinationPicker(e, '一番上のカードを送る', (dest) => removeCardFromStackAt(stack, topIndex, dest)));
     wrap.appendChild(row);
     return wrap;
   }
