@@ -1352,7 +1352,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.16.0</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.16.2</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -2614,7 +2614,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.16.0`);
+    log(`DigiCA Tool build v0.16.2`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -3356,13 +3356,12 @@
 
     // 相手のセキュリティ/消滅などの効果で、ターンを持っていない側にも登場・進化が
     // 発生することがあるため、ターン保持者に関わらず操作可能にする。
-    // アタック処理中も、対象選択そのもの以外のタイミング(アタック時効果/カウンター/
-    // ブロック/ブロック時効果)では、双方が効果由来の登場・進化を行えるようにする。
+    // アタック処理中(対象選択中も含め)も、効果由来の登場・進化・ドローなどを
+    // いつでも行えるようにする(ステップ単位での禁止は不具合の元になるため撤廃)。
     // ターン開始時(アクティブフェイズ、ドロー前)・ターン終了時(エンドフェイズ)の
     // 効果もあるため、メインフェイズ以外でもこれらのフェイズでは操作を許可する。
-    const attackAllowsHandAction = !attackState || attackState.stepName !== 'target';
     const phaseAllowsHandAction = ['active', 'main', 'end'].includes(practiceState.turn.phase);
-    const canAct = phaseAllowsHandAction && !evolveMode && !materialTargetMode && !multiEvolveMode && !assemblyMode && attackAllowsHandAction;
+    const canAct = phaseAllowsHandAction && !evolveMode && !materialTargetMode && !multiEvolveMode && !assemblyMode;
     const handRow = document.getElementById('selfHandRow');
     handRow.innerHTML = '';
     self.hand.forEach((number, index) => {
@@ -4593,7 +4592,7 @@
   // Asks whether the card should be added face-up or face-down, using a small
   // popup centered on screen (not tied to a specific click position).
   function askFaceOrientation(callback) {
-    const centerEvent = { clientX: window.innerWidth / 2 - 90, clientY: window.innerHeight / 2 - 60 };
+    const centerEvent = { clientX: window.innerWidth / 2 - 90, clientY: 70 };
     openZonePopup(centerEvent, '向きを選択', [
       { label: '表向きで追加', onClick: () => callback(false) },
       { label: '裏向きで追加', onClick: () => callback(true) },
@@ -4624,7 +4623,9 @@
   }
 
   function centerPoint() {
-    return { clientX: window.innerWidth / 2 - 130, clientY: window.innerHeight / 2 - 100 };
+    // 画面中央だと、手札を見るためにスクロールした位置と重なってボタンが隠れて
+    // しまうことがあるため、常にビューポート上部に固定表示する。
+    return { clientX: window.innerWidth / 2 - 130, clientY: 70 };
   }
 
   function declareAttack(stack) {
@@ -5016,7 +5017,7 @@
   // ---------- DP modify (works on any Digimon, self or opponent, any time) ----------
   function promptDestructionChoice(stack) {
     const topCard = getStackTopCard(stack);
-    const centerEvent = { clientX: window.innerWidth / 2 - 130, clientY: window.innerHeight / 2 - 90 };
+    const centerEvent = { clientX: window.innerWidth / 2 - 130, clientY: 70 };
     openZonePopup(centerEvent, `「${topCard ? topCard.name : '?'}」がDP0以下になり消滅します`, [
       { label: 'そのまま消滅(進化元ごとトラッシュへ)', onClick: () => { trashEntireStack(stack); resumeAttackStepIfAny(); } },
       { label: '消滅効果を発揮(トラッシュに送らない)', onClick: () => { showToast('消滅効果の処理は手動で行ってください'); resumeAttackStepIfAny(); } },
@@ -5038,7 +5039,7 @@
   }
 
   function openDPModifyPopup(stack) {
-    const centerEvent = { clientX: window.innerWidth / 2 - 110, clientY: window.innerHeight / 2 - 60 };
+    const centerEvent = { clientX: window.innerWidth / 2 - 110, clientY: 70 };
     openZonePopup(centerEvent, 'DPを増減', [
       {
         custom: true,
@@ -5240,7 +5241,7 @@
       } else {
         mk('デジモンにする', () => {
           cardDetailModal.classList.remove('open');
-          const centerEvent = { clientX: window.innerWidth / 2 - 100, clientY: window.innerHeight / 2 - 60 };
+          const centerEvent = { clientX: window.innerWidth / 2 - 100, clientY: 70 };
           openZonePopup(centerEvent, 'DPを設定してデジモンにする', [
             {
               custom: true,
