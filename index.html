@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+\<!DOCTYPE html>
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
@@ -1386,7 +1386,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.18.6</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.19.1</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -1681,9 +1681,10 @@
       </div>
     </div>
     <div class="field" id="evolveSpecialRow" style="margin-top:8px;display:none;">
-      <div style="display:flex;gap:8px;">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
         <button class="btn" id="evolveBurstBtn" style="flex:1;">🔥 バースト進化にする</button>
         <button class="btn" id="evolveJogressBtn" style="flex:1;">🧬 ジョグレス進化にする</button>
+        <button class="btn" id="evolveAppFusionBtn" style="flex:1;">📲 アプ合体にする</button>
       </div>
     </div>
     <div class="modal-actions">
@@ -2665,7 +2666,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.18.6`);
+    log(`DigiCA Tool build v0.19.1`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -4131,6 +4132,16 @@
     evolveRouteModal.classList.remove('open');
     showJogressSecondMaterialPicker(cost);
   });
+  document.getElementById('evolveAppFusionBtn').addEventListener('click', () => {
+    if (!evolveMode || !evolveRouteTarget) { showToast('この操作は通常の進化からのみ使えます', true); return; }
+    if (!evolveRouteTarget.links || evolveRouteTarget.links.length === 0) {
+      showToast('対象の進化元にリンクがありません(アプ合体はリンク状態のカードが対象です)', true);
+      return;
+    }
+    const cost = parseInt(evolveManualCost.value, 10) || 0;
+    evolveRouteModal.classList.remove('open');
+    finalizeAppFusion(cost);
+  });
   document.getElementById('evolveRouteCancel').addEventListener('click', () => {
     evolveRouteModal.classList.remove('open');
     evolveRouteTarget = null;
@@ -4138,6 +4149,33 @@
     cancelTargetModes();
     renderPracticeBoard();
   });
+
+  // アプ合体(8-4): 対象の進化元が持つリンクカードを、そのデジモンの上に重ねてから
+  // (=リンク状態を解消して通常の進化元にしてから)、アプ合体先のカードをさらに重ねて
+  // 進化させる。「2種の組み合わせ」等の条件成立可否はプレイヤーの判断に委ねる。
+  function finalizeAppFusion(cost) {
+    if (!evolveMode || !evolveRouteTarget || !practiceState) return;
+    if (isNaN(cost) || cost < 0) { showToast('コストの入力が不正です', true); return; }
+    const self = practiceState.players[practiceState.viewingIndex];
+    const targetStack = evolveRouteTarget;
+
+    snapshotPracticeState();
+    self.hand.splice(evolveMode.handIndex, 1);
+    if (targetStack.burstEvolved) targetStack.burstEvolved = false;
+    const links = targetStack.links || [];
+    links.forEach(num => targetStack.cards.push(num));
+    targetStack.links = [];
+    targetStack.cards.push(evolveMode.handNumber);
+    payMemory(practiceState.turn.playerIndex, cost);
+    if (self.library.length > 0) self.hand.push(self.library.shift()); // 進化解決時に1ドロー
+    const evolvedName = evolveMode.card.name;
+
+    evolveRouteTarget = null;
+    exitEvolveMode();
+    renderPracticeBoard();
+    showToast(`「${evolvedName}」にアプ合体しました(コスト${cost})`);
+    resumeAttackStepIfAny();
+  }
 
   // ジョグレス進化: 進化ルート画面で「ジョグレス進化にする」を選んだ後、もう1体の
   // 進化元を選ばせ、既に選択済みの進化元と合体させて1つのスタックとして進化させる。
