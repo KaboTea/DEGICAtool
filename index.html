@@ -1128,14 +1128,14 @@
   .link-peek {
     position: absolute;
     top: 50%;
-    left: 100%;
+    left: 55%;
     transform: translateY(-50%);
     height: 60%;
     z-index: 20;
   }
   .link-card-wrap {
     position: absolute;
-    left: 8px;
+    left: 0;
     width: 95px;
     height: 68px;
   }
@@ -1386,7 +1386,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.18.4</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.18.5</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -2665,7 +2665,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.18.4`);
+    log(`DigiCA Tool build v0.18.5`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -3066,7 +3066,7 @@
     el.className = 'stack-tile' + (stack.rested ? ' rested' : '') + (isEvolveTarget ? ' target-pick' : '') + (stack.burstEvolved ? ' burst-evolved' : '');
     el.style.padding = fanUp ? `${maxOffset}px 0 0 0` : `0 0 ${maxOffset}px 0`;
     if (stack.links && stack.links.length > 0) {
-      el.style.marginRight = '108px'; // リンクの横差し表示が隣のデジモンと重ならないよう余白を確保
+      el.style.marginRight = '65px'; // リンクの横差し表示が隣のデジモンと重ならないよう余白を確保
     }
     const layerHtml = layers.map((entry, i) => {
       const depth = layers.length - 1 - i; // 0 = top card (no offset), increasing = further back
