@@ -1133,15 +1133,23 @@
     height: 60%;
     z-index: 20;
   }
-  .link-peek img {
+  .link-card-wrap {
     position: absolute;
-    top: 0;
-    width: 34px;
-    aspect-ratio: 43 / 60;
+    left: 8px;
+    width: 95px;
+    height: 68px;
+  }
+  .link-card-wrap img {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 68px;
+    height: 95px;
     object-fit: cover;
     border-radius: 4px;
     border: 1px solid #c78fff;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.7);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.8);
+    transform: translate(-50%, -50%) rotate(90deg);
   }
   .mat-battle-area {
     flex: 1;
@@ -1378,7 +1386,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.18.1</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.18.3</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -2113,6 +2121,23 @@
         if (tagsEl && tagsEl.nextSibling) tagsEl.parentNode.insertBefore(dpPanel, tagsEl.nextSibling);
         else detailInfo.appendChild(dpPanel);
       }
+      if (stackContext.links && stackContext.links.length > 0) {
+        const linkSection = document.createElement('div');
+        linkSection.style.cssText = 'margin-top:14px;padding-top:12px;border-top:1px solid var(--border);width:100%;';
+        const linkRows = stackContext.links.map(num => `
+          <div class="deck-list-item" style="cursor:default;">
+            <img src="${escapeHtml(miniCardImg(num))}" alt="" class="stack-view-row" data-number="${escapeHtml(num)}" style="width:36px;border-radius:4px;cursor:pointer;flex-shrink:0;" onerror="this.style.opacity=0">
+            <span class="dli-name stack-view-row" data-number="${escapeHtml(num)}" style="cursor:pointer;">${escapeHtml(miniCardName(num))}</span>
+          </div>`).join('');
+        linkSection.innerHTML = `<div class="d-number mono">🔗 リンク ${stackContext.links.length}枚</div><div class="deck-list" style="margin-top:8px;">${linkRows}</div>`;
+        detailInfo.appendChild(linkSection);
+        linkSection.querySelectorAll('.stack-view-row').forEach(el => {
+          el.addEventListener('click', () => {
+            const card2 = cardIndexByNumber.get(el.dataset.number);
+            if (card2) openCardDetail(card2, true);
+          });
+        });
+      }
       if (isOwn) {
         detailInfo.appendChild(renderStackActionButtons(stackContext));
       } else {
@@ -2640,7 +2665,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.18.1`);
+    log(`DigiCA Tool build v0.18.3`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -3053,7 +3078,7 @@
       return `<img class="stack-layer" style="${baseStyle}" src="${escapeHtml(miniCardImg(cardEntryNum(entry)))}" alt="" onerror="this.style.opacity=0">`;
     }).join('');
     const linkHtml = (stack.links && stack.links.length > 0)
-      ? `<div class="link-peek">${stack.links.map((num, i) => `<img src="${escapeHtml(miniCardImg(num))}" style="z-index:${i + 1};left:${i * 14}px;" alt="" title="リンク" onerror="this.style.opacity=0">`).join('')}</div>`
+      ? `<div class="link-peek">${stack.links.map((num, i) => `<div class="link-card-wrap" style="z-index:${i + 1};top:${i * 17}px;"><img src="${escapeHtml(miniCardImg(num))}" alt="" title="リンク" onerror="this.style.opacity=0"></div>`).join('')}</div>`
       : '';
     el.innerHTML = `
       <div class="stack-fan">${layerHtml}</div>
@@ -3165,11 +3190,23 @@
     }).join('');
     const topNumber = cardEntryNum(stack.cards[stack.cards.length - 1]);
     const topTitle = `${miniCardName(topNumber)} ${costLabel(topNumber)}`.trim();
+    const linkRows = (stack.links || []).map((num, i) => `
+      <div class="deck-list-item" style="cursor:default;">
+        <img src="${escapeHtml(miniCardImg(num))}" alt="" class="stack-view-row" data-number="${escapeHtml(num)}" style="width:36px;border-radius:4px;cursor:pointer;flex-shrink:0;" onerror="this.style.opacity=0">
+        <span class="dli-name stack-view-row" data-number="${escapeHtml(num)}" style="cursor:pointer;">${escapeHtml(miniCardName(num))}</span>
+      </div>`).join('');
+    const linkSectionHtml = (stack.links && stack.links.length > 0)
+      ? `<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);">
+           <div class="d-number mono">🔗 リンク ${stack.links.length}枚</div>
+           <div class="deck-list" style="margin-top:8px;">${linkRows}</div>
+         </div>`
+      : '';
     detailBody.innerHTML = `
       <div class="detail-info" style="width:100%;">
         <div class="d-title">${escapeHtml(topTitle)}</div>
         <div class="d-number mono">進化元 ${stack.cards.length}枚(上から順)${stack.rested ? '・レスト中' : ''}</div>
         <div class="deck-list" style="margin-top:8px;">${rows}</div>
+        ${linkSectionHtml}
       </div>
     `;
     detailBody.querySelectorAll('.stack-view-row').forEach(el => {
