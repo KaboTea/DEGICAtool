@@ -1,4 +1,4 @@
-\<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
@@ -1200,11 +1200,11 @@
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
-    padding-top: 16px;
+    padding-top: 40px;
   }
   .st-dp {
     position: absolute;
-    top: -14px;
+    top: -34px;
     left: 50%;
     transform: translateX(-50%);
     background: var(--c-red);
@@ -1386,7 +1386,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.19.1</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.20.0</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -2038,11 +2038,13 @@
   const detailBody = document.getElementById('detailBody');
   document.getElementById('closeDetail').addEventListener('click', () => {
     cardDetailModal.classList.remove('open');
+    resumeRevealSessionIfAny();
     resumeAttackStepIfAny();
   });
   cardDetailModal.addEventListener('click', (e) => {
     if (e.target === cardDetailModal) {
       cardDetailModal.classList.remove('open');
+      resumeRevealSessionIfAny();
       resumeAttackStepIfAny();
     }
   });
@@ -2125,10 +2127,11 @@
       if (stackContext.links && stackContext.links.length > 0) {
         const linkSection = document.createElement('div');
         linkSection.style.cssText = 'margin-top:14px;padding-top:12px;border-top:1px solid var(--border);width:100%;';
-        const linkRows = stackContext.links.map(num => `
+        const linkRows = stackContext.links.map((num, i) => `
           <div class="deck-list-item" style="cursor:default;">
             <img src="${escapeHtml(miniCardImg(num))}" alt="" class="stack-view-row" data-number="${escapeHtml(num)}" style="width:36px;border-radius:4px;cursor:pointer;flex-shrink:0;" onerror="this.style.opacity=0">
             <span class="dli-name stack-view-row" data-number="${escapeHtml(num)}" style="cursor:pointer;">${escapeHtml(miniCardName(num))}</span>
+            <button type="button" class="btn link-row-discard" data-link-idx="${i}" style="font-size:10px;padding:3px 6px;">破棄</button>
           </div>`).join('');
         linkSection.innerHTML = `<div class="d-number mono">🔗 リンク ${stackContext.links.length}枚</div><div class="deck-list" style="margin-top:8px;">${linkRows}</div>`;
         detailInfo.appendChild(linkSection);
@@ -2136,6 +2139,12 @@
           el.addEventListener('click', () => {
             const card2 = cardIndexByNumber.get(el.dataset.number);
             if (card2) openCardDetail(card2, true);
+          });
+        });
+        linkSection.querySelectorAll('.link-row-discard').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            discardLink(stackContext, parseInt(btn.dataset.linkIdx, 10));
           });
         });
       }
@@ -2666,7 +2675,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.19.1`);
+    log(`DigiCA Tool build v0.20.0`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -2934,6 +2943,14 @@
     return !!(card && card.inherited && card.inherited.includes('リンク'));
   }
 
+  // 「リンクDP」はリンク効果欄の冒頭に「DP+N000」の形式で書かれている。
+  // リンクしたときにホストのDPへ自動加算し、リンクを外したときは差し引く。
+  function getLinkDPBonus(card) {
+    const text = (card && card.inherited) || '';
+    const m = text.match(/DP[+＋](\d+)/);
+    return m ? parseInt(m[1], 10) : 0;
+  }
+
 
   function renderMulliganStep() {
     if (!practiceSetup) { practiceMulliganArea.innerHTML = ''; return; }
@@ -3183,6 +3200,8 @@
       const number = cardEntryNum(entry);
       const faceDown = cardEntryFaceDown(entry);
       const cost = costLabel(number);
+      const c = cardIndexByNumber.get(number);
+      const linkBtn = cardHasLinkEffect(c) ? `<button type="button" class="btn stack-row-link" data-row-idx="${i}" style="font-size:10px;padding:3px 6px;">🔗リンク</button>` : '';
       return `
         <div class="deck-list-item" style="cursor:default;${isTop ? `border-color:var(--accent);background:var(--panel);` : ''}">
           <img src="${escapeHtml(miniCardImg(number))}" alt="" class="stack-view-row" data-number="${escapeHtml(number)}" style="width:${isTop ? 52 : 40}px;border-radius:4px;cursor:pointer;flex-shrink:0;" onerror="this.style.opacity=0">
@@ -3190,6 +3209,7 @@
           <span class="dli-name stack-view-row" data-number="${escapeHtml(number)}" style="cursor:pointer;${isTop ? 'font-weight:700;' : ''}">${escapeHtml(miniCardName(number))}${faceDown ? ' <span style="color:var(--text-dim);">(裏向き)</span>' : ''}</span>
           ${cost ? `<span class="mono" style="font-size:11px;color:var(--text-dim);">${escapeHtml(cost)}</span>` : ''}
           <button type="button" class="btn stack-row-move" data-row-idx="${i}" style="font-size:10px;padding:3px 6px;">送る▾</button>
+          ${linkBtn}
         </div>`;
     }).join('');
     const topNumber = cardEntryNum(stack.cards[stack.cards.length - 1]);
@@ -3198,6 +3218,7 @@
       <div class="deck-list-item" style="cursor:default;">
         <img src="${escapeHtml(miniCardImg(num))}" alt="" class="stack-view-row" data-number="${escapeHtml(num)}" style="width:36px;border-radius:4px;cursor:pointer;flex-shrink:0;" onerror="this.style.opacity=0">
         <span class="dli-name stack-view-row" data-number="${escapeHtml(num)}" style="cursor:pointer;">${escapeHtml(miniCardName(num))}</span>
+        <button type="button" class="btn link-row-discard" data-link-idx="${i}" style="font-size:10px;padding:3px 6px;">破棄</button>
       </div>`).join('');
     const linkSectionHtml = (stack.links && stack.links.length > 0)
       ? `<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);">
@@ -3219,6 +3240,12 @@
         if (card) openCardDetail(card, true);
       });
     });
+    detailBody.querySelectorAll('.link-row-discard').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        discardLink(stack, parseInt(btn.dataset.linkIdx, 10));
+      });
+    });
     detailBody.querySelectorAll('.stack-row-move').forEach(btn => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -3228,6 +3255,16 @@
         openHierarchicalDestinationPicker(e, `「${escapeHtml(miniCardName(number))}」を送る`,
           (dest) => removeCardFromStackAt(stack, actualIdx, dest)
         );
+      });
+    });
+    detailBody.querySelectorAll('.stack-row-link').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const rowIdx = parseInt(btn.dataset.rowIdx, 10);
+        const actualIdx = stack.cards.length - 1 - rowIdx;
+        const number = cardEntryNum(stack.cards[actualIdx]);
+        cardDetailModal.classList.remove('open');
+        enterLinkTargetMode('stackMaterial', { stack, index: actualIdx }, number);
       });
     });
     cardDetailModal.classList.add('open');
@@ -3739,10 +3776,9 @@
       showToast('自分自身にはリンクできません', true);
       return;
     }
-    const limit = targetStack.linkLimit ?? 1;
-    const current = (targetStack.links || []).length;
-    if (current >= limit) {
-      if (!confirm(`このデジモンのリンク上限(${limit})を超えます。それでもリンクしますか?`)) return;
+    if (source === 'stackMaterial' && identifier.stack === targetStack) {
+      showToast('自分自身にはリンクできません', true);
+      return;
     }
     const routes = buildLinkRoutes(card);
     openEvolveRouteModal(
@@ -3768,15 +3804,36 @@
         if (self.raising === srcStack) self.raising = null;
         else { const idx = self.battle.indexOf(srcStack); if (idx >= 0) self.battle.splice(idx, 1); }
       }
+    } else if (source === 'stackMaterial') {
+      const { stack: srcStack, index: srcIdx } = identifier;
+      srcStack.cards.splice(srcIdx, 1);
+      if (srcStack.cards.length === 0) {
+        if (self.raising === srcStack) self.raising = null;
+        else { const idx = self.battle.indexOf(srcStack); if (idx >= 0) self.battle.splice(idx, 1); }
+      }
     }
     if (!targetStack.links) targetStack.links = [];
+    // リンク上限を超える場合は、古いリンク(1枚目)から順に自動で破棄して枠を空ける。
+    const limit = targetStack.linkLimit ?? 1;
+    const discardedNames = [];
+    while (targetStack.links.length >= limit && targetStack.links.length > 0) {
+      const oldNum = targetStack.links.shift();
+      const oldDP = getLinkDPBonus(cardIndexByNumber.get(oldNum));
+      if (oldDP) targetStack.dpModifier = (targetStack.dpModifier || 0) - oldDP;
+      self.trash.push(oldNum);
+      discardedNames.push(miniCardName(oldNum));
+    }
     targetStack.links.push(number);
+    const linkDP = getLinkDPBonus(card);
+    if (linkDP) {
+      targetStack.dpModifier = (targetStack.dpModifier || 0) + linkDP;
+    }
     payMemory(practiceState.turn.playerIndex, cost);
     const hostCard = getStackTopCard(targetStack);
     linkTargetMode = null;
     if (!evolveMode && !materialTargetMode) evolveModeBanner.classList.remove('active');
     renderPracticeBoard();
-    showToast(`「${card.name}」を「${hostCard ? hostCard.name : '?'}」にリンクしました(コスト${cost})`);
+    showToast(`「${card.name}」を「${hostCard ? hostCard.name : '?'}」にリンクしました(コスト${cost}${linkDP ? `・DP+${linkDP}` : ''})${discardedNames.length ? `。上限超過のため「${discardedNames.join('・')}」を破棄しました` : ''}`);
     resumeAttackStepIfAny();
   }
 
@@ -3785,10 +3842,14 @@
     if (!owner) return;
     snapshotPracticeState();
     const [num] = stack.links.splice(linkIndex, 1);
+    const linkDP = getLinkDPBonus(cardIndexByNumber.get(num));
+    if (linkDP) {
+      stack.dpModifier = (stack.dpModifier || 0) - linkDP;
+    }
     owner.player.trash.push(num);
     cardDetailModal.classList.remove('open');
     renderPracticeBoard();
-    showToast('リンクを破棄しました');
+    showToast(`リンクを破棄しました${linkDP ? `(DP-${linkDP})` : ''}`);
   }
 
   // 進化ルート選択モーダルを汎用化: 通常進化(1体)・ジョグレス/デジクロス(複数体)の
@@ -3824,11 +3885,13 @@
     if (!evolveMode || !practiceState) return;
     evolveRouteTarget = targetStack;
     const topCard = cardIndexByNumber.get(cardEntryNum(targetStack.cards[targetStack.cards.length - 1]));
+    const self = practiceState.players[practiceState.viewingIndex];
+    const isRaisingTarget = self.raising === targetStack;
     openEvolveRouteModal(
       evolveMode.card, topCard,
       `「${evolveMode.card.name}」→ 進化先: ${topCard ? topCard.name : '?'}`,
       (cost) => finalizeEvolve(cost),
-      true
+      !isRaisingTarget
     );
   }
 
@@ -4163,7 +4226,14 @@
     self.hand.splice(evolveMode.handIndex, 1);
     if (targetStack.burstEvolved) targetStack.burstEvolved = false;
     const links = targetStack.links || [];
-    links.forEach(num => targetStack.cards.push(num));
+    let removedLinkDP = 0;
+    links.forEach(num => {
+      targetStack.cards.push(num);
+      removedLinkDP += getLinkDPBonus(cardIndexByNumber.get(num));
+    });
+    if (removedLinkDP) {
+      targetStack.dpModifier = (targetStack.dpModifier || 0) - removedLinkDP;
+    }
     targetStack.links = [];
     targetStack.cards.push(evolveMode.handNumber);
     payMemory(practiceState.turn.playerIndex, cost);
@@ -4482,8 +4552,8 @@
     function render() {
       const rows = revealed.map((number, i) => `
         <div class="deck-list-item" style="cursor:default;">
-          <img src="${escapeHtml(miniCardImg(number))}" alt="" style="width:34px;border-radius:3px;" onerror="this.style.opacity=0">
-          <span class="dli-name">${escapeHtml(miniCardName(number))}</span>
+          <img src="${escapeHtml(miniCardImg(number))}" alt="" class="reveal-view-row" data-idx="${i}" style="width:34px;border-radius:3px;cursor:pointer;" onerror="this.style.opacity=0">
+          <span class="dli-name reveal-view-row" data-idx="${i}" style="cursor:pointer;">${escapeHtml(miniCardName(number))}</span>
           <span class="dli-stepper" style="gap:3px;flex-wrap:wrap;">
             <button type="button" class="btn reveal-act" data-idx="${i}" data-dest="hand" style="font-size:10px;padding:3px 5px;">手札</button>
             <button type="button" class="btn reveal-act" data-idx="${i}" data-dest="top" style="font-size:10px;padding:3px 5px;">山上</button>
@@ -4499,6 +4569,18 @@
           <div class="deck-list" style="margin-top:8px;">${rows || '<div class="empty-state">処理完了しました</div>'}</div>
         </div>
       `;
+      detailBody.querySelectorAll('.reveal-view-row').forEach(el => {
+        el.addEventListener('click', () => {
+          const idx = parseInt(el.dataset.idx, 10);
+          const card = cardIndexByNumber.get(revealed[idx]);
+          if (!card) return;
+          revealSessionReopen = () => {
+            render();
+            cardDetailModal.classList.add('open');
+          };
+          openCardDetail(card, true);
+        });
+      });
       detailBody.querySelectorAll('.reveal-act').forEach(btn => {
         btn.addEventListener('click', () => {
           const idx = parseInt(btn.dataset.idx, 10);
@@ -5388,23 +5470,9 @@
       row.appendChild(b);
     };
     const topIndex = stack.cards.length - 1;
-    mk('レスト/アクティブ切替', () => {
-      snapshotPracticeState();
-      stack.rested = !stack.rested;
-      cardDetailModal.classList.remove('open');
-      renderPracticeBoard();
-    });
-    mk('退化(一番上をトラッシュへ)', () => removeCardFromStackAt(stack, topIndex, 'trash'));
-    mk('一番上を移動▾', (e) => openHierarchicalDestinationPicker(e, '一番上のカードを送る', (dest) => removeCardFromStackAt(stack, topIndex, dest)));
-    mk('進化元を全部トラッシュへ', () => trashEntireStack(stack));
-    if (stack.links && stack.links.length > 0) {
-      mk(`🔗 リンクを破棄▾(${stack.links.length}枚)`, (e) => {
-        openZonePopup(e, 'どのリンクを破棄しますか?', stack.links.map((num, i) => ({
-          label: miniCardName(num),
-          onClick: () => discardLink(stack, i),
-        })));
-      });
-    }
+    mk('退化', () => removeCardFromStackAt(stack, topIndex, 'trash'));
+    mk('一番上を移動▾', (e) => openHierarchicalDestinationPicker(e, '一番上のカードを送る', (dest) => removeCardFromStackAt(stack, topIndex, dest), { excludeBattle: true }));
+    mk('消滅', () => trashEntireStack(stack));
     wrap.appendChild(row);
     return wrap;
   }
@@ -5488,14 +5556,6 @@
           },
         ]);
       });
-      if (stack.links && stack.links.length > 0) {
-        mk(`🔗 リンクを破棄▾(${stack.links.length}枚)`, (e) => {
-          openZonePopup(e, 'どのリンクを破棄しますか?', stack.links.map((num, i) => ({
-            label: miniCardName(num),
-            onClick: () => discardLink(stack, i),
-          })));
-        });
-      }
       mk(`🔢 Sアタック枚数を設定(現在${(stack.sAttackBonus || 0) >= 0 ? '+' : ''}${stack.sAttackBonus || 0})`, (e) => {
         openZonePopup(e, 'このデジモンのSアタック枚数(アタック時に自動で加算)', [
           {
@@ -5522,12 +5582,6 @@
         ]);
       });
     }
-    mk('レスト/アクティブ切替', () => {
-      snapshotPracticeState();
-      stack.rested = !stack.rested;
-      cardDetailModal.classList.remove('open');
-      renderPracticeBoard();
-    });
     if (topCardObj && topCardObj.category === 'tamer') {
       if (stack.actingAsDigimon) {
         mk('人間に戻る', () => {
@@ -5568,11 +5622,11 @@
         });
       }
     }
-    mk('進化元を全部トラッシュへ', () => trashEntireStack(stack));
-    mk('退化(一番上をトラッシュへ)', () => removeCardFromStackAt(stack, topIndex, 'trash'));
-    mk('一番上を移動▾', (e) => openHierarchicalDestinationPicker(e, '一番上のカードを送る', (dest) => removeCardFromStackAt(stack, topIndex, dest)));
+    mk('消滅', () => trashEntireStack(stack));
+    mk('退化', () => removeCardFromStackAt(stack, topIndex, 'trash'));
+    mk('一番上を移動▾', (e) => openHierarchicalDestinationPicker(e, '一番上のカードを送る', (dest) => removeCardFromStackAt(stack, topIndex, dest), { excludeBattle: true }));
     if (cardHasLinkEffect(topCardObj)) {
-      mk('🔗 一番上を他のデジモンにリンクする', () => {
+      mk('🔗 他のデジモンにリンク', () => {
         cardDetailModal.classList.remove('open');
         enterLinkTargetMode('battleTop', stack, cardEntryNum(stack.cards[topIndex]));
       });
