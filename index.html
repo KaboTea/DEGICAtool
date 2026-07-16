@@ -486,7 +486,7 @@
     opacity: 0;
     transform: scale(0.85);
     transition: opacity 0.12s ease, transform 0.12s ease;
-    z-index: 2;
+    z-index: 30;
     box-shadow: 0 2px 6px rgba(0,0,0,0.4);
   }
   .card-tile:hover .tile-quickadd,
@@ -1389,7 +1389,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.21.1</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.21.3</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -2678,7 +2678,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.21.1`);
+    log(`DigiCA Tool build v0.21.3`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -3135,6 +3135,7 @@
         if (evolveMode) performEvolve(stack);
         else if (materialTargetMode) performAddMaterial(stack);
         else if (linkTargetMode) performLink(stack);
+        else if (deckToTamerMode) performDeckToTamer(stack);
       });
     } else if (onClick) {
       el.addEventListener('click', (e) => { e.stopPropagation(); onClick(e); });
@@ -3388,7 +3389,8 @@
     raisingAreaEl.innerHTML = '';
     if (player.raising) {
       // オプションは進化先として選べない(テイマーは選べる=進化する場合があるため)。
-      const stackIsTarget = !!allowEvolveTarget && !(evolveMode && (() => {
+      // デッキ→テイマー下へのモードでは育成エリアは対象外。
+      const stackIsTarget = !!allowEvolveTarget && !deckToTamerMode && !(evolveMode && (() => {
         const c = getStackTopCard(player.raising);
         return c && c.category === 'option';
       })());
@@ -3412,7 +3414,10 @@
       player.battle.forEach(stack => {
         const topCard = cardIndexByNumber.get(cardEntryNum(stack.cards[stack.cards.length - 1]));
         // オプションは進化先として選べない(テイマーは選べる=進化する場合があるため)。
-        const stackIsTarget = !!allowEvolveTarget && !(evolveMode && topCard && topCard.category === 'option');
+        // デッキ→テイマー下へのモードでは、一番上がテイマーのスタックのみ対象にする。
+        const stackIsTarget = deckToTamerMode
+          ? !!allowEvolveTarget && !!topCard && topCard.category === 'tamer'
+          : !!allowEvolveTarget && !(evolveMode && topCard && topCard.category === 'option');
         const onClick = isSelf && !stackIsTarget
           ? () => openStackActionView(stack)
           : () => openStackDetail(stack);
@@ -3485,7 +3490,7 @@
       raisingAreaEl: document.getElementById('selfRaisingArea'),
       battleAreaEl: document.getElementById('selfBattleArea'),
       isSelf: true,
-      allowEvolveTarget: !!evolveMode || !!materialTargetMode || !!linkTargetMode,
+      allowEvolveTarget: !!evolveMode || !!materialTargetMode || !!linkTargetMode || deckToTamerMode,
     });
 
     renderRaisingPhaseActions();
@@ -3498,7 +3503,7 @@
     // ターン開始時(アクティブフェイズ、ドロー前)・ターン終了時(エンドフェイズ)の
     // 効果もあるため、メインフェイズ以外でもこれらのフェイズでは操作を許可する。
     const phaseAllowsHandAction = ['active', 'main', 'end'].includes(practiceState.turn.phase);
-    const canAct = phaseAllowsHandAction && !evolveMode && !materialTargetMode && !multiEvolveMode && !assemblyMode && !linkTargetMode;
+    const canAct = phaseAllowsHandAction && !evolveMode && !materialTargetMode && !multiEvolveMode && !assemblyMode && !linkTargetMode && !deckToTamerMode;
     const handRow = document.getElementById('selfHandRow');
     handRow.innerHTML = '';
     self.hand.forEach((number, index) => {
@@ -3647,6 +3652,7 @@
   let evolveRouteTarget = null; // stack currently chosen as the evolution target (single-target flow)
   let multiEvolveMode = null; // { handIndex, handNumber, card, mode: 'jogress'|'digixros', selected: [] }
   let linkTargetMode = null; // { handIndex, handNumber, number, card }
+  let deckToTamerMode = false; // デッキの上のカードをテイマーの下へ裏向きで送るモード
   let pendingEvolveResolve = null; // (cost) => void, set by whichever flow opened the route modal
   const evolveModeBanner = document.getElementById('evolveModeBanner');
   const evolveModeText = document.getElementById('evolveModeText');
@@ -3719,6 +3725,7 @@
     exitMaterialTargetMode();
     multiEvolveMode = null;
     linkTargetMode = null;
+    deckToTamerMode = false;
     resumeRevealSessionIfAny();
   }
 
@@ -3846,6 +3853,42 @@
     if (!evolveMode && !materialTargetMode) evolveModeBanner.classList.remove('active');
     renderPracticeBoard();
     showToast(`「${card.name}」を「${hostCard ? hostCard.name : '?'}」にリンクしました(コスト${cost}${linkDP ? `・DP+${linkDP}` : ''})${discardedNames.length ? `。上限超過のため「${discardedNames.join('・')}」を破棄しました` : ''}`);
+    resumeAttackStepIfAny();
+  }
+
+  // ---------- デッキの上のカードをテイマーの下に裏向きで送る ----------
+  function enterDeckToTamerMode() {
+    const self = practiceState.players[practiceState.viewingIndex];
+    if (self.library.length === 0) { showToast('デッキがありません', true); return; }
+    const hasTamerTarget = self.battle.some(s => {
+      const c = getStackTopCard(s);
+      return c && c.category === 'tamer';
+    });
+    if (!hasTamerTarget) { showToast('バトルエリアにテイマーがいません', true); return; }
+    deckToTamerMode = true;
+    evolveModeText.textContent = 'デッキの上のカードを裏向きで入れるテイマーを選んでください';
+    evolveModeBanner.classList.add('active');
+    renderPracticeBoard();
+  }
+  function exitDeckToTamerMode() {
+    deckToTamerMode = false;
+    if (!evolveMode && !materialTargetMode && !linkTargetMode) evolveModeBanner.classList.remove('active');
+  }
+  function performDeckToTamer(targetStack) {
+    if (!deckToTamerMode || !practiceState) return;
+    const self = practiceState.players[practiceState.viewingIndex];
+    if (self.library.length === 0) {
+      showToast('デッキがありません', true);
+      exitDeckToTamerMode();
+      renderPracticeBoard();
+      return;
+    }
+    snapshotPracticeState();
+    const num = self.library.shift();
+    targetStack.cards.unshift({ n: num, d: true });
+    exitDeckToTamerMode();
+    renderPracticeBoard();
+    showToast('デッキの上からテイマーの下に裏向きで入れました');
     resumeAttackStepIfAny();
   }
 
@@ -4634,6 +4677,10 @@
 
   function openDeckPopup(e) {
     const self = practiceState.players[practiceState.viewingIndex];
+    const hasTamerTarget = self.battle.some(s => {
+      const c = getStackTopCard(s);
+      return c && c.category === 'tamer';
+    });
     openZonePopup(e, `山札(${self.library.length}枚)`, [
       { label: 'ドロー', onClick: manualDraw },
       {
@@ -4654,6 +4701,7 @@
         },
       },
       { label: '一番上をセキュリティへ', onClick: deckTopToSecurity },
+      { label: hasTamerTarget ? '一番上をテイマーの下へ(裏向き)' : '一番上をテイマーの下へ(テイマー不在)', onClick: enterDeckToTamerMode, disabled: !hasTamerTarget },
     ]);
   }
 
