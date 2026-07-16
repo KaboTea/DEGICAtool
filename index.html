@@ -1389,7 +1389,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.21.3</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.21.4</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -2678,7 +2678,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.21.3`);
+    log(`DigiCA Tool build v0.21.4`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -4700,7 +4700,7 @@
           });
         },
       },
-      { label: '一番上をセキュリティへ', onClick: deckTopToSecurity },
+      { label: 'リカバリー1', onClick: deckTopToSecurity },
       { label: hasTamerTarget ? '一番上をテイマーの下へ(裏向き)' : '一番上をテイマーの下へ(テイマー不在)', onClick: enterDeckToTamerMode, disabled: !hasTamerTarget },
     ]);
   }
@@ -4730,7 +4730,7 @@
     openZonePopup(e, `セキュリティ(${self.security.length}枚)`, [
       { label: '1枚公開して処理', onClick: manualSecurityCheck },
       { label: '一番下を手札へ', onClick: securityBottomToHand },
-      { label: '破棄(内容を見ずに一番上をトラッシュへ)', onClick: securityTopDiscardBlind },
+      { label: '破棄', onClick: securityTopDiscardBlind },
       { label: 'セキュリティを全て見る', onClick: openSecurityListView },
     ]);
   }
