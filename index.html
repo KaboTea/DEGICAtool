@@ -1458,7 +1458,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.21.19</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.21.20</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -2779,7 +2779,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.21.19`);
+    log(`DigiCA Tool build v0.21.20`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -3409,8 +3409,10 @@
         const rowIdx = parseInt(btn.dataset.rowIdx, 10);
         const actualIdx = stack.cards.length - 1 - rowIdx; // rows are top-to-bottom; cards[] is bottom-to-top
         const number = cardEntryNum(stack.cards[actualIdx]);
+        const owner = findStackOwnerAndZone(stack);
         openHierarchicalDestinationPicker(e, `「${escapeHtml(miniCardName(number))}」を送る`,
-          (dest) => removeCardFromStackAt(stack, actualIdx, dest)
+          (dest) => removeCardFromStackAt(stack, actualIdx, dest),
+          { ownerPlayer: owner ? owner.player : null }
         );
       });
     });
@@ -5038,7 +5040,7 @@
               render();
               cardDetailModal.classList.add('open');
             },
-            { excludeSecurity: true }
+            { excludeSecurity: true, ownerPlayer: self }
           );
         });
       });
@@ -5120,7 +5122,7 @@
                 finish(false);
               }
             },
-            { excludeTrash: true }
+            { excludeTrash: true, ownerPlayer: self }
           );
         });
       });
@@ -5150,6 +5152,14 @@
     else if (destination === 'secTop') player.security.unshift(faceUp ? { n: number, u: true } : number);
     else if (destination === 'secBottom') player.security.push(faceUp ? { n: number, u: true } : number);
     else if (destination === 'battle') { player.battle.push({ cards: [number], rested: false }); return; }
+    else if (destination === 'tamerSave') {
+      // ≪セーブ≫: テイマーの下の一番下に置く(16-21-6と同様の重なり順)。
+      const target = pendingTamerSaveTarget;
+      pendingTamerSaveTarget = null;
+      if (target) target.cards.unshift(number);
+      else player.trash.push(number); // 対象を特定できなかった場合の保険(通常発生しない)
+      return; // 4-18-4: 重ねられているカードの下に置かれる場合、≪オーバーフロー≫の対象外
+    }
     checkOverflow(number, player);
   }
   const DESTINATION_LABEL = {
@@ -5157,12 +5167,15 @@
     deckTop: 'デッキの上へ', deckBottom: 'デッキの下へ',
     secTop: 'セキュリティの上へ', secBottom: 'セキュリティの下へ',
     battle: 'バトルエリアへ登場(コストなし)',
+    tamerSave: 'テイマーの下へ(≪セーブ≫)',
   };
   const ALL_DESTINATIONS = ['hand', 'trash', 'deckTop', 'deckBottom', 'secTop', 'secBottom', 'battle'];
 
   // 使用感向上のため、送り先ポップアップを「手札/デッキ/セキュリティ/バトルエリア」の
   // 大分類→(デッキ/セキュリティなら)上下→の階層構造にする。トラッシュへ送る操作は
   // 「退化」として別ボタンに独立させたため、ここには含めない。
+  // ≪セーブ≫(16-20)で選んだテイマーを、宛先確定まで一時的に保持する。
+  let pendingTamerSaveTarget = null;
   function openHierarchicalDestinationPicker(anchorEvent, title, onDestination, options) {
     const opts = options || {};
     const actions = [
@@ -5183,6 +5196,22 @@
     }
     if (!opts.excludeBattle) {
       actions.push({ label: 'バトルエリアへ登場', onClick: () => onDestination('battle') });
+    }
+    // ≪セーブ≫(16-20):「自分のテイマー1体の下にこのカードを置くことができる」任意効果。
+    // 置ける自分のテイマーがいる場合のみ選択肢に出す(いない場合は選択肢自体を出さない)。
+    if (opts.ownerPlayer) {
+      const tamerStacks = opts.ownerPlayer.battle.filter(s => {
+        const c = getStackTopCard(s);
+        return c && c.category === 'tamer';
+      });
+      if (tamerStacks.length === 1) {
+        actions.push({ label: '🛡 テイマーの下へ(≪セーブ≫)', onClick: () => { pendingTamerSaveTarget = tamerStacks[0]; onDestination('tamerSave'); } });
+      } else if (tamerStacks.length > 1) {
+        actions.push({ label: '🛡 テイマーの下へ(≪セーブ≫)▾', onClick: (e) => openZonePopup(e, 'どのテイマーの下に置きますか?', tamerStacks.map(s => {
+          const c = getStackTopCard(s);
+          return { label: c ? c.name : '?', onClick: () => { pendingTamerSaveTarget = s; onDestination('tamerSave'); } };
+        })) });
+      }
     }
     openZonePopup(anchorEvent, title, actions);
   }
@@ -5256,6 +5285,39 @@
     cardDetailModal.classList.remove('open');
     renderPracticeBoard();
     showToast('進化元・リンクを全てトラッシュしました');
+  }
+
+  // ≪回避≫(16-22):「このデジモンが消滅するとき、このデジモンをレストさせることで、
+  // 消滅しない」任意処理条件付きの即時型効果。「消滅」ボタンの代わりに使うことで、
+  // 消滅を回避してレスト状態にする。
+  function evadeDestruction(stack) {
+    const owner = findStackOwnerAndZone(stack);
+    if (!owner) return;
+    snapshotPracticeState();
+    stack.rested = true;
+    cardDetailModal.classList.remove('open');
+    renderPracticeBoard();
+    showToast('🛡 ≪回避≫: レストすることで消滅を回避しました');
+  }
+  // ≪アーマー解除≫(16-19):「このデジモンが消滅するとき、このデジモンに重ねられている
+  // カードを上から1枚破棄することで、消滅しない」。進化元(このデジモン自身を除く重なり)
+  // が1枚もない場合は条件を満たせないため使えない。
+  function armorBreakDestruction(stack) {
+    const owner = findStackOwnerAndZone(stack);
+    if (!owner) return;
+    if (stack.cards.length <= 1) {
+      showToast('進化元がないため≪アーマー解除≫は使えません', true);
+      return;
+    }
+    snapshotPracticeState();
+    // 「重ねられているカードを上から1枚」= このデジモン自身(一番上)の、その1つ下の1枚。
+    const [removed] = stack.cards.splice(stack.cards.length - 2, 1);
+    const removedNum = cardEntryNum(removed);
+    owner.player.trash.push(removedNum);
+    checkOverflow(removedNum, owner.player);
+    cardDetailModal.classList.remove('open');
+    renderPracticeBoard();
+    showToast('🛡 ≪アーマー解除≫: 進化元を1枚破棄することで消滅を回避しました');
   }
 
   // ---------- Attack flow (11-1〜11-5, 13-1-8): 宣言→カウンター→ブロック→成立確認 ----------
@@ -5345,6 +5407,34 @@
     return [{ label: renkeiActionLabel(), onClick: () => showRenkeiPicker() }];
   }
 
+  // ≪突進≫(16-23):「このデジモンがアタックしたとき、そのアタックの対象を、最もDPの
+  // 高いアクティブ状態の相手のデジモン1体に変更できる」誘発型・任意処理。「持っているか」
+  // の判定はせず、対象になり得るアクティブなデジモンが1体でもいれば選択肢として出す
+  // (実際に持っているかはプレイヤーが自己判断)。同DPが複数いる場合はプレイヤーが選ぶ。
+  function chargeActionItems() {
+    const activeEnemies = attackState.defenderOwner.battle.filter(s => isDigimonLikeStack(s) && !s.rested);
+    if (activeEnemies.length === 0) return [];
+    return [{ label: '🎯 突進(最もDPが高いアクティブな相手デジモンへ対象変更)', onClick: () => showChargeTargetPicker() }];
+  }
+  function showChargeTargetPicker() {
+    const activeEnemies = attackState.defenderOwner.battle.filter(s => isDigimonLikeStack(s) && !s.rested);
+    if (activeEnemies.length === 0) { resumeAttackStepIfAny(); return; }
+    const maxDP = Math.max(...activeEnemies.map(s => getEffectiveDP(s)));
+    const candidates = activeEnemies.filter(s => getEffectiveDP(s) === maxDP);
+    const applyTarget = (s) => {
+      attackState.targetType = 'digimon';
+      attackState.targetStack = s;
+      const c = getStackTopCard(s);
+      showToast(`🎯 ≪突進≫: 対象を「${c ? c.name : '?'}」(DP${maxDP})に変更しました`);
+      resumeAttackStepIfAny();
+    };
+    if (candidates.length === 1) { applyTarget(candidates[0]); return; }
+    openZonePopup(centerPoint(), `最もDP(${maxDP})が高いアクティブな相手デジモンが複数います。対象を選んでください`, candidates.map(s => {
+      const c = getStackTopCard(s);
+      return { label: `${c ? c.name : '?'}(DP${maxDP})`, onClick: () => applyTarget(s) };
+    }), true);
+  }
+
   // ---------- Sアタック±(連携とは別に、効果でセキュリティチェック枚数が増減するケース) ----------
   // 「持っているか」の判定はせず、いつでも増減できる仕組みだけを提供する。実際の枚数は
   // セキュリティチェックが始まる直前(resolveAttack)にまとめて反映する。
@@ -5419,6 +5509,7 @@
       { label: '次へ(カウンタータイミングへ)', onClick: () => showAttackCounterStep() },
       ...renkeiActionItems(),
       ...sAttackActionItems(),
+      ...chargeActionItems(),
     ], true);
   }
 
@@ -5807,8 +5898,12 @@
     if (!oppTopCardObj || oppTopCardObj.category !== 'tamer') {
       mk('退化', () => removeCardFromStackAt(stack, topIndex, 'trash'));
     }
-    mk('一番上を移動▾', (e) => openHierarchicalDestinationPicker(e, '一番上のカードを送る', (dest) => removeCardFromStackAt(stack, topIndex, dest), { excludeBattle: true, excludeTrash: true }));
+    mk('一番上を移動▾', (e) => openHierarchicalDestinationPicker(e, '一番上のカードを送る', (dest) => removeCardFromStackAt(stack, topIndex, dest), { excludeBattle: true, excludeTrash: true, ownerPlayer: (findStackOwnerAndZone(stack) || {}).player }));
     mk('消滅', () => trashEntireStack(stack));
+    if (isDigimonLikeStack(stack)) {
+      mk('🛡 回避(レストして回避)', () => evadeDestruction(stack));
+      mk('🛡 アーマー解除(進化元1枚破棄で回避)', () => armorBreakDestruction(stack));
+    }
     if (isDigimonLikeStack(stack) || (oppTopCardObj && oppTopCardObj.category === 'tamer')) {
       mk('🔒 ロック', (e) => openLockMenu(e, stack));
     }
@@ -5970,6 +6065,10 @@
       }
     }
     mk('消滅', () => trashEntireStack(stack));
+    if (isDigimonLikeStack(stack)) {
+      mk('🛡 回避(レストして回避)', () => evadeDestruction(stack));
+      mk('🛡 アーマー解除(進化元1枚破棄で回避)', () => armorBreakDestruction(stack), stack.cards.length <= 1);
+    }
     if (!topCardObj || topCardObj.category !== 'tamer') {
       mk('退化', () => removeCardFromStackAt(stack, topIndex, 'trash'));
     }
@@ -5980,7 +6079,7 @@
     if (topCardObj && topCardObj.dual && stack.dualAsOption && stack.cards.length === 1) {
       mk('🎨 アーツ進化させる(破棄せず進化元にする)', () => enterArtsEvolveMode(stack));
     }
-    mk('一番上を移動▾', (e) => openHierarchicalDestinationPicker(e, '一番上のカードを送る', (dest) => removeCardFromStackAt(stack, topIndex, dest), { excludeBattle: true, excludeTrash: true }));
+    mk('一番上を移動▾', (e) => openHierarchicalDestinationPicker(e, '一番上のカードを送る', (dest) => removeCardFromStackAt(stack, topIndex, dest), { excludeBattle: true, excludeTrash: true, ownerPlayer: (findStackOwnerAndZone(stack) || {}).player }));
     if (cardHasLinkEffect(topCardObj)) {
       mk('🔗 他のデジモンにリンク', () => {
         cardDetailModal.classList.remove('open');
