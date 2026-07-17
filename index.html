@@ -1324,7 +1324,7 @@
     padding-top: 1px;
     box-shadow: 0 1px 3px rgba(0,0,0,0.7);
   }
-  .st-renkei, .st-lock, .st-pierce {
+  .st-renkei, .st-lock, .st-pierce, .st-armor, .st-charge, .st-evade {
     position: static;
     font-size: 14px;
     filter: drop-shadow(0 1px 2px rgba(0,0,0,0.7));
@@ -1478,7 +1478,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.23.3</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.23.8</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -2835,7 +2835,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.23.3`);
+    log(`DigiCA Tool build v0.23.8`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -3074,21 +3074,36 @@
     return base + (stack.dpModifier || 0);
   }
 
-  // ≪ブロッカー≫は効果テキストから自動判定するが、効果で一時的に付与/剥奪されることも
-  // あるため、stack.blockerOverride(true/false/未設定)で手動上書きできるようにする。
-  // ≪ブロッカー≫は「進化元に◯◯が4枚以上あれば」のような条件付き付与のカードも多く、
-  // 効果テキストの文言だけでは正しく自動判定できないため、自動検出はせず完全手動にする。
+  // ---------- キーワード効果の「デフォルト所持」自動判定 ----------
+  // カードの効果テキストでは、そのカードが元々持つキーワード効果(≪連携≫≪ブロッカー≫等)は、
+  // 他の文と混ざらない「独立した行」として印字される(例:「≪連携≫≪ブロッカー≫」の1行)。
+  // 一方、「他のデジモンに≪連携≫を付与する」「条件を満たせば≪連携≫を得る」といった
+  // 付与・条件付き効果は、必ず【タイミング】の文中に埋め込まれる形で書かれ、独立行には
+  // ならない。この違いを使えば、条件付き付与との誤判定なしにデフォルト所持だけを検出できる
+  // (カードDB全体で確認済み)。
+  function hasInnateKeywordLine(card, keyword) {
+    if (!card || !card.effect) return false;
+    const bareLine = /^(≪[^≫]+≫)+$/;
+    return card.effect.split('\n').some(line => {
+      const t = line.trim();
+      return bareLine.test(t) && t.includes(`≪${keyword}≫`);
+    });
+  }
+
+  // ≪ブロッカー≫はデフォルト所持を自動判定しつつ、効果による一時的な付与/剥奪は
+  // stack.blockerOverride(true/false)で手動上書きできるようにする。
   function hasBlockerKeyword(stack) {
-    return stack.blockerOverride === true;
+    if (stack.blockerOverride === true || stack.blockerOverride === false) return stack.blockerOverride;
+    return hasInnateKeywordLine(getStackTopCard(stack), 'ブロッカー');
   }
   function toggleBlocker(stack) {
     stack.blockerOverride = !hasBlockerKeyword(stack);
   }
 
-  // ≪連携≫も同様に、条件付き付与のカードや誤検出のおそれがあるため、
-  // ブロッカーと同様に完全手動(stack.renkeiOverride)にしている。
+  // ≪連携≫も同様にデフォルト所持を自動判定し、手動上書きも可能にする。
   function hasRenkeiKeyword(stack) {
-    return stack.renkeiOverride === true;
+    if (stack.renkeiOverride === true || stack.renkeiOverride === false) return stack.renkeiOverride;
+    return hasInnateKeywordLine(getStackTopCard(stack), '連携');
   }
   function toggleRenkei(stack) {
     stack.renkeiOverride = !hasRenkeiKeyword(stack);
@@ -3096,13 +3111,130 @@
 
   // ≪貫通≫(総合ルール16-7): 「このデジモンがアタックした相手のデジモンとのバトルで、
   // 相手のデジモンを消滅させたとき、アタック終了時の直前にセキュリティチェックをする」
-  // キーワード効果。条件付き付与のカードも多く自動判定が難しいため、ブロッカーと同様に
-  // 完全手動(stack.pierceOverride)で管理する。
+  // キーワード効果。こちらもデフォルト所持を自動判定し、手動上書きも可能にする。
   function hasPierceKeyword(stack) {
-    return stack.pierceOverride === true;
+    if (stack.pierceOverride === true || stack.pierceOverride === false) return stack.pierceOverride;
+    return hasInnateKeywordLine(getStackTopCard(stack), '貫通');
   }
   function togglePierce(stack) {
     stack.pierceOverride = !hasPierceKeyword(stack);
+  }
+
+  // ≪Sアタック+N≫≪リンク+N≫のように数値を伴うキーワードも、独立行であれば
+  // デフォルト所持とみなし、その数値を自動的にベース値として使う。
+  // 手動でSアタック/リンク上限を設定した場合は、その値を優先する(未設定=undefinedの間だけ自動値を使う)。
+  function parseInnateNumericKeyword(card, patterns) {
+    if (!card || !card.effect) return null;
+    const bareLine = /^(≪[^≫]+≫)+$/;
+    let found = null;
+    card.effect.split('\n').some(line => {
+      const t = line.trim();
+      if (!bareLine.test(t)) return false;
+      for (const re of patterns) {
+        const m = t.match(re);
+        if (m) { found = parseInt(m[1], 10); return true; }
+      }
+      return false;
+    });
+    return found;
+  }
+  // 「Sアタック」は旧称「セキュリティアタック」表記のカードもあるため両方見る(16-4)。
+  function getInnateSAttackBonus(card) {
+    return parseInnateNumericKeyword(card, [/≪(?:Sアタック|セキュリティアタック)([+\-]\d+)≫/]);
+  }
+  function getInnateLinkBonus(card) {
+    return parseInnateNumericKeyword(card, [/≪リンク([+\-]\d+)≫/]);
+  }
+  function effectiveSAttackBonus(stack) {
+    if (stack.sAttackBonus !== undefined) return stack.sAttackBonus;
+    return getInnateSAttackBonus(getStackTopCard(stack)) || 0;
+  }
+  function effectiveLinkLimitBonus(stack) {
+    if (stack.linkLimitBonus !== undefined) return stack.linkLimitBonus;
+    return getInnateLinkBonus(getStackTopCard(stack)) || 0;
+  }
+  // リンク上限を超えている場合、古いリンク(先頭)から順に自動破棄して枠内に収める。
+  // finalizeLink内の同種処理とは別に、進化等で上限が変化した際の再チェック用。
+  function enforceLinkLimit(stack, owner) {
+    if (!stack.links || stack.links.length === 0 || !owner) return [];
+    const limit = 1 + effectiveLinkLimitBonus(stack);
+    const discardedNames = [];
+    while (stack.links.length > limit && stack.links.length > 0) {
+      const oldNum = stack.links.shift();
+      const oldDP = getLinkDPBonus(cardIndexByNumber.get(oldNum));
+      if (oldDP) stack.dpModifier = (stack.dpModifier || 0) - oldDP;
+      owner.trash.push(oldNum);
+      checkOverflow(oldNum, owner);
+      discardedNames.push(miniCardName(oldNum));
+    }
+    return discardedNames;
+  }
+  // 進化(通常/アプ合体/アーツ進化等、既存スタックの一番上が変わるケース)が起きたとき、
+  // 手動で付与/解除していたキーワード上書きや、Sアタック/リンク上限の手動設定は
+  // 古いカードの状態なので引き継がない。新しいカードの独立行を基準に判定し直させる。
+  // リンク上限が変化して手持ちのリンク枚数を超えてしまった場合は、古いものから自動破棄する。
+  function resetKeywordStateOnEvolve(stack, owner) {
+    delete stack.blockerOverride;
+    delete stack.renkeiOverride;
+    delete stack.pierceOverride;
+    delete stack.evadeOverride;
+    delete stack.armorBreakOverride;
+    delete stack.chargeOverride;
+    delete stack.sAttackBonus;
+    delete stack.linkLimitBonus;
+    const discarded = enforceLinkLimit(stack, owner);
+    if (discarded.length > 0) {
+      showToast(`進化後のリンク上限を超えたため、リンクを${discarded.length}枚破棄しました(${discarded.join('、')})`, true);
+    }
+  }
+  // ≪回避≫≪アーマー解除≫≪突進≫も、ブロッカー等と同様に「デフォルト自動判定+手動上書き」
+  // の形に統一する。バッジ表示と、実際に選べる場面(消滅確認/アタック時ステップ)の両方を
+  // このバッジの有無で連動させる。
+  function hasEvadeKeyword(stack) {
+    if (stack.evadeOverride === true || stack.evadeOverride === false) return stack.evadeOverride;
+    return hasInnateKeywordLine(getStackTopCard(stack), '回避');
+  }
+  function toggleEvade(stack) {
+    stack.evadeOverride = !hasEvadeKeyword(stack);
+  }
+  function hasArmorBreakKeyword(stack) {
+    if (stack.armorBreakOverride === true || stack.armorBreakOverride === false) return stack.armorBreakOverride;
+    return hasInnateKeywordLine(getStackTopCard(stack), 'アーマー解除');
+  }
+  function toggleArmorBreak(stack) {
+    stack.armorBreakOverride = !hasArmorBreakKeyword(stack);
+  }
+  function hasChargeKeyword(stack) {
+    if (stack.chargeOverride === true || stack.chargeOverride === false) return stack.chargeOverride;
+    return hasInnateKeywordLine(getStackTopCard(stack), '突進');
+  }
+  function toggleCharge(stack) {
+    stack.chargeOverride = !hasChargeKeyword(stack);
+  }
+
+  // バッジ付与/解除できるキーワード効果が増えてきたため、個別ボタンではなく
+  // 「🏷 キーワード効果」1つにまとめ、押すと一覧(チェックボックス形式)で選べるようにする。
+  const KEYWORD_TOGGLE_DEFS = [
+    { label: 'ブロッカー', icon: '🛡', has: hasBlockerKeyword, toggle: toggleBlocker },
+    { label: '連携', icon: '🤝', has: hasRenkeiKeyword, toggle: toggleRenkei },
+    { label: '貫通', icon: '🗡', has: hasPierceKeyword, toggle: togglePierce },
+    { label: '回避', icon: '🏃', has: hasEvadeKeyword, toggle: toggleEvade },
+    { label: 'アーマー解除', icon: '🔨', has: hasArmorBreakKeyword, toggle: toggleArmorBreak },
+    { label: '突進', icon: '🎯', has: hasChargeKeyword, toggle: toggleCharge },
+  ];
+  function openKeywordMenu(e, stack) {
+    const c = getStackTopCard(stack);
+    const actions = KEYWORD_TOGGLE_DEFS.map(def => ({
+      label: `${def.has(stack) ? '✅' : '☐'} ${def.icon} ${def.label}`,
+      onClick: () => {
+        def.toggle(stack);
+        renderPracticeBoard();
+        showToast(def.has(stack) ? `${def.label}を付与しました` : `${def.label}を解除しました`);
+        openKeywordMenu(e, stack);
+      },
+    }));
+    actions.push({ label: '閉じる', onClick: () => {} });
+    openZonePopup(e, `「${c ? c.name : '?'}」のキーワード効果を付与/解除`, actions, true);
   }
 
   // ---------- ロック(相手のバトルエリアのカードに、こちらの効果で一時的な制約を付与する) ----------
@@ -3295,8 +3427,8 @@
     if (stack.links && stack.links.length > 0) {
       el.style.marginRight = '35px'; // リンクの横差し表示が隣のデジモンと重ならないよう余白を確保
     }
-    if ((isDigimonLikeStack(stack) && (hasBlockerKeyword(stack) || hasRenkeiKeyword(stack) || hasPierceKeyword(stack))) || hasAnyLock(stack)) {
-      el.style.marginBottom = '32px'; // カード下のブロッカー/連携/貫通/ロックバッジ行と次の行が重ならないよう余白を確保
+    if ((isDigimonLikeStack(stack) && (hasBlockerKeyword(stack) || hasRenkeiKeyword(stack) || hasPierceKeyword(stack) || hasEvadeKeyword(stack) || hasArmorBreakKeyword(stack) || hasChargeKeyword(stack))) || hasAnyLock(stack)) {
+      el.style.marginBottom = '32px'; // カード下のバッジ行と次の行が重ならないよう余白を確保
     }
     const layerHtml = layers.map((entry, i) => {
       const depth = layers.length - 1 - i; // 0 = top card (no offset), increasing = further back
@@ -3313,11 +3445,14 @@
     const linkHtml = (stack.links && stack.links.length > 0)
       ? `<div class="link-peek">${stack.links.map((num, i) => `<div class="link-card-wrap" style="z-index:${i + 1};top:${i * 17}px;"><img src="${escapeHtml(miniCardImg(num))}" alt="" title="リンク" onerror="this.style.opacity=0"></div>`).join('')}</div>`
       : '';
-    const badgesHtml = ((isDigimonLikeStack(stack) && (hasBlockerKeyword(stack) || hasRenkeiKeyword(stack) || hasPierceKeyword(stack))) || hasAnyLock(stack))
+    const badgesHtml = ((isDigimonLikeStack(stack) && (hasBlockerKeyword(stack) || hasRenkeiKeyword(stack) || hasPierceKeyword(stack) || hasEvadeKeyword(stack) || hasArmorBreakKeyword(stack) || hasChargeKeyword(stack))) || hasAnyLock(stack))
       ? `<div class="status-badges-row">
           ${isDigimonLikeStack(stack) && hasBlockerKeyword(stack) ? `<span class="st-blocker" title="ブロッカー">B</span>` : ''}
           ${isDigimonLikeStack(stack) && hasRenkeiKeyword(stack) ? `<span class="st-renkei" title="連携">🤝</span>` : ''}
           ${isDigimonLikeStack(stack) && hasPierceKeyword(stack) ? `<span class="st-pierce" title="貫通">🗡</span>` : ''}
+          ${isDigimonLikeStack(stack) && hasEvadeKeyword(stack) ? `<span class="st-evade" title="回避">🏃</span>` : ''}
+          ${isDigimonLikeStack(stack) && hasArmorBreakKeyword(stack) ? `<span class="st-armor" title="アーマー解除">🔨</span>` : ''}
+          ${isDigimonLikeStack(stack) && hasChargeKeyword(stack) ? `<span class="st-charge" title="突進">🎯</span>` : ''}
           ${hasAnyLock(stack) ? `<span class="st-lock" title="ロック: ${escapeHtml(Object.keys(LOCK_LABELS).filter(k => hasLock(stack, k)).map(k => LOCK_LABELS[k]).join('/'))}">🔒</span>` : ''}
         </div>`
       : '';
@@ -4094,7 +4229,7 @@
     }
     if (!targetStack.links) targetStack.links = [];
     // リンク上限を超える場合は、古いリンク(1枚目)から順に自動で破棄して枠を空ける。
-    const limit = 1 + (targetStack.linkLimitBonus || 0);
+    const limit = 1 + effectiveLinkLimitBonus(targetStack);
     const discardedNames = [];
     while (targetStack.links.length >= limit && targetStack.links.length > 0) {
       const oldNum = targetStack.links.shift();
@@ -4177,6 +4312,7 @@
 
     if (targetStack.burstEvolved) targetStack.burstEvolved = false;
     targetStack.cards.push(sourceStack.cards[sourceStack.cards.length - 1]);
+    resetKeywordStateOnEvolve(targetStack, self);
     if (self.library.length > 0) self.hand.push(self.library.shift()); // 進化解決時に1ドロー
 
     artsEvolveMode = null;
@@ -4259,6 +4395,7 @@
     // 「ターン終了時に破棄」の保留は解消される。
     if (targetStack.burstEvolved) targetStack.burstEvolved = false;
     targetStack.cards.push(evolveMode.handNumber);
+    resetKeywordStateOnEvolve(targetStack, self);
     payMemory(practiceState.turn.playerIndex, cost);
     if (self.library.length > 0) self.hand.push(self.library.shift()); // 進化解決時に1ドロー
     const evolvedName = evolveMode.card.name;
@@ -4596,6 +4733,7 @@
     }
     targetStack.links = [];
     targetStack.cards.push(evolveMode.handNumber);
+    resetKeywordStateOnEvolve(targetStack, self);
     payMemory(practiceState.turn.playerIndex, cost);
     if (self.library.length > 0) self.hand.push(self.library.shift()); // 進化解決時に1ドロー
     const evolvedName = evolveMode.card.name;
@@ -5398,7 +5536,7 @@
     stack.rested = true;
     attackState = {
       attackerStack: stack, attackerOwner, defenderOwner, targetType: null, targetStack: null,
-      renkeiCount: 0, renkeiBonusDP: 0, sAttackModifier: stack.sAttackBonus || 0,
+      renkeiCount: 0, renkeiBonusDP: 0, sAttackModifier: effectiveSAttackBonus(stack),
     };
     cardDetailModal.classList.remove('open');
     renderPracticeBoard();
@@ -5464,10 +5602,12 @@
   }
 
   // ≪突進≫(16-23):「このデジモンがアタックしたとき、そのアタックの対象を、最もDPの
-  // 高いアクティブ状態の相手のデジモン1体に変更できる」誘発型・任意処理。「持っているか」
-  // の判定はせず、対象になり得るアクティブなデジモンが1体でもいれば選択肢として出す
-  // (実際に持っているかはプレイヤーが自己判断)。同DPが複数いる場合はプレイヤーが選ぶ。
+  // 高いアクティブ状態の相手のデジモン1体に変更できる」誘発型・任意処理。バッジ判定
+  // (hasChargeKeyword、デフォルト自動判定+手動上書き)を持っている場合のみ選択肢を出す。
+  // 対象になり得るアクティブなデジモンがいない場合も選択肢を出さない。同DPが複数いる
+  // 場合はプレイヤーが選ぶ。
   function chargeActionItems() {
+    if (!hasChargeKeyword(attackState.attackerStack)) return [];
     const activeEnemies = attackState.defenderOwner.battle.filter(s => isDigimonLikeStack(s) && !s.rested);
     if (activeEnemies.length === 0) return [];
     return [{ label: '🎯 突進(最もDPが高いアクティブな相手デジモンへ対象変更)', onClick: () => showChargeTargetPicker() }];
@@ -5626,7 +5766,13 @@
   // キーワードを選ぶ機会がなくなってしまうため、バトル・セキュリティチェックで
   // 消滅が確定した箇所は必ずこの関数を経由させる。複数体を続けて処理できるよう、
   // キュー形式で1体ずつ確認する。
-  function resolveDestructionQueue(stacks, afterAll) {
+  // allowEvasion=falseのときは≪回避≫≪アーマー解除≫等「消滅を回避する」系の選択肢を
+  // 一切出さない。DP0によるルールチェック消滅は、回避してもDPのマイナス自体は
+  // 引き継がれる(=レストや進化元破棄をしてもDPは変わらない)ため、回避した直後に
+  // 再度ルールチェックで消滅してしまい、選択肢を出す意味がない。今後追加する
+  // 「消滅を回避する」系のキーワードも同じ理由でここに追加していけばよい。
+  function resolveDestructionQueue(stacks, afterAll, opts) {
+    const allowEvasion = !opts || opts.allowEvasion !== false;
     const queue = stacks.slice();
     const next = () => {
       if (queue.length === 0) { afterAll(); return; }
@@ -5638,13 +5784,16 @@
       const actions = [
         { label: `「${name}」をそのまま消滅させる`, onClick: () => { trashEntireStack(stack); next(); } },
       ];
-      if (isDigimonLikeStack(stack)) {
+      if (allowEvasion && isDigimonLikeStack(stack) && hasEvadeKeyword(stack)) {
         actions.push({ label: '🏃 回避(レストして回避)', onClick: () => { evadeDestruction(stack); next(); } });
-        if (stack.cards.length > 1) {
-          actions.push({ label: '🔨 アーマー解除(進化元1枚破棄で回避)', onClick: () => { armorBreakDestruction(stack); next(); } });
-        }
       }
-      lastAttackStepFn = () => openZonePopup(centerPoint(), `「${name}」が消滅します。回避する効果があれば選んでください(無ければそのまま消滅させてください)`, actions, true);
+      if (allowEvasion && isDigimonLikeStack(stack) && hasArmorBreakKeyword(stack) && stack.cards.length > 1) {
+        actions.push({ label: '🔨 アーマー解除(進化元1枚破棄で回避)', onClick: () => { armorBreakDestruction(stack); next(); } });
+      }
+      const promptText = allowEvasion
+        ? `「${name}」が消滅します。回避する効果があれば選んでください(無ければそのまま消滅させてください)`
+        : `「${name}」が消滅します(DPのマイナスは回避しても引き継がれ再度消滅するため、回避系の選択肢は表示していません)`;
+      lastAttackStepFn = () => openZonePopup(centerPoint(), promptText, actions, true);
       lastAttackStepFn();
     };
     next();
@@ -5877,7 +6026,7 @@
     const topCard = getStackTopCard(stack);
     const centerEvent = { clientX: window.innerWidth / 2 - 130, clientY: 70 };
     openZonePopup(centerEvent, `「${topCard ? topCard.name : '?'}」がDP0以下になり消滅します`, [
-      { label: 'そのまま消滅させる(回避系の効果があれば選べます)', onClick: () => resolveDestructionQueue([stack], () => resumeAttackStepIfAny()) },
+      { label: 'そのまま消滅させる', onClick: () => resolveDestructionQueue([stack], () => resumeAttackStepIfAny(), { allowEvasion: false }) },
       { label: '消滅効果を発揮(トラッシュに送らない)', onClick: () => { showToast('消滅効果の処理は手動で行ってください'); resumeAttackStepIfAny(); } },
     ]);
   }
@@ -5992,11 +6141,7 @@
       mk('退化', () => removeCardFromStackAt(stack, topIndex, 'trash'));
     }
     mk('一番上を移動▾', (e) => openHierarchicalDestinationPicker(e, '一番上のカードを送る', (dest) => removeCardFromStackAt(stack, topIndex, dest), { excludeBattle: true, excludeTrash: true, ownerPlayer: (findStackOwnerAndZone(stack) || {}).player }));
-    mk('消滅', () => trashEntireStack(stack));
-    if (isDigimonLikeStack(stack)) {
-      mk('🏃 回避(レストして回避)', () => evadeDestruction(stack));
-      mk('🔨 アーマー解除(進化元1枚破棄で回避)', () => armorBreakDestruction(stack));
-    }
+    mk('消滅', () => resolveDestructionQueue([stack], () => {}));
     if (isDigimonLikeStack(stack) || (oppTopCardObj && oppTopCardObj.category === 'tamer')) {
       mk('🔒 ロック', (e) => openLockMenu(e, stack));
     }
@@ -6046,26 +6191,9 @@
       mk('🔥 バースト進化を解除(一番上を破棄)', () => discardBurstTop(stack));
     }
     if (isDigimonLikeStack(stack) && stackOwner && stackOwner.zone === 'battle') {
-      mk(hasBlockerKeyword(stack) ? '🛡 ブロッカーを解除' : '🛡 ブロッカーを付与', () => {
-        toggleBlocker(stack);
-        cardDetailModal.classList.remove('open');
-        renderPracticeBoard();
-        showToast(hasBlockerKeyword(stack) ? 'ブロッカーを付与しました' : 'ブロッカーを解除しました');
-      });
-      mk(hasRenkeiKeyword(stack) ? '🤝 連携を解除' : '🤝 連携を付与', () => {
-        toggleRenkei(stack);
-        cardDetailModal.classList.remove('open');
-        renderPracticeBoard();
-        showToast(hasRenkeiKeyword(stack) ? '連携を付与しました' : '連携を解除しました');
-      });
-      mk(hasPierceKeyword(stack) ? '🗡 貫通を解除' : '🗡 貫通を付与', () => {
-        togglePierce(stack);
-        cardDetailModal.classList.remove('open');
-        renderPracticeBoard();
-        showToast(hasPierceKeyword(stack) ? '貫通を付与しました' : '貫通を解除しました');
-      });
-      mk(`🔗 リンク上限を設定(現在${1 + (stack.linkLimitBonus || 0)})`, (e) => {
-        openZonePopup(e, 'このデジモンのリンク上限(基本1+加算)', [
+      mk('🏷 キーワード効果', (e) => openKeywordMenu(e, stack));
+      mk(`🔗 リンク上限を設定(現在${1 + effectiveLinkLimitBonus(stack)})`, (e) => {
+        openZonePopup(e, 'このデジモンのリンク上限(基本1+加算。≪リンク+N≫を持つカードは自動で反映済み)', [
           {
             custom: true,
             render: (container) => {
@@ -6080,7 +6208,7 @@
                 if (isNaN(v) || v < 0) { showToast('数値が不正です', true); return; }
                 closeZonePopup();
                 snapshotPracticeState();
-                stack.linkLimitBonus = (stack.linkLimitBonus || 0) + sign * v;
+                stack.linkLimitBonus = effectiveLinkLimitBonus(stack) + sign * v;
                 cardDetailModal.classList.remove('open');
                 renderPracticeBoard();
                 showToast(`リンク上限を${sign > 0 ? '+' : '-'}${v}しました(現在${1 + stack.linkLimitBonus})`);
@@ -6091,14 +6219,14 @@
           },
         ]);
       });
-      mk(`🔢 Sアタック枚数を設定(現在${(stack.sAttackBonus || 0) >= 0 ? '+' : ''}${stack.sAttackBonus || 0})`, (e) => {
-        openZonePopup(e, 'このデジモンのSアタック枚数(アタック時に自動で加算)', [
+      mk(`🔢 Sアタック枚数を設定(現在${effectiveSAttackBonus(stack) >= 0 ? '+' : ''}${effectiveSAttackBonus(stack)})`, (e) => {
+        openZonePopup(e, 'このデジモンのSアタック枚数(アタック時に自動で加算。≪Sアタック+N≫を持つカードは自動で反映済み)', [
           {
             custom: true,
             render: (container) => {
               container.style.cssText = 'display:flex;gap:6px;align-items:center;';
               container.innerHTML = `
-                <input type="number" id="sAttackBonusInput" value="${stack.sAttackBonus || 0}" style="width:56px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:4px;color:var(--text);font-size:12px;">
+                <input type="number" id="sAttackBonusInput" value="${effectiveSAttackBonus(stack)}" style="width:56px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:4px;color:var(--text);font-size:12px;">
                 <button type="button" id="sAttackBonusGo" class="btn" style="font-size:11px;padding:6px 8px;">設定</button>
               `;
               container.querySelector('#sAttackBonusGo').addEventListener('click', (ev) => {
@@ -6157,11 +6285,7 @@
         });
       }
     }
-    mk('消滅', () => trashEntireStack(stack));
-    if (isDigimonLikeStack(stack)) {
-      mk('🏃 回避(レストして回避)', () => evadeDestruction(stack));
-      mk('🔨 アーマー解除(進化元1枚破棄で回避)', () => armorBreakDestruction(stack), stack.cards.length <= 1);
-    }
+    mk('消滅', () => resolveDestructionQueue([stack], () => {}));
     if (!topCardObj || topCardObj.category !== 'tamer') {
       mk('退化', () => removeCardFromStackAt(stack, topIndex, 'trash'));
     }
