@@ -742,11 +742,9 @@
   .deck-hover-preview {
     position: fixed;
     display: none;
+    align-items: flex-start;
     z-index: 250;
     pointer-events: none;
-    border-radius: 8px;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
-    border: 1px solid var(--border);
   }
   .deck-hover-preview img {
     width: 160px;
@@ -754,7 +752,29 @@
     object-fit: cover;
     display: block;
     border-radius: 8px;
+    border: 1px solid var(--border);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    flex-shrink: 0;
   }
+  .dhp-details {
+    width: 240px;
+    max-height: 224px;
+    overflow-y: auto;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    padding: 10px 12px;
+    margin-left: 8px;
+    font-size: 11px;
+    color: var(--text);
+    display: none;
+  }
+  .dhp-details.show { display: block; }
+  .dhp-details .dhp-name { font-size: 13px; font-weight: 700; margin-bottom: 4px; }
+  .dhp-details .dhp-tags { color: var(--text-dim); margin-bottom: 6px; font-family: 'JetBrains Mono', monospace; font-size: 10px; }
+  .dhp-details .dhp-effect { white-space: pre-wrap; line-height: 1.5; color: var(--text); }
+  .dhp-details .dhp-effect .dhp-label { color: var(--accent); font-size: 10px; display: block; margin: 6px 0 2px; }
 
   .deck-section-title {
     font-size: 12px;
@@ -1458,7 +1478,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.21.20</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.22.1</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -1730,6 +1750,7 @@
 <!-- Deck hover preview (shows a representative card image when hovering a deck in the list) -->
 <div class="deck-hover-preview" id="deckHoverPreview">
   <img id="deckHoverPreviewImg" src="" alt="">
+  <div class="dhp-details" id="deckHoverPreviewDetails"></div>
 </div>
 
 <!-- Zone action popup (appears when clicking a pile/stack) -->
@@ -2313,18 +2334,48 @@
     return null;
   }
 
+  const deckHoverPreviewDetails = document.getElementById('deckHoverPreviewDetails');
   function showDeckPreview(e, imgUrl) {
     if (!imgUrl) return;
     deckHoverPreviewImg.src = imgUrl;
-    deckHoverPreview.style.display = 'block';
+    deckHoverPreviewDetails.classList.remove('show');
+    deckHoverPreviewDetails.innerHTML = '';
+    deckHoverPreview.style.display = 'flex';
+    positionDeckPreview(e);
+  }
+  // 同名でもカード番号(収録違い・イラスト違い等)が異なると別カードとして扱われるため、
+  // 名前の一覧だけでは判別しづらい。画像に加えて色・レベル・コスト・効果テキストも
+  // 一緒に出すことで、ホバーだけでどのカードか判別できるようにする。
+  function showCardHoverPreview(e, card) {
+    if (!card) return;
+    deckHoverPreviewImg.src = card.img || '';
+    const colorsJa = (card.color || []).map(c => COLOR_JA[c] || c).join('/');
+    const costPart = card.play_cost != null ? `コスト${card.play_cost}`
+      : (card.dual ? `使用コスト${card.dual.use_cost ?? '?'}` : '');
+    const tagParts = [colorsJa, cardTileLabel(card), costPart, card.dp != null ? `DP${card.dp}` : '']
+      .filter(Boolean).join(' ・ ');
+    const effectBlocks = [
+      card.effect ? `<span class="dhp-label">効果</span>${escapeHtml(card.effect)}` : '',
+      card.inherited ? `<span class="dhp-label">進化元・リンク効果</span>${escapeHtml(card.inherited)}` : '',
+      card.security_effect ? `<span class="dhp-label">セキュリティ効果</span>${escapeHtml(card.security_effect)}` : '',
+    ].filter(Boolean).join('');
+    deckHoverPreviewDetails.innerHTML = `
+      <div class="dhp-name">${escapeHtml(card.name || '')}</div>
+      <div class="dhp-tags">${escapeHtml(card.number || '')}${tagParts ? ' ・ ' + escapeHtml(tagParts) : ''}</div>
+      <div class="dhp-effect">${effectBlocks || '(効果テキストなし)'}</div>
+    `;
+    deckHoverPreviewDetails.classList.add('show');
+    deckHoverPreview.style.display = 'flex';
     positionDeckPreview(e);
   }
   function positionDeckPreview(e) {
     const offset = 16;
+    const w = deckHoverPreview.offsetWidth || 180;
+    const h = deckHoverPreview.offsetHeight || 240;
     let x = e.clientX + offset;
     let y = e.clientY + offset;
-    if (x > window.innerWidth - 180) x = e.clientX - 180 - offset;
-    if (y > window.innerHeight - 240) y = window.innerHeight - 240;
+    if (x > window.innerWidth - w) x = Math.max(4, e.clientX - w - offset);
+    if (y > window.innerHeight - h) y = Math.max(4, window.innerHeight - h - offset);
     deckHoverPreview.style.left = `${x}px`;
     deckHoverPreview.style.top = `${y}px`;
   }
@@ -2435,6 +2486,11 @@
         if (card) adjustDeckCount(card, 1);
         else showToast('DBに存在しないカードのため追加できません', true);
       });
+      if (card) {
+        row.addEventListener('mouseenter', (e) => showCardHoverPreview(e, card));
+        row.addEventListener('mousemove', (e) => positionDeckPreview(e));
+        row.addEventListener('mouseleave', () => hideDeckPreview());
+      }
       frag.appendChild(row);
     });
     listEl.appendChild(frag);
@@ -2779,7 +2835,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.21.20`);
+    log(`DigiCA Tool build v0.22.1`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
