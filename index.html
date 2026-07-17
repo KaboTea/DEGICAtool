@@ -1478,7 +1478,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.22.1</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.23.3</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -2835,7 +2835,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.22.1`);
+    log(`DigiCA Tool build v0.23.3`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -5261,9 +5261,9 @@
         return c && c.category === 'tamer';
       });
       if (tamerStacks.length === 1) {
-        actions.push({ label: '🛡 テイマーの下へ(≪セーブ≫)', onClick: () => { pendingTamerSaveTarget = tamerStacks[0]; onDestination('tamerSave'); } });
+        actions.push({ label: '🎙 テイマーの下へ(≪セーブ≫)', onClick: () => { pendingTamerSaveTarget = tamerStacks[0]; onDestination('tamerSave'); } });
       } else if (tamerStacks.length > 1) {
-        actions.push({ label: '🛡 テイマーの下へ(≪セーブ≫)▾', onClick: (e) => openZonePopup(e, 'どのテイマーの下に置きますか?', tamerStacks.map(s => {
+        actions.push({ label: '🎙 テイマーの下へ(≪セーブ≫)▾', onClick: (e) => openZonePopup(e, 'どのテイマーの下に置きますか?', tamerStacks.map(s => {
           const c = getStackTopCard(s);
           return { label: c ? c.name : '?', onClick: () => { pendingTamerSaveTarget = s; onDestination('tamerSave'); } };
         })) });
@@ -5353,7 +5353,7 @@
     stack.rested = true;
     cardDetailModal.classList.remove('open');
     renderPracticeBoard();
-    showToast('🛡 ≪回避≫: レストすることで消滅を回避しました');
+    showToast('🏃 ≪回避≫: レストすることで消滅を回避しました');
   }
   // ≪アーマー解除≫(16-19):「このデジモンが消滅するとき、このデジモンに重ねられている
   // カードを上から1枚破棄することで、消滅しない」。進化元(このデジモン自身を除く重なり)
@@ -5373,7 +5373,7 @@
     checkOverflow(removedNum, owner.player);
     cardDetailModal.classList.remove('open');
     renderPracticeBoard();
-    showToast('🛡 ≪アーマー解除≫: 進化元を1枚破棄することで消滅を回避しました');
+    showToast('🔨 ≪アーマー解除≫: 進化元を1枚破棄することで消滅を回避しました');
   }
 
   // ---------- Attack flow (11-1〜11-5, 13-1-8): 宣言→カウンター→ブロック→成立確認 ----------
@@ -5576,6 +5576,7 @@
       { label: '次へ(ブロックタイミングへ)', onClick: () => showAttackBlockStep() },
       ...renkeiActionItems(),
       ...sAttackActionItems(),
+      ...chargeActionItems(),
     ], true);
   }
 
@@ -5620,6 +5621,35 @@
     ], true);
   }
 
+  // 消滅する直前に、≪回避≫≪アーマー解除≫等の「消滅の代わりに◯◯する」効果を
+  // 選べるようにする共通ステップ。自動でtrashEntireStackを呼んでしまうと、これらの
+  // キーワードを選ぶ機会がなくなってしまうため、バトル・セキュリティチェックで
+  // 消滅が確定した箇所は必ずこの関数を経由させる。複数体を続けて処理できるよう、
+  // キュー形式で1体ずつ確認する。
+  function resolveDestructionQueue(stacks, afterAll) {
+    const queue = stacks.slice();
+    const next = () => {
+      if (queue.length === 0) { afterAll(); return; }
+      const stack = queue.shift();
+      // 相打ちの片方が、既に別の効果等で場を離れている場合はスキップする。
+      if (!findStackOwnerAndZone(stack)) { next(); return; }
+      const c = getStackTopCard(stack);
+      const name = c ? c.name : '?';
+      const actions = [
+        { label: `「${name}」をそのまま消滅させる`, onClick: () => { trashEntireStack(stack); next(); } },
+      ];
+      if (isDigimonLikeStack(stack)) {
+        actions.push({ label: '🏃 回避(レストして回避)', onClick: () => { evadeDestruction(stack); next(); } });
+        if (stack.cards.length > 1) {
+          actions.push({ label: '🔨 アーマー解除(進化元1枚破棄で回避)', onClick: () => { armorBreakDestruction(stack); next(); } });
+        }
+      }
+      lastAttackStepFn = () => openZonePopup(centerPoint(), `「${name}」が消滅します。回避する効果があれば選んでください(無ければそのまま消滅させてください)`, actions, true);
+      lastAttackStepFn();
+    };
+    next();
+  }
+
   function resolveBattle(a, b) {
     const renkeiBonus = attackState ? (attackState.renkeiBonusDP || 0) : 0;
     const dpA = getEffectiveDP(a) + (attackState && a === attackState.attackerStack ? renkeiBonus : 0);
@@ -5635,13 +5665,13 @@
       showBattleResultStep(
         `DPが同じ(${dpA})のため相打ちになります。「ブロックしたとき」「レストしたとき」「バトルに勝ったとき」等の効果があれば、消滅処理の前に処理してください`,
         () => {
-          trashEntireStack(a);
-          trashEntireStack(b);
-          showToast(`DPが同じ(${dpA})のため相打ちで両者消滅しました`);
-          if (attackerHasPierce) {
-            showToast('≪貫通≫が誘発しましたが、アタック中のデジモンが消滅しているためチェックできません(16-7-6)', true);
-          }
-          endAttack();
+          resolveDestructionQueue([a, b], () => {
+            showToast(`DPが同じ(${dpA})のため相打ち処理が完了しました`);
+            if (attackerHasPierce) {
+              showToast('≪貫通≫が誘発しましたが、アタック中のデジモンが消滅しているためチェックできません(16-7-6)', true);
+            }
+            endAttack();
+          });
         }
       );
       return;
@@ -5654,9 +5684,13 @@
     showBattleResultStep(
       `「${winnerName}」がバトルに勝利(DP${winnerDP} vs ${loserDP})。「ブロックしたとき」「レストしたとき」「バトルに勝ったとき」等の効果があれば、消滅処理の前に処理してください`,
       () => {
-        trashEntireStack(loser);
-        showToast(`「${winnerName}」の勝利で相手が消滅しました`);
-        triggerPierceThenEndAttack(aWins && attackerHasPierce);
+        resolveDestructionQueue([loser], () => {
+          const loserWasDestroyed = !findStackOwnerAndZone(loser);
+          showToast(`「${winnerName}」の勝利で相手の消滅処理が完了しました`);
+          // ≪貫通≫は「相手のデジモンを消滅させたとき」が条件のため、≪回避≫等で
+          // 消滅を免れた場合は誘発しない。
+          triggerPierceThenEndAttack(aWins && attackerHasPierce && loserWasDestroyed);
+        });
       }
     );
   }
@@ -5785,16 +5819,19 @@
     const resolve = (destination) => {
       snapshotPracticeState();
       defOwner.security.shift();
-      if (isDigimon) {
-        const atkDP = getEffectiveDP(attackState.attackerStack) + renkeiBonus;
-        const secDP = card.dp ?? 0;
-        if (atkDP <= secDP) trashEntireStack(attackState.attackerStack);
-      }
       if (destination === 'hand') defOwner.hand.push(top);
       else if (destination === 'battle') defOwner.battle.push({ cards: [top], rested: false });
       else defOwner.trash.push(top);
       renderPracticeBoard();
       showToast('セキュリティチェックが完了しました');
+      if (isDigimon) {
+        const atkDP = getEffectiveDP(attackState.attackerStack) + renkeiBonus;
+        const secDP = card.dp ?? 0;
+        if (atkDP <= secDP) {
+          resolveDestructionQueue([attackState.attackerStack], () => advanceSecurityCheck());
+          return;
+        }
+      }
       advanceSecurityCheck();
     };
     const mkBtn = (label, destination, primary) => {
@@ -5840,7 +5877,7 @@
     const topCard = getStackTopCard(stack);
     const centerEvent = { clientX: window.innerWidth / 2 - 130, clientY: 70 };
     openZonePopup(centerEvent, `「${topCard ? topCard.name : '?'}」がDP0以下になり消滅します`, [
-      { label: 'そのまま消滅(進化元ごとトラッシュへ)', onClick: () => { trashEntireStack(stack); resumeAttackStepIfAny(); } },
+      { label: 'そのまま消滅させる(回避系の効果があれば選べます)', onClick: () => resolveDestructionQueue([stack], () => resumeAttackStepIfAny()) },
       { label: '消滅効果を発揮(トラッシュに送らない)', onClick: () => { showToast('消滅効果の処理は手動で行ってください'); resumeAttackStepIfAny(); } },
     ]);
   }
@@ -5957,8 +5994,8 @@
     mk('一番上を移動▾', (e) => openHierarchicalDestinationPicker(e, '一番上のカードを送る', (dest) => removeCardFromStackAt(stack, topIndex, dest), { excludeBattle: true, excludeTrash: true, ownerPlayer: (findStackOwnerAndZone(stack) || {}).player }));
     mk('消滅', () => trashEntireStack(stack));
     if (isDigimonLikeStack(stack)) {
-      mk('🛡 回避(レストして回避)', () => evadeDestruction(stack));
-      mk('🛡 アーマー解除(進化元1枚破棄で回避)', () => armorBreakDestruction(stack));
+      mk('🏃 回避(レストして回避)', () => evadeDestruction(stack));
+      mk('🔨 アーマー解除(進化元1枚破棄で回避)', () => armorBreakDestruction(stack));
     }
     if (isDigimonLikeStack(stack) || (oppTopCardObj && oppTopCardObj.category === 'tamer')) {
       mk('🔒 ロック', (e) => openLockMenu(e, stack));
@@ -6122,8 +6159,8 @@
     }
     mk('消滅', () => trashEntireStack(stack));
     if (isDigimonLikeStack(stack)) {
-      mk('🛡 回避(レストして回避)', () => evadeDestruction(stack));
-      mk('🛡 アーマー解除(進化元1枚破棄で回避)', () => armorBreakDestruction(stack), stack.cards.length <= 1);
+      mk('🏃 回避(レストして回避)', () => evadeDestruction(stack));
+      mk('🔨 アーマー解除(進化元1枚破棄で回避)', () => armorBreakDestruction(stack), stack.cards.length <= 1);
     }
     if (!topCardObj || topCardObj.category !== 'tamer') {
       mk('退化', () => removeCardFromStackAt(stack, topIndex, 'trash'));
