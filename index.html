@@ -1303,9 +1303,12 @@
     left: 50%;
     transform: translateX(-50%);
     display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
     gap: 4px;
     margin-top: 4px;
     z-index: 16;
+    width: 100%; /* カード幅を超えたら折り返す */
   }
   .st-blocker {
     position: static;
@@ -1478,7 +1481,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.23.10</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.23.11</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -2835,7 +2838,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.23.10`);
+    log(`DigiCA Tool build v0.23.11`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -3473,8 +3476,18 @@
     if (stack.links && stack.links.length > 0) {
       el.style.marginRight = '35px'; // リンクの横差し表示が隣のデジモンと重ならないよう余白を確保
     }
-    if ((isDigimonLikeStack(stack) && (hasBlockerKeyword(stack) || hasRenkeiKeyword(stack) || hasPierceKeyword(stack) || hasEvadeKeyword(stack) || hasArmorBreakKeyword(stack) || hasChargeKeyword(stack))) || hasAnyLock(stack)) {
-      el.style.marginBottom = '32px'; // カード下のバッジ行と次の行が重ならないよう余白を確保
+    const badgeCount = [
+      isDigimonLikeStack(stack) && hasBlockerKeyword(stack),
+      isDigimonLikeStack(stack) && hasRenkeiKeyword(stack),
+      isDigimonLikeStack(stack) && hasPierceKeyword(stack),
+      isDigimonLikeStack(stack) && hasEvadeKeyword(stack),
+      isDigimonLikeStack(stack) && hasArmorBreakKeyword(stack),
+      isDigimonLikeStack(stack) && hasChargeKeyword(stack),
+      hasAnyLock(stack),
+    ].filter(Boolean).length;
+    if (badgeCount > 0) {
+      // カード幅を超える(4つ以上)場合は2段になるため、その分の余白を多めに確保する。
+      el.style.marginBottom = badgeCount >= 4 ? '54px' : '32px';
     }
     const layerHtml = layers.map((entry, i) => {
       const depth = layers.length - 1 - i; // 0 = top card (no offset), increasing = further back
