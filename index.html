@@ -580,11 +580,36 @@
     align-items: flex-start;
     gap: 18px;
   }
+  .detail-img-col {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex-shrink: 0;
+    width: 200px;
+  }
   .detail-body img {
     width: 200px;
     border-radius: 8px;
     flex-shrink: 0;
   }
+  .detail-keyword-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .dkb-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--panel-raised);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 3px 7px;
+    font-size: 11px;
+    color: var(--text);
+    white-space: nowrap;
+  }
+  .dkb-item .dkb-icon { font-size: 12px; }
   .detail-info {
     flex: 1;
     min-width: 0;
@@ -1481,7 +1506,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.23.11</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.23.12</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -2223,7 +2248,9 @@
     }
 
     detailBody.innerHTML = `
-      <img src="${card.img || ''}" alt="${escapeHtml(card.name)}" onerror="this.style.display='none'">
+      <div class="detail-img-col">
+        <img src="${card.img || ''}" alt="${escapeHtml(card.name)}" onerror="this.style.display='none'">
+      </div>
       <div class="detail-info">
         <div class="d-title">${escapeHtml(card.name)}</div>
         <div class="d-number mono">${escapeHtml(card.number)}</div>
@@ -2241,6 +2268,29 @@
       const owner = findStackOwnerAndZone(stackContext);
       const isOwn = owner && practiceState && owner.player === practiceState.players[practiceState.viewingIndex];
       const detailInfo = detailBody.querySelector('.detail-info');
+      // 現在このスタックが実際に持っているキーワード効果を、マーク+文字で画像の下に表示する。
+      // (効果テキストに書いてあっても視覚的に分かりにくい、リンクで付与されている等もあるため)
+      const kwBadges = [];
+      if (isDigimonLikeStack(stackContext)) {
+        if (hasBlockerKeyword(stackContext)) kwBadges.push(['🛡', 'ブロッカー']);
+        if (hasRenkeiKeyword(stackContext)) kwBadges.push(['🤝', '連携']);
+        if (hasPierceKeyword(stackContext)) kwBadges.push(['🗡', '貫通']);
+        if (hasEvadeKeyword(stackContext)) kwBadges.push(['🏃', '回避']);
+        if (hasArmorBreakKeyword(stackContext)) kwBadges.push(['🔨', 'アーマー解除']);
+        if (hasChargeKeyword(stackContext)) kwBadges.push(['🎯', '突進']);
+      }
+      Object.keys(LOCK_LABELS).forEach(k => {
+        if (hasLock(stackContext, k)) kwBadges.push(['🔒', LOCK_LABELS[k]]);
+      });
+      if (kwBadges.length > 0) {
+        const badgeRow = document.createElement('div');
+        badgeRow.className = 'detail-keyword-badges';
+        badgeRow.innerHTML = kwBadges.map(([icon, label]) =>
+          `<span class="dkb-item"><span class="dkb-icon">${icon}</span>${escapeHtml(label)}</span>`
+        ).join('');
+        const imgCol = detailBody.querySelector('.detail-img-col');
+        if (imgCol) imgCol.appendChild(badgeRow);
+      }
       const dpPanel = renderDPModifierPanel(stackContext);
       if (dpPanel) {
         const tagsEl = detailInfo.querySelector('.detail-tags');
@@ -2838,7 +2888,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.23.11`);
+    log(`DigiCA Tool build v0.23.12`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
