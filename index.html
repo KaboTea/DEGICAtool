@@ -197,6 +197,46 @@
   .modal-backdrop.detail-modal { pointer-events: none; }
   .modal-backdrop.detail-modal .modal { pointer-events: auto; }
 
+  /* ---- 一時的にポップアップ/モーダルを隠して盤面を見る「覗き見」機能 ----
+     状態(選択中の進化元・保留中のターゲット選択等)は保持したまま、見た目だけ
+     一時的に消す。右下の復帰ボタンでいつでも元に戻せる。 */
+  .modal-backdrop.peeking { background: transparent; pointer-events: none; }
+  .modal-backdrop.peeking .modal { opacity: 0; pointer-events: none; }
+  .zone-popup.peeking { opacity: 0; pointer-events: none; }
+  .peek-toggle-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: var(--panel-raised);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 3px 8px;
+    font-size: 11px;
+    color: var(--text-dim);
+    cursor: pointer;
+    z-index: 5;
+    white-space: nowrap;
+  }
+  .peek-toggle-btn:hover { color: var(--text); border-color: var(--accent-dim); }
+  .modal { position: relative; }
+  #peekRestoreBtn {
+    display: none;
+    position: fixed;
+    right: 16px;
+    bottom: 16px;
+    z-index: 300;
+    background: var(--accent);
+    color: #06231f;
+    border: none;
+    border-radius: 24px;
+    padding: 10px 18px;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  }
+  #peekRestoreBtn.show { display: block; }
+
   .modal {
     background: var(--panel);
     border: 1px solid var(--border);
@@ -1418,7 +1458,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.21.18</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.21.19</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -1694,9 +1734,13 @@
 
 <!-- Zone action popup (appears when clicking a pile/stack) -->
 <div class="zone-popup" id="zonePopup">
-  <div class="zp-title" id="zonePopupTitle"></div>
+  <button type="button" class="peek-toggle-btn" id="zonePopupPeekBtn">👁</button>
+  <div class="zp-title" id="zonePopupTitle" style="padding-right:28px;"></div>
   <div class="zp-actions" id="zonePopupActions"></div>
 </div>
+
+<!-- 覗き見からの復帰ボタン(モーダル/ポップアップを一時的に隠しているときだけ表示) -->
+<button type="button" id="peekRestoreBtn">👁‍🗨 ポップアップを表示</button>
 
 <!-- Toast notification -->
 <div class="toast" id="toast"></div>
@@ -1735,6 +1779,7 @@
 <!-- Card Detail Modal -->
 <div class="modal-backdrop detail-modal" id="cardDetailModal">
   <div class="modal">
+    <button type="button" class="peek-toggle-btn" id="detailPeekBtn">👁 盤面を見る</button>
     <div class="detail-body" id="detailBody"></div>
     <div class="modal-actions">
       <button class="btn" id="addToDeckFromDetail">＋ デッキに追加</button>
@@ -2071,13 +2116,13 @@
   const cardDetailModal = document.getElementById('cardDetailModal');
   const detailBody = document.getElementById('detailBody');
   document.getElementById('closeDetail').addEventListener('click', () => {
-    cardDetailModal.classList.remove('open');
+    cardDetailModal.classList.remove('open', 'peeking');
     resumeRevealSessionIfAny();
     resumeAttackStepIfAny();
   });
   cardDetailModal.addEventListener('click', (e) => {
     if (e.target === cardDetailModal) {
-      cardDetailModal.classList.remove('open');
+      cardDetailModal.classList.remove('open', 'peeking');
       resumeRevealSessionIfAny();
       resumeAttackStepIfAny();
     }
@@ -2087,6 +2132,26 @@
   document.getElementById('addToDeckFromDetail').addEventListener('click', () => {
     if (currentDetailCard) adjustDeckCount(currentDetailCard, 1);
   });
+
+  // ---------- 覗き見(peek): 状態は保持したまま、見た目だけ一時的に隠して盤面を見る ----------
+  const peekRestoreBtn = document.getElementById('peekRestoreBtn');
+  function enterPeek(el) {
+    el.classList.add('peeking');
+    peekRestoreBtn.classList.add('show');
+  }
+  function exitPeek() {
+    document.querySelectorAll('.peeking').forEach(el => el.classList.remove('peeking'));
+    peekRestoreBtn.classList.remove('show');
+  }
+  document.getElementById('detailPeekBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    enterPeek(cardDetailModal);
+  });
+  document.getElementById('zonePopupPeekBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    enterPeek(zonePopupEl);
+  });
+  peekRestoreBtn.addEventListener('click', () => exitPeek());
 
   function escapeHtml(str) {
     const div = document.createElement('div');
@@ -2213,7 +2278,7 @@
     if (e.key !== 'Escape') return;
     if (imageLightbox.classList.contains('open')) { imageLightbox.classList.remove('open'); return; }
     if (cardDetailModal.classList.contains('open')) {
-      cardDetailModal.classList.remove('open');
+      cardDetailModal.classList.remove('open', 'peeking');
       resumeRevealSessionIfAny();
       resumeAttackStepIfAny();
       return;
@@ -2714,7 +2779,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.21.18`);
+    log(`DigiCA Tool build v0.21.19`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -4716,7 +4781,7 @@
   // ---------- Zone action popup ----------
   const zonePopupEl = document.getElementById('zonePopup');
   let zonePopupPersistent = false;
-  function closeZonePopup() { zonePopupEl.classList.remove('open'); zonePopupPersistent = false; }
+  function closeZonePopup() { zonePopupEl.classList.remove('open', 'peeking'); zonePopupPersistent = false; }
   function openZonePopup(e, title, actions, persistent) {
     document.getElementById('zonePopupTitle').textContent = title;
     const actionsEl = document.getElementById('zonePopupActions');
