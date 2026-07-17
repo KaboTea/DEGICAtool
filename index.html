@@ -1389,7 +1389,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.21.14</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.21.15</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -2181,7 +2181,12 @@
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
     if (imageLightbox.classList.contains('open')) { imageLightbox.classList.remove('open'); return; }
-    if (cardDetailModal.classList.contains('open')) { cardDetailModal.classList.remove('open'); return; }
+    if (cardDetailModal.classList.contains('open')) {
+      cardDetailModal.classList.remove('open');
+      resumeRevealSessionIfAny();
+      resumeAttackStepIfAny();
+      return;
+    }
     if (modal.classList.contains('open')) modal.classList.remove('open');
   });
 
@@ -2678,7 +2683,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.21.14`);
+    log(`DigiCA Tool build v0.21.15`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -2928,11 +2933,10 @@
     stack.blockerOverride = !hasBlockerKeyword(stack);
   }
 
-  // ≪連携≫も同様に効果テキストから自動判定し、stack.renkeiOverrideで手動上書きできる。
+  // ≪連携≫も同様に、条件付き付与のカードや誤検出のおそれがあるため、
+  // ブロッカーと同様に完全手動(stack.renkeiOverride)にしている。
   function hasRenkeiKeyword(stack) {
-    if (stack.renkeiOverride === true || stack.renkeiOverride === false) return stack.renkeiOverride;
-    const c = getStackTopCard(stack);
-    return !!(c && c.effect && c.effect.includes('連携'));
+    return stack.renkeiOverride === true;
   }
   function toggleRenkei(stack) {
     stack.renkeiOverride = !hasRenkeiKeyword(stack);
@@ -3612,6 +3616,17 @@
   });
 
   function clampMemory(v) { return Math.max(-10, Math.min(10, v)); }
+  // メモリーゲージの上限は±10で固定(1-4-2-2、超えることはない)。コストを支払う行動は、
+  // 支払った結果としてこの上限を超える場合、そもそも宣言・実行することができない
+  // (1-3-11-1「支払えない場合は宣言できない」)。0コスト以下の行動は常に可能。
+  // ≪オーバーフロー≫等、プレイヤーの選択によらない強制的なメモリー移動には適用しない
+  // (そちらは従来通りpayMemory側でクランプする)。
+  function canPayMemoryCost(payerIndex, cost) {
+    if (!cost || cost <= 0) return true;
+    const delta = payerIndex === 0 ? cost : -cost;
+    const raw = practiceState.memory + delta;
+    return raw >= -10 && raw <= 10;
+  }
   function payMemory(payerIndex, cost) {
     const delta = payerIndex === 0 ? cost : -cost;
     const raw = practiceState.memory + delta;
@@ -3763,11 +3778,25 @@
   // 「X枚公開して振り分け」の途中で1枚を進化元へ回したとき、残りのカードを処理する
   // 画面に戻れるようにするためのフック。
   let revealSessionReopen = null;
+  // 公開して振り分け中の未処理カードの集合。一覧画面自体を(振り分けを終える前に)
+  // 閉じてしまった場合に、公開前と同じ順番でデッキの上に戻すために使う。
+  let activeRevealSession = null; // { revealed: number[], self }
   function resumeRevealSessionIfAny() {
     if (revealSessionReopen) {
       const fn = revealSessionReopen;
       revealSessionReopen = null;
       fn();
+      return;
+    }
+    if (activeRevealSession) {
+      const { revealed, self } = activeRevealSession;
+      activeRevealSession = null;
+      if (revealed.length > 0) {
+        // unshiftで先頭に戻すため、公開時の並び(先頭=デッキの一番上)を保つには逆順で積む。
+        for (let i = revealed.length - 1; i >= 0; i--) self.library.unshift(revealed[i]);
+        renderPracticeBoard();
+        showToast(`未処理だった${revealed.length}枚を、公開前と同じ順番でデッキの上に戻しました`);
+      }
     }
   }
 
@@ -3874,6 +3903,7 @@
   function finalizeLink(cost, targetStack) {
     if (!linkTargetMode || !practiceState) return;
     if (isNaN(cost) || cost < 0) { showToast('コストの入力が不正です', true); return; }
+    if (!canPayMemoryCost(practiceState.turn.playerIndex, cost)) { showToast('メモリーが上限(10)に達するため、このコストでは実行できません', true); return; }
     const self = practiceState.players[practiceState.viewingIndex];
     const { source, identifier, number, card } = linkTargetMode;
     snapshotPracticeState();
@@ -4050,6 +4080,7 @@
   function finalizeEvolve(cost) {
     if (!evolveMode || !evolveRouteTarget || !practiceState) return;
     if (isNaN(cost) || cost < 0) { showToast('コストの入力が不正です', true); return; }
+    if (!canPayMemoryCost(practiceState.turn.playerIndex, cost)) { showToast('メモリーが上限(10)に達するため、このコストでは実行できません', true); return; }
     const self = practiceState.players[practiceState.viewingIndex];
     const isBurst = evolveMode.burst;
     const targetStack = evolveRouteTarget;
@@ -4156,6 +4187,7 @@
   function finalizeMultiEvolve(cost) {
     if (!multiEvolveMode || !practiceState) return;
     if (isNaN(cost) || cost < 0) { showToast('コストの入力が不正です', true); return; }
+    if (!canPayMemoryCost(practiceState.turn.playerIndex, cost)) { showToast('メモリーが上限(10)に達するため、このコストでは実行できません', true); return; }
     const self = practiceState.players[practiceState.viewingIndex];
     const { handIndex, handNumber, card, selected, mode, handMaterials } = multiEvolveMode;
 
@@ -4324,6 +4356,7 @@
   function finalizeAssembly(cost) {
     if (!assemblyMode || !practiceState) return;
     if (isNaN(cost) || cost < 0) { showToast('コストの入力が不正です', true); return; }
+    if (!canPayMemoryCost(practiceState.turn.playerIndex, cost)) { showToast('メモリーが上限(10)に達するため、このコストでは実行できません', true); return; }
     const self = practiceState.players[practiceState.viewingIndex];
     const newStack = { cards: [...assemblyMode.materialNumbers, assemblyMode.number], rested: false };
     self.battle.push(newStack);
@@ -4377,6 +4410,7 @@
   function finalizeAppFusion(cost) {
     if (!evolveMode || !evolveRouteTarget || !practiceState) return;
     if (isNaN(cost) || cost < 0) { showToast('コストの入力が不正です', true); return; }
+    if (!canPayMemoryCost(practiceState.turn.playerIndex, cost)) { showToast('メモリーが上限(10)に達するため、このコストでは実行できません', true); return; }
     const self = practiceState.players[practiceState.viewingIndex];
     const targetStack = evolveRouteTarget;
 
@@ -4429,6 +4463,7 @@
   function finalizeJogressFromEvolve(cost, secondStack) {
     if (!evolveMode || !evolveRouteTarget || !practiceState) return;
     if (isNaN(cost) || cost < 0) { showToast('コストの入力が不正です', true); return; }
+    if (!canPayMemoryCost(practiceState.turn.playerIndex, cost)) { showToast('メモリーが上限(10)に達するため、このコストでは実行できません', true); return; }
     const self = practiceState.players[practiceState.viewingIndex];
     const primary = evolveRouteTarget;
 
@@ -4477,6 +4512,7 @@
 
     const finalize = (cost) => {
       if (isNaN(cost) || cost < 0) { showToast('コストの入力が不正です', true); return; }
+      if (!canPayMemoryCost(practiceState.turn.playerIndex, cost)) { showToast('メモリーが上限(10)に達するため、このコストでは実行できません', true); return; }
       if (dpLessDigimon) {
         showToast('DPを持たないデジモンはバトルエリアに置けません(ルールチェックで破棄されます)', true);
         return;
@@ -4679,7 +4715,9 @@
     closeZonePopup();
     currentDetailCard = null;
     document.getElementById('addToDeckFromDetail').style.display = 'none';
+    activeRevealSession = { revealed, self };
     function render() {
+      if (revealed.length === 0) activeRevealSession = null; // 全て処理済み
       const rows = revealed.map((number, i) => `
         <div class="deck-list-item" style="cursor:default;">
           <img src="${escapeHtml(miniCardImg(number))}" alt="" class="reveal-view-row" data-idx="${i}" style="width:34px;border-radius:3px;cursor:pointer;" onerror="this.style.opacity=0">
