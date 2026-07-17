@@ -1245,7 +1245,7 @@
     padding-top: 1px;
     box-shadow: 0 1px 3px rgba(0,0,0,0.7);
   }
-  .st-renkei {
+  .st-renkei, .st-lock, .st-pierce {
     position: static;
     font-size: 14px;
     filter: drop-shadow(0 1px 2px rgba(0,0,0,0.7));
@@ -1389,7 +1389,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.21.8</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.21.14</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -2678,7 +2678,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.21.8`);
+    log(`DigiCA Tool build v0.21.14`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -2938,6 +2938,54 @@
     stack.renkeiOverride = !hasRenkeiKeyword(stack);
   }
 
+  // ≪貫通≫(総合ルール16-7): 「このデジモンがアタックした相手のデジモンとのバトルで、
+  // 相手のデジモンを消滅させたとき、アタック終了時の直前にセキュリティチェックをする」
+  // キーワード効果。条件付き付与のカードも多く自動判定が難しいため、ブロッカーと同様に
+  // 完全手動(stack.pierceOverride)で管理する。
+  function hasPierceKeyword(stack) {
+    return stack.pierceOverride === true;
+  }
+  function togglePierce(stack) {
+    stack.pierceOverride = !hasPierceKeyword(stack);
+  }
+
+  // ---------- ロック(相手のバトルエリアのカードに、こちらの効果で一時的な制約を付与する) ----------
+  // 「アクティブにならない」「レストできない」「アタックできない」の3種。
+  // 解除タイミングは「そのカードの持ち主のターンが終了したとき」。
+  // 例: 自分のターン中に相手のカードへ付与した場合は、自分のターンが終わっても解除されず、
+  //     次の相手ターンが終了して初めて解除される。相手ターン中(カウンタータイミング等)に
+  //     付与した場合は、そのまま相手ターンの終了時に解除される。
+  // 「アクティブにならない」はアクティブフェイズの一括アクティブ化も含め、いかなる手段でも
+  // アクティブにならない(=次のアクティブフェイズでは起きない)。
+  const LOCK_LABELS = { noActive: 'アクティブにならない', noRest: 'レストできない', noAttack: 'アタックできない' };
+  function hasAnyLock(stack) {
+    return !!(stack.locks && (stack.locks.noActive || stack.locks.noRest || stack.locks.noAttack));
+  }
+  function hasLock(stack, type) {
+    return !!(stack.locks && stack.locks[type]);
+  }
+  function toggleLock(stack, type) {
+    if (!practiceState) return;
+    if (!stack.locks) stack.locks = {};
+    if (stack.locks[type]) {
+      delete stack.locks[type];
+      showToast(`🔓 ロック解除: ${LOCK_LABELS[type]}`);
+    } else {
+      stack.locks[type] = true;
+      showToast(`🔒 ロック付与: ${LOCK_LABELS[type]}(このカードの持ち主のターンが終了すると自動解除)`);
+    }
+    renderPracticeBoard();
+  }
+  function openLockMenu(e, stack) {
+    const c = getStackTopCard(stack);
+    const actions = Object.keys(LOCK_LABELS).map(type => ({
+      label: `${hasLock(stack, type) ? '✅' : '☐'} ${LOCK_LABELS[type]}`,
+      onClick: () => { toggleLock(stack, type); openLockMenu(e, stack); },
+    }));
+    actions.push({ label: '閉じる', onClick: () => resumeAttackStepIfAny() });
+    openZonePopup(e, `「${c ? c.name : '?'}」にロックを付与/解除`, actions, true);
+  }
+
   // 手札の「リンクする」ボタンは、そのカード自体がリンク効果を持つ場合のみ表示する。
   function cardHasLinkEffect(card) {
     // 「リンク効果」は専用フィールドではなく、進化元効果欄(inherited)のテキストに
@@ -3091,8 +3139,8 @@
     if (stack.links && stack.links.length > 0) {
       el.style.marginRight = '35px'; // リンクの横差し表示が隣のデジモンと重ならないよう余白を確保
     }
-    if (isDigimonLikeStack(stack) && (hasBlockerKeyword(stack) || hasRenkeiKeyword(stack))) {
-      el.style.marginBottom = '32px'; // カード下のブロッカー/連携バッジ行と次の行が重ならないよう余白を確保
+    if (isDigimonLikeStack(stack) && (hasBlockerKeyword(stack) || hasRenkeiKeyword(stack) || hasPierceKeyword(stack) || hasAnyLock(stack))) {
+      el.style.marginBottom = '32px'; // カード下のブロッカー/連携/貫通/ロックバッジ行と次の行が重ならないよう余白を確保
     }
     const layerHtml = layers.map((entry, i) => {
       const depth = layers.length - 1 - i; // 0 = top card (no offset), increasing = further back
@@ -3109,10 +3157,12 @@
     const linkHtml = (stack.links && stack.links.length > 0)
       ? `<div class="link-peek">${stack.links.map((num, i) => `<div class="link-card-wrap" style="z-index:${i + 1};top:${i * 17}px;"><img src="${escapeHtml(miniCardImg(num))}" alt="" title="リンク" onerror="this.style.opacity=0"></div>`).join('')}</div>`
       : '';
-    const badgesHtml = (isDigimonLikeStack(stack) && (hasBlockerKeyword(stack) || hasRenkeiKeyword(stack)))
+    const badgesHtml = (isDigimonLikeStack(stack) && (hasBlockerKeyword(stack) || hasRenkeiKeyword(stack) || hasPierceKeyword(stack) || hasAnyLock(stack)))
       ? `<div class="status-badges-row">
           ${hasBlockerKeyword(stack) ? `<span class="st-blocker" title="ブロッカー">B</span>` : ''}
           ${hasRenkeiKeyword(stack) ? `<span class="st-renkei" title="連携">🤝</span>` : ''}
+          ${hasPierceKeyword(stack) ? `<span class="st-pierce" title="貫通">🗡</span>` : ''}
+          ${hasAnyLock(stack) ? `<span class="st-lock" title="ロック: ${escapeHtml(Object.keys(LOCK_LABELS).filter(k => hasLock(stack, k)).map(k => LOCK_LABELS[k]).join('/'))}">🔒</span>` : ''}
         </div>`
       : '';
     el.innerHTML = `
@@ -3125,6 +3175,10 @@
     `;
     el.querySelector('.tile-quickadd').addEventListener('click', (e) => {
       e.stopPropagation();
+      if (stack.rested && hasLock(stack, 'noActive')) {
+        showToast('🔒「アクティブにならない」が付与されています(このロックが解除されるまでアクティブにできません)', true);
+        return;
+      }
       snapshotPracticeState();
       stack.rested = !stack.rested;
       renderPracticeBoard();
@@ -3152,22 +3206,6 @@
       if (idx >= 0) return { player: p, zone: 'battle', index: idx };
     }
     return null;
-  }
-
-  function deEvolveTopCard(stack, destination) {
-    const owner = findStackOwnerAndZone(stack);
-    if (!owner) return;
-    snapshotPracticeState();
-    const removed = cardEntryNum(stack.cards.pop());
-    if (destination === 'hand') owner.player.hand.push(removed);
-    else owner.player.trash.push(removed);
-    if (stack.cards.length === 0) {
-      if (owner.zone === 'raising') owner.player.raising = null;
-      else owner.player.battle.splice(owner.index, 1);
-    }
-    cardDetailModal.classList.remove('open');
-    renderPracticeBoard();
-    showToast(`退化しました(${destination === 'hand' ? '手札' : 'トラッシュ'}へ)`);
   }
 
   // 進化元が9枚以上あるときは、まず一番上のカード(通常の詳細+操作パネル)だけを表示し、
@@ -3508,7 +3546,7 @@
     // ターン開始時(アクティブフェイズ、ドロー前)・ターン終了時(エンドフェイズ)の
     // 効果もあるため、メインフェイズ以外でもこれらのフェイズでは操作を許可する。
     const phaseAllowsHandAction = ['active', 'main', 'end'].includes(practiceState.turn.phase);
-    const canAct = phaseAllowsHandAction && !evolveMode && !materialTargetMode && !multiEvolveMode && !assemblyMode && !linkTargetMode && !deckToTamerMode;
+    const canAct = phaseAllowsHandAction && !evolveMode && !materialTargetMode && !multiEvolveMode && !assemblyMode && !linkTargetMode && !deckToTamerMode && !artsEvolveMode;
     const handRow = document.getElementById('selfHandRow');
     handRow.innerHTML = '';
     self.hand.forEach((number, index) => {
@@ -3680,7 +3718,7 @@
   let materialTargetMode = null; // { source: 'hand'|'trash', index, number, card }
   let evolveRouteTarget = null; // stack currently chosen as the evolution target (single-target flow)
   let multiEvolveMode = null; // { handIndex, handNumber, card, mode: 'jogress'|'digixros', selected: [] }
-  let linkTargetMode = null; // { handIndex, handNumber, number, card }
+  let linkTargetMode = null; // { source: 'hand'|'trash'|'battleTop'|'stackMaterial', identifier, number, card }
   let deckToTamerMode = false; // デッキの上のカードをテイマーの下へ裏向きで送るモード
   let artsEvolveMode = null; // { sourceStack, card } デュアルカードのオプション側使用後、破棄の代わりに進化させるモード
   let pendingEvolveResolve = null; // (cost) => void, set by whichever flow opened the route modal
@@ -3791,10 +3829,6 @@
     evolveModeText.textContent = `「${card.name}」をリンクする進化元を、バトルエリア/育成エリアから選んでください`;
     evolveModeBanner.classList.add('active');
     renderPracticeBoard();
-  }
-  function exitLinkTargetMode() {
-    linkTargetMode = null;
-    if (!evolveMode && !materialTargetMode) evolveModeBanner.classList.remove('active');
   }
 
   // 〈リンク〉{条件}:コストN という形式でリンク効果欄(card.inherited)に書かれている
@@ -3932,10 +3966,6 @@
     evolveModeText.textContent = `「${card.name}」にアーツ進化させる自分のカードを選んでください(コストなし)`;
     evolveModeBanner.classList.add('active');
     renderPracticeBoard();
-  }
-  function exitArtsEvolveMode() {
-    artsEvolveMode = null;
-    if (!evolveMode && !materialTargetMode && !linkTargetMode && !deckToTamerMode) evolveModeBanner.classList.remove('active');
   }
   function performArtsEvolve(targetStack) {
     if (!artsEvolveMode || !practiceState) return;
@@ -4602,15 +4632,6 @@
     showToast('デッキの上からセキュリティに置きました');
   }
 
-  function securityTopToTrash() {
-    const self = practiceState.players[practiceState.viewingIndex];
-    if (self.security.length === 0) { showToast('セキュリティがありません', true); return; }
-    snapshotPracticeState();
-    self.trash.push(self.security.shift());
-    renderPracticeBoard();
-    showToast('セキュリティの上から1枚をトラッシュしました');
-  }
-
   // ---------- Zone action popup ----------
   const zonePopupEl = document.getElementById('zonePopup');
   let zonePopupPersistent = false;
@@ -4643,39 +4664,6 @@
   document.addEventListener('click', (e) => {
     if (zonePopupEl.classList.contains('open') && !zonePopupPersistent && !zonePopupEl.contains(e.target)) closeZonePopup();
   });
-
-  // ---------- Pick a card from hand / trash / battle-area top (used by security placement, evo-material add) ----------
-  function pickSourceCard(promptTitle, onPicked) {
-    const self = practiceState.players[practiceState.viewingIndex];
-    const choice = prompt(`${promptTitle}\n取得元を選んでください:\n1 = 手札\n2 = トラッシュ\n3 = バトルエリア(各進化元の一番上)`, '1');
-    if (choice === null) return;
-    const c = choice.trim();
-    if (c === '1') {
-      if (self.hand.length === 0) { showToast('手札がありません', true); return; }
-      openCardListPicker('手札から選択', self.hand, (idx) => {
-        snapshotPracticeState();
-        const [num] = self.hand.splice(idx, 1);
-        onPicked(num);
-      });
-    } else if (c === '2') {
-      if (self.trash.length === 0) { showToast('トラッシュがありません', true); return; }
-      openCardListPicker('トラッシュから選択', self.trash, (idx) => {
-        snapshotPracticeState();
-        const [num] = self.trash.splice(idx, 1);
-        onPicked(num);
-      });
-    } else if (c === '3') {
-      if (self.battle.length === 0) { showToast('バトルエリアにカードがありません', true); return; }
-      const tops = self.battle.map(s => cardEntryNum(s.cards[s.cards.length - 1]));
-      openCardListPicker('バトルエリアの一番上から選択', tops, (idx) => {
-        snapshotPracticeState();
-        const stack = self.battle[idx];
-        const num = cardEntryNum(stack.cards.pop());
-        if (stack.cards.length === 0) self.battle.splice(idx, 1);
-        onPicked(num);
-      });
-    }
-  }
 
   // ---------- Deck actions ----------
   function revealTopAndSort(x) {
@@ -5251,7 +5239,7 @@
   function showRenkeiPicker() {
     const self = attackState.attackerOwner;
     const candidates = self.battle.filter(s =>
-      !s.rested && s !== attackState.attackerStack && isDigimonLikeStack(s)
+      !s.rested && s !== attackState.attackerStack && isDigimonLikeStack(s) && !hasLock(s, 'noRest')
     );
     const actions = candidates.map(s => {
       const c = getStackTopCard(s);
@@ -5301,7 +5289,7 @@
     if (attackState) attackState.stepName = 'block';
     if (attackState.targetType !== 'player') { resolveAttack(); return; }
     const blockers = attackState.defenderOwner.battle.filter(s =>
-      !s.rested && s !== attackState.attackerStack && isDigimonLikeStack(s) && hasBlockerKeyword(s)
+      !s.rested && s !== attackState.attackerStack && isDigimonLikeStack(s) && hasBlockerKeyword(s) && !hasLock(s, 'noRest')
     );
     const actions = [
       { label: 'ブロックしない', onClick: () => resolveAttack() },
@@ -5343,6 +5331,10 @@
     const dpB = getEffectiveDP(b) + (attackState && b === attackState.attackerStack ? renkeiBonus : 0);
     const nameA = getStackTopCard(a) ? getStackTopCard(a).name : '?';
     const nameB = getStackTopCard(b) ? getStackTopCard(b).name : '?';
+    // ≪貫通≫(16-7-1)は「アタックした相手のデジモンを、そのバトルで消滅させたとき」に誘発する。
+    // ただし16-7-6により、処理する時点でチェックするデジモン(=アタック中のデジモン自身)が
+    // いない場合はチェックできないため、相打ちで自分も消滅した場合は不発となる。
+    const attackerHasPierce = hasPierceKeyword(a);
 
     if (dpA === dpB) {
       showBattleResultStep(
@@ -5351,6 +5343,9 @@
           trashEntireStack(a);
           trashEntireStack(b);
           showToast(`DPが同じ(${dpA})のため相打ちで両者消滅しました`);
+          if (attackerHasPierce) {
+            showToast('≪貫通≫が誘発しましたが、アタック中のデジモンが消滅しているためチェックできません(16-7-6)', true);
+          }
           endAttack();
         }
       );
@@ -5366,9 +5361,31 @@
       () => {
         trashEntireStack(loser);
         showToast(`「${winnerName}」の勝利で相手が消滅しました`);
-        endAttack();
+        triggerPierceThenEndAttack(aWins && attackerHasPierce);
       }
     );
+  }
+
+  // ≪貫通≫(16-7): 相手のデジモンを消滅させたとき、アタック終了時の直前に強制でセキュリティを
+  // 1回チェックする(ただしSアタック等でチェック枚数が増減していれば、その枚数分をこの1回で行う)。
+  // 複数回発動しても1回のアタックにつき1回のみ。チェックする相手のセキュリティがなければ不発。
+  function triggerPierceThenEndAttack(shouldTrigger) {
+    if (!shouldTrigger || !attackState) { endAttack(); return; }
+    // 16-7-6: 処理する時点でチェックするデジモン(アタック中のデジモン)がいなければ不発。
+    if (!findStackOwnerAndZone(attackState.attackerStack)) {
+      showToast('≪貫通≫が誘発しましたが、アタック中のデジモンが消滅しているためチェックできません(16-7-6)', true);
+      endAttack();
+      return;
+    }
+    const defOwner = attackState.defenderOwner;
+    if (!defOwner || defOwner.security.length === 0) {
+      showToast('≪貫通≫が誘発しましたが、相手のセキュリティがないためチェックできません', true);
+      endAttack();
+      return;
+    }
+    attackState.securityChecksRemaining = Math.max(1, 1 + (attackState.renkeiCount || 0) + (attackState.sAttackModifier || 0));
+    showToast(`🗡 ≪貫通≫発動: セキュリティを${attackState.securityChecksRemaining}枚チェックします`);
+    doSecurityCheckForAttack();
   }
 
   // バトルの勝敗が決まった直後、実際に消滅処理を行う前に一旦立ち止まるステップ。
@@ -5644,6 +5661,9 @@
     }
     mk('一番上を移動▾', (e) => openHierarchicalDestinationPicker(e, '一番上のカードを送る', (dest) => removeCardFromStackAt(stack, topIndex, dest), { excludeBattle: true, excludeTrash: true }));
     mk('消滅', () => trashEntireStack(stack));
+    if (isDigimonLikeStack(stack)) {
+      mk('🔒 ロック', (e) => openLockMenu(e, stack));
+    }
     wrap.appendChild(row);
     return wrap;
   }
@@ -5683,7 +5703,7 @@
       practiceState.viewingIndex === practiceState.turn.playerIndex &&
       stackOwner.player === practiceState.players[practiceState.viewingIndex];
     if (isTurnPlayersOwnBattleStack && !stack.rested && ['main', 'end'].includes(practiceState.turn.phase) &&
-        !evolveMode && !materialTargetMode && !attackState && isDigimonLikeStack(stack)) {
+        !evolveMode && !materialTargetMode && !attackState && isDigimonLikeStack(stack) && !hasLock(stack, 'noAttack')) {
       mk('⚔️ アタック宣言', () => declareAttack(stack));
     }
     if (stack.burstEvolved) {
@@ -5701,6 +5721,12 @@
         cardDetailModal.classList.remove('open');
         renderPracticeBoard();
         showToast(hasRenkeiKeyword(stack) ? '連携を付与しました' : '連携を解除しました');
+      });
+      mk(hasPierceKeyword(stack) ? '🗡 貫通を解除' : '🗡 貫通を付与', () => {
+        togglePierce(stack);
+        cardDetailModal.classList.remove('open');
+        renderPracticeBoard();
+        showToast(hasPierceKeyword(stack) ? '貫通を付与しました' : '貫通を解除しました');
       });
       mk(`🔗 リンク上限を設定(現在${1 + (stack.linkLimitBonus || 0)})`, (e) => {
         openZonePopup(e, 'このデジモンのリンク上限(基本1+加算)', [
@@ -5899,8 +5925,26 @@
       practiceState.turn = { count: turn.count + 1, playerIndex: nextPlayerIndex, phase: 'active' };
       practiceState.viewingIndex = nextPlayerIndex;
       const nextPlayer = practiceState.players[nextPlayerIndex];
-      nextPlayer.raising && (nextPlayer.raising.rested = false);
-      nextPlayer.battle.forEach(s => { s.rested = false; });
+      const lockedRaisingSkipped = nextPlayer.raising && hasLock(nextPlayer.raising, 'noActive');
+      if (nextPlayer.raising && !lockedRaisingSkipped) nextPlayer.raising.rested = false;
+      const lockedBattleSkipped = [];
+      nextPlayer.battle.forEach(s => {
+        if (hasLock(s, 'noActive')) { lockedBattleSkipped.push(s); return; }
+        s.rested = false;
+      });
+      if (lockedRaisingSkipped || lockedBattleSkipped.length > 0) {
+        const names = [lockedRaisingSkipped ? nextPlayer.raising : null, ...lockedBattleSkipped]
+          .filter(Boolean).map(s => getStackTopCard(s)?.name || '?').join('、');
+        showToast(`🔒「アクティブにならない」により、このアクティブフェイズでアクティブになりませんでした: ${names}`, true);
+      }
+      // 🔒ロックは「そのカードの持ち主のターンが終了したとき」に自動解除される。
+      // 今終わったのは turnPlayer(=turn.playerIndex)のターンなので、そのプレイヤーの
+      // カードに付いているロックだけをここで解除する(相手ターン中に付与された分は
+      // 次にこのプレイヤーのターンが終わるまで持ち越される)。
+      const endingPlayer = turnPlayer;
+      [endingPlayer.raising, ...endingPlayer.battle].forEach(s => {
+        if (s && s.locks) s.locks = {};
+      });
     }
     cancelTargetModes();
     renderPracticeBoard();
