@@ -1478,7 +1478,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.23.8</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.23.10</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -2835,7 +2835,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.23.8`);
+    log(`DigiCA Tool build v0.23.10`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -3081,20 +3081,37 @@
   // 付与・条件付き効果は、必ず【タイミング】の文中に埋め込まれる形で書かれ、独立行には
   // ならない。この違いを使えば、条件付き付与との誤判定なしにデフォルト所持だけを検出できる
   // (カードDB全体で確認済み)。
-  function hasInnateKeywordLine(card, keyword) {
-    if (!card || !card.effect) return false;
-    const bareLine = /^(≪[^≫]+≫)+$/;
-    return card.effect.split('\n').some(line => {
+  // リンクカード(card.inherited、〈リンク〉を含む欄)側は同じ独立行の末尾に
+  // 「（説明文）」が付くことがあるため、末尾の全角カッコ説明は任意で許容する。
+  function hasKeywordLineInText(text, keyword) {
+    if (!text) return false;
+    const bareLine = /^(≪[^≫]+≫)+(（.*）)?$/;
+    return text.split('\n').some(line => {
       const t = line.trim();
       return bareLine.test(t) && t.includes(`≪${keyword}≫`);
     });
+  }
+  function hasInnateKeywordLine(card, keyword) {
+    return hasKeywordLineInText(card && card.effect, keyword);
+  }
+  // DPと同様、リンクカードが持つキーワード効果は「リンクしている間だけ」有効。
+  // リンクを破棄すればそのキーワードも自動的に外れる(stack.linksを毎回見るだけなので
+  // 付与/剥奪の管理を別途持つ必要がない)。
+  function stackHasLinkedKeyword(stack, keyword) {
+    if (!stack.links || stack.links.length === 0) return false;
+    return stack.links.some(num => hasKeywordLineInText((cardIndexByNumber.get(num) || {}).inherited, keyword));
+  }
+  // カードそのものが持つ(独立行)か、リンクしているカードが持つかのどちらかを見る、
+  // という判定を1箇所にまとめたヘルパー。
+  function hasInnateOrLinkedKeyword(stack, keyword) {
+    return hasInnateKeywordLine(getStackTopCard(stack), keyword) || stackHasLinkedKeyword(stack, keyword);
   }
 
   // ≪ブロッカー≫はデフォルト所持を自動判定しつつ、効果による一時的な付与/剥奪は
   // stack.blockerOverride(true/false)で手動上書きできるようにする。
   function hasBlockerKeyword(stack) {
     if (stack.blockerOverride === true || stack.blockerOverride === false) return stack.blockerOverride;
-    return hasInnateKeywordLine(getStackTopCard(stack), 'ブロッカー');
+    return hasInnateOrLinkedKeyword(stack, 'ブロッカー');
   }
   function toggleBlocker(stack) {
     stack.blockerOverride = !hasBlockerKeyword(stack);
@@ -3103,7 +3120,7 @@
   // ≪連携≫も同様にデフォルト所持を自動判定し、手動上書きも可能にする。
   function hasRenkeiKeyword(stack) {
     if (stack.renkeiOverride === true || stack.renkeiOverride === false) return stack.renkeiOverride;
-    return hasInnateKeywordLine(getStackTopCard(stack), '連携');
+    return hasInnateOrLinkedKeyword(stack, '連携');
   }
   function toggleRenkei(stack) {
     stack.renkeiOverride = !hasRenkeiKeyword(stack);
@@ -3114,7 +3131,7 @@
   // キーワード効果。こちらもデフォルト所持を自動判定し、手動上書きも可能にする。
   function hasPierceKeyword(stack) {
     if (stack.pierceOverride === true || stack.pierceOverride === false) return stack.pierceOverride;
-    return hasInnateKeywordLine(getStackTopCard(stack), '貫通');
+    return hasInnateOrLinkedKeyword(stack, '貫通');
   }
   function togglePierce(stack) {
     stack.pierceOverride = !hasPierceKeyword(stack);
@@ -3123,11 +3140,11 @@
   // ≪Sアタック+N≫≪リンク+N≫のように数値を伴うキーワードも、独立行であれば
   // デフォルト所持とみなし、その数値を自動的にベース値として使う。
   // 手動でSアタック/リンク上限を設定した場合は、その値を優先する(未設定=undefinedの間だけ自動値を使う)。
-  function parseInnateNumericKeyword(card, patterns) {
-    if (!card || !card.effect) return null;
-    const bareLine = /^(≪[^≫]+≫)+$/;
+  function numericFromKeywordLine(text, patterns) {
+    if (!text) return null;
+    const bareLine = /^(≪[^≫]+≫)+(（.*）)?$/;
     let found = null;
-    card.effect.split('\n').some(line => {
+    text.split('\n').some(line => {
       const t = line.trim();
       if (!bareLine.test(t)) return false;
       for (const re of patterns) {
@@ -3138,20 +3155,36 @@
     });
     return found;
   }
+  function parseInnateNumericKeyword(card, patterns) {
+    return numericFromKeywordLine(card && card.effect, patterns);
+  }
+  // リンクカードが持つ数値付きキーワードは、リンクしている枚数分そのまま合算する
+  // (DPと同じ考え方: リンクしていれば効いて、破棄されれば外れる)。
+  function getLinkedNumericBonus(stack, patterns) {
+    if (!stack.links || stack.links.length === 0) return 0;
+    return stack.links.reduce((sum, num) => {
+      const v = numericFromKeywordLine((cardIndexByNumber.get(num) || {}).inherited, patterns);
+      return sum + (v || 0);
+    }, 0);
+  }
   // 「Sアタック」は旧称「セキュリティアタック」表記のカードもあるため両方見る(16-4)。
+  const S_ATTACK_PATTERNS = [/≪(?:Sアタック|セキュリティアタック)([+\-]\d+)≫/];
+  const LINK_BONUS_PATTERNS = [/≪リンク([+\-]\d+)≫/];
   function getInnateSAttackBonus(card) {
-    return parseInnateNumericKeyword(card, [/≪(?:Sアタック|セキュリティアタック)([+\-]\d+)≫/]);
+    return parseInnateNumericKeyword(card, S_ATTACK_PATTERNS);
   }
   function getInnateLinkBonus(card) {
-    return parseInnateNumericKeyword(card, [/≪リンク([+\-]\d+)≫/]);
+    return parseInnateNumericKeyword(card, LINK_BONUS_PATTERNS);
   }
   function effectiveSAttackBonus(stack) {
     if (stack.sAttackBonus !== undefined) return stack.sAttackBonus;
-    return getInnateSAttackBonus(getStackTopCard(stack)) || 0;
+    const own = getInnateSAttackBonus(getStackTopCard(stack)) || 0;
+    return own + getLinkedNumericBonus(stack, S_ATTACK_PATTERNS);
   }
   function effectiveLinkLimitBonus(stack) {
     if (stack.linkLimitBonus !== undefined) return stack.linkLimitBonus;
-    return getInnateLinkBonus(getStackTopCard(stack)) || 0;
+    const own = getInnateLinkBonus(getStackTopCard(stack)) || 0;
+    return own + getLinkedNumericBonus(stack, LINK_BONUS_PATTERNS);
   }
   // リンク上限を超えている場合、古いリンク(先頭)から順に自動破棄して枠内に収める。
   // finalizeLink内の同種処理とは別に、進化等で上限が変化した際の再チェック用。
@@ -3182,6 +3215,19 @@
     delete stack.chargeOverride;
     delete stack.sAttackBonus;
     delete stack.linkLimitBonus;
+    // 4-8-6: リンクカードを持つカードが新しいカードになる場合、そのカードが持つ
+    // リンクカードは同時に破棄される(アプ合体は例外的にリンクをこの時点までに
+    // 吸収済みなので、ここでは既に空になっている)。
+    if (stack.links && stack.links.length > 0 && owner) {
+      let removedLinkDP = 0;
+      stack.links.forEach(num => {
+        removedLinkDP += getLinkDPBonus(cardIndexByNumber.get(num));
+        owner.trash.push(num);
+        checkOverflow(num, owner);
+      });
+      stack.links = [];
+      if (removedLinkDP) stack.dpModifier = (stack.dpModifier || 0) - removedLinkDP; // リンクによるDP加算も同時に失われる
+    }
     const discarded = enforceLinkLimit(stack, owner);
     if (discarded.length > 0) {
       showToast(`進化後のリンク上限を超えたため、リンクを${discarded.length}枚破棄しました(${discarded.join('、')})`, true);
@@ -3192,21 +3238,21 @@
   // このバッジの有無で連動させる。
   function hasEvadeKeyword(stack) {
     if (stack.evadeOverride === true || stack.evadeOverride === false) return stack.evadeOverride;
-    return hasInnateKeywordLine(getStackTopCard(stack), '回避');
+    return hasInnateOrLinkedKeyword(stack, '回避');
   }
   function toggleEvade(stack) {
     stack.evadeOverride = !hasEvadeKeyword(stack);
   }
   function hasArmorBreakKeyword(stack) {
     if (stack.armorBreakOverride === true || stack.armorBreakOverride === false) return stack.armorBreakOverride;
-    return hasInnateKeywordLine(getStackTopCard(stack), 'アーマー解除');
+    return hasInnateOrLinkedKeyword(stack, 'アーマー解除');
   }
   function toggleArmorBreak(stack) {
     stack.armorBreakOverride = !hasArmorBreakKeyword(stack);
   }
   function hasChargeKeyword(stack) {
     if (stack.chargeOverride === true || stack.chargeOverride === false) return stack.chargeOverride;
-    return hasInnateKeywordLine(getStackTopCard(stack), '突進');
+    return hasInnateOrLinkedKeyword(stack, '突進');
   }
   function toggleCharge(stack) {
     stack.chargeOverride = !hasChargeKeyword(stack);
@@ -4998,8 +5044,15 @@
     });
     zonePopupPersistent = !!persistent;
     zonePopupEl.classList.add('open');
-    const x = Math.min(e.clientX, window.innerWidth - 270);
-    const y = Math.min(e.clientY, window.innerHeight - 220);
+    // 項目数によって実際の高さが大きく変わる(キーワード効果一覧など)ため、
+    // 固定値でクランプせず、描画後の実測サイズを使って画面内に収める。
+    zonePopupEl.style.left = '8px';
+    zonePopupEl.style.top = '8px';
+    const rect = zonePopupEl.getBoundingClientRect();
+    const w = rect.width || 260;
+    const h = rect.height || 220;
+    const x = Math.min(e.clientX, window.innerWidth - w - 8);
+    const y = Math.min(e.clientY, window.innerHeight - h - 8);
     zonePopupEl.style.left = `${Math.max(8, x)}px`;
     zonePopupEl.style.top = `${Math.max(8, y)}px`;
   }
