@@ -1353,7 +1353,8 @@
     box-shadow: 0 1px 3px rgba(0,0,0,0.7);
   }
   .st-renkei, .st-lock, .st-pierce, .st-armor, .st-charge, .st-evade,
-  .st-barrier, .st-fragment, .st-scapegoat, .st-decoy, .st-guardian {
+  .st-barrier, .st-fragment, .st-scapegoat, .st-decoy, .st-guardian,
+  .st-vortex, .st-raid, .st-execute, .st-overclock, .st-advance {
     position: static;
     font-size: 14px;
     filter: drop-shadow(0 1px 2px rgba(0,0,0,0.7));
@@ -1507,7 +1508,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.24.2</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.24.5</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -2881,7 +2882,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.24.2`);
+    log(`DigiCA Tool build v0.24.5`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -3264,6 +3265,11 @@
     delete stack.scapegoatOverride;
     delete stack.decoyOverride;
     delete stack.guardianOverride;
+    delete stack.vortexOverride;
+    delete stack.raidOverride;
+    delete stack.executeOverride;
+    delete stack.overclockOverride;
+    delete stack.advanceOverride;
     delete stack.sAttackBonus;
     delete stack.linkLimitBonus;
     // 4-8-6: リンクカードを持つカードが新しいカードになる場合、そのカードが持つ
@@ -3483,6 +3489,90 @@
     next();
   }
 
+  // ---------- 「ターン終了時にアタックできる」系キーワード ----------
+  // ≪ヴォルテクス≫(16-33)・≪急襲≫(16-44): 「自分のターン終了時、このデジモンでアタック
+  // できる」。レスト状態でも(≪ヴォルテクス≫は登場したターンでも)アタックできるので、
+  // 通常のアタック宣言ボタンとは別に用意する。
+  function hasVortexKeyword(stack) {
+    if (stack.vortexOverride === true || stack.vortexOverride === false) return stack.vortexOverride;
+    return hasInnateOrLinkedKeyword(stack, 'ヴォルテクス');
+  }
+  function toggleVortex(stack) {
+    stack.vortexOverride = !hasVortexKeyword(stack);
+  }
+  function hasRaidKeyword(stack) {
+    if (stack.raidOverride === true || stack.raidOverride === false) return stack.raidOverride;
+    return hasInnateOrLinkedKeyword(stack, '急襲');
+  }
+  function toggleRaid(stack) {
+    stack.raidOverride = !hasRaidKeyword(stack);
+  }
+  // ≪エグゼキュート≫(16-38): 上記2つに加え、アタック終了時にこのデジモンが消滅する
+  // (保留処理)。アクティブ状態の相手のデジモンにもアタック可能な点は、既存の「(効果)」
+  // 対象選択枠で対応済みのため追加対応は不要。
+  function hasExecuteKeyword(stack) {
+    if (stack.executeOverride === true || stack.executeOverride === false) return stack.executeOverride;
+    return hasInnateOrLinkedKeyword(stack, 'エグゼキュート');
+  }
+  function toggleExecute(stack) {
+    stack.executeOverride = !hasExecuteKeyword(stack);
+  }
+  function declareTurnEndAttack(stack, label, selfDestructAfter) {
+    declareAttack(stack); // rest済みでもアタック宣言できる点以外は通常のアタックと同じ手順
+    if (selfDestructAfter && attackState) attackState.executeSelfDestruct = true; // ≪エグゼキュート≫: アタック終了時に消滅(保留処理)
+    showToast(`${label}: アタックを宣言しました`);
+  }
+  // ≪オーバークロック≫(16-34): 自分のトークンか他の自分のデジモン1体を消滅させることで、
+  // このデジモンはレストせずにプレイヤーへ直接アタックする(対象選択なし)。
+  function hasOverclockKeyword(stack) {
+    if (stack.overclockOverride === true || stack.overclockOverride === false) return stack.overclockOverride;
+    return hasInnateOrLinkedKeyword(stack, 'オーバークロック');
+  }
+  function toggleOverclock(stack) {
+    stack.overclockOverride = !hasOverclockKeyword(stack);
+  }
+  function declareOverclockAttack(stack) {
+    const self = practiceState.players[practiceState.viewingIndex];
+    const candidates = otherOwnDigimonStacks(stack, self);
+    if (candidates.length === 0) {
+      showToast('消滅させられる自分の他のデジモン(トークン等)がいません', true);
+      return;
+    }
+    openZonePopup(centerPoint(), '消滅させるデジモン(トークン等)を選んでください(≪オーバークロック≫)', candidates.map(s => {
+      const c = getStackTopCard(s);
+      return {
+        label: c ? c.name : '?',
+        onClick: () => {
+          trashEntireStack(s);
+          const defenderOwner = practiceState.players[1 - practiceState.viewingIndex];
+          snapshotPracticeState();
+          attackState = {
+            attackerStack: stack, attackerOwner: self, defenderOwner, targetType: 'player', targetStack: null,
+            renkeiCount: 0, renkeiBonusDP: 0, sAttackModifier: effectiveSAttackBonus(stack),
+          };
+          cardDetailModal.classList.remove('open');
+          renderPracticeBoard();
+          showToast('⚙️ ≪オーバークロック≫: レストせずプレイヤーへアタックします');
+          showAttackTriggerStep();
+        },
+      };
+    }), true);
+  }
+
+  // ≪進撃≫(16-16): 「メモリーが相手側の1以上なら、このデジモンでアタックできる」。
+  // 実質ターン終了時条件を満たした状態での追加アタック用。
+  function hasAdvanceKeyword(stack) {
+    if (stack.advanceOverride === true || stack.advanceOverride === false) return stack.advanceOverride;
+    return hasInnateOrLinkedKeyword(stack, '進撃');
+  }
+  function toggleAdvance(stack) {
+    stack.advanceOverride = !hasAdvanceKeyword(stack);
+  }
+  function memoryTowardOpponent() {
+    if (!practiceState) return 0;
+    return practiceState.turn.playerIndex === 0 ? practiceState.memory : -practiceState.memory;
+  }
+
   // バッジ付与/解除できるキーワード効果が増えてきたため、個別ボタンではなく
   // 「🏷 キーワード効果」1つにまとめ、押すと一覧(チェックボックス形式)で選べるようにする。
   const KEYWORD_TOGGLE_DEFS = [
@@ -3497,6 +3587,11 @@
     { label: 'スケープゴート', icon: '🐐', cls: 'st-scapegoat', has: hasScapegoatKeyword, toggle: toggleScapegoat },
     { label: 'デコイ', icon: '🦆', cls: 'st-decoy', has: hasDecoyKeyword, toggle: toggleDecoy },
     { label: '守護', icon: '👼', cls: 'st-guardian', has: hasGuardianKeyword, toggle: toggleGuardian },
+    { label: 'ヴォルテクス', icon: '🪽', cls: 'st-vortex', has: hasVortexKeyword, toggle: toggleVortex },
+    { label: '急襲', icon: '🚀', cls: 'st-raid', has: hasRaidKeyword, toggle: toggleRaid },
+    { label: 'エグゼキュート', icon: '💀', cls: 'st-execute', has: hasExecuteKeyword, toggle: toggleExecute },
+    { label: 'オーバークロック', icon: '⚙️', cls: 'st-overclock', has: hasOverclockKeyword, toggle: toggleOverclock },
+    { label: '進撃', icon: '🏹', cls: 'st-advance', has: hasAdvanceKeyword, toggle: toggleAdvance },
   ];
   // スタックタイル/カード詳細のバッジ表示で共通利用する、現在持っているキーワード効果一覧。
   function stackKeywordBadges(stack) {
@@ -5712,12 +5807,30 @@
       showToast('相手のバトルエリアにデジモンがいません', true);
       return;
     }
+    // アタックの途中(トリガー/カウンター等のステップ)でこのバトルが挟まれた場合、
+    // バトル解決後に元のステップへ正しく戻れるよう、現在のステップを覚えておく。
+    // アタックは重複宣言できないが、アタック中に効果で別のバトルが発生すること自体は問題ない。
+    const returnAttackState = attackState;
+    const returnStepFn = lastAttackStepFn;
     const myName = getStackTopCard(stack)?.name || '?';
     openZonePopup(centerPoint(), `「${myName}」とバトルする相手のデジモンを選んでください(DPが低い方が消滅)`, candidates.map(s => {
       const c = getStackTopCard(s);
       return {
         label: `${c ? c.name : '?'}(DP${getEffectiveDP(s)}${s.rested ? '・レスト' : ''})`,
-        onClick: () => { cardDetailModal.classList.remove('open'); resolveBattle(stack, s); },
+        onClick: () => {
+          cardDetailModal.classList.remove('open');
+          resolveBattle(stack, s, {
+            isMainAttackBattle: false,
+            onComplete: () => {
+              if (returnAttackState && attackState === returnAttackState && returnStepFn) {
+                lastAttackStepFn = returnStepFn;
+                resumeAttackStepIfAny();
+              } else {
+                renderPracticeBoard();
+              }
+            },
+          });
+        },
       };
     }), true);
   }
@@ -6159,7 +6272,13 @@
     next();
   }
 
-  function resolveBattle(a, b) {
+  // isMainAttackBattle=false のときは「アタック中の効果で発生した、本来のアタックとは
+  // 別のバトル」として扱う。アタックを終了させず、バトル解決後に元のアタックステップへ
+  // 戻る(アタックは重複宣言できないが、アタック中に別のバトルが挟まること自体は問題ない)。
+  // ≪貫通≫は「アタックした相手のデジモンとのバトル」限定のため、この場合は誘発しない。
+  function resolveBattle(a, b, opts) {
+    const isMainAttackBattle = !opts || opts.isMainAttackBattle !== false;
+    const onComplete = (opts && opts.onComplete) || resumeAttackStepIfAny;
     const renkeiBonus = attackState ? (attackState.renkeiBonusDP || 0) : 0;
     const dpA = getEffectiveDP(a) + (attackState && a === attackState.attackerStack ? renkeiBonus : 0);
     const dpB = getEffectiveDP(b) + (attackState && b === attackState.attackerStack ? renkeiBonus : 0);
@@ -6168,7 +6287,7 @@
     // ≪貫通≫(16-7-1)は「アタックした相手のデジモンを、そのバトルで消滅させたとき」に誘発する。
     // ただし16-7-6により、処理する時点でチェックするデジモン(=アタック中のデジモン自身)が
     // いない場合はチェックできないため、相打ちで自分も消滅した場合は不発となる。
-    const attackerHasPierce = hasPierceKeyword(a);
+    const attackerHasPierce = isMainAttackBattle && hasPierceKeyword(a);
 
     if (dpA === dpB) {
       showBattleResultStep(
@@ -6179,7 +6298,8 @@
             if (attackerHasPierce) {
               showToast('≪貫通≫が誘発しましたが、アタック中のデジモンが消滅しているためチェックできません(16-7-6)', true);
             }
-            endAttack();
+            if (isMainAttackBattle) endAttack();
+            else onComplete();
           }, { battleContext: true });
         }
       );
@@ -6196,9 +6316,13 @@
         resolveDestructionQueue([loser], () => {
           const loserWasDestroyed = !findStackOwnerAndZone(loser);
           showToast(`「${winnerName}」の勝利で相手の消滅処理が完了しました`);
-          // ≪貫通≫は「相手のデジモンを消滅させたとき」が条件のため、≪回避≫等で
-          // 消滅を免れた場合は誘発しない。
-          triggerPierceThenEndAttack(aWins && attackerHasPierce && loserWasDestroyed);
+          if (isMainAttackBattle) {
+            // ≪貫通≫は「相手のデジモンを消滅させたとき」が条件のため、≪回避≫等で
+            // 消滅を免れた場合は誘発しない。
+            triggerPierceThenEndAttack(aWins && attackerHasPierce && loserWasDestroyed);
+          } else {
+            onComplete();
+          }
         }, { battleContext: true });
       }
     );
@@ -6374,11 +6498,16 @@
   }
 
   function endAttack() {
+    // ≪エグゼキュート≫(16-38-4): 「このアタック終了時、このデジモンは消滅する」保留処理。
+    const stackToVanish = (attackState && attackState.executeSelfDestruct) ? attackState.attackerStack : null;
     attackState = null;
     lastAttackStepFn = null;
     closeZonePopup();
     cardDetailModal.classList.remove('open');
     renderPracticeBoard();
+    if (stackToVanish && findStackOwnerAndZone(stackToVanish)) {
+      resolveDestructionQueue([stackToVanish], () => {}, { battleContext: false });
+    }
   }
 
   // ---------- DP modify (works on any Digimon, self or opponent, any time) ----------
@@ -6547,11 +6676,41 @@
         !evolveMode && !materialTargetMode && !attackState && isDigimonLikeStack(stack) && !hasLock(stack, 'noAttack') && !hasLock(stack, 'noRest')) {
       mk('⚔️ アタック宣言', () => declareAttack(stack));
     }
+    // ≪ヴォルテクス≫≪急襲≫≪エグゼキュート≫≪オーバークロック≫共通:「自分のターン終了時、
+    // このデジモンでアタックできる」系。誘発タイミング通り、終了フェイズでのみ表示する。
+    // 登場したターンでも発揮できるのは≪ヴォルテクス≫のみで、他は次のターンまで待つ必要がある。
+    // また≪オーバークロック≫はレストせずにアタックするためレスト状態でも発揮できるが、
+    // 他はアクティブ状態でなければ発揮できない。
+    const enteredThisTurn = stack.enteredTurn === practiceState.turn.count;
+    if (isTurnPlayersOwnBattleStack && practiceState.turn.phase === 'end' &&
+        !evolveMode && !materialTargetMode && !attackState && isDigimonLikeStack(stack) &&
+        !hasLock(stack, 'noAttack')) {
+      if (hasVortexKeyword(stack) && !stack.rested && !hasLock(stack, 'noRest')) {
+        mk('🪽 ヴォルテクスでアタック', () => declareTurnEndAttack(stack, '🪽 ≪ヴォルテクス≫'));
+      }
+      if (hasRaidKeyword(stack) && !stack.rested && !enteredThisTurn && !hasLock(stack, 'noRest')) {
+        mk('🚀 急襲でアタック', () => declareTurnEndAttack(stack, '🚀 ≪急襲≫'));
+      }
+      if (hasExecuteKeyword(stack) && !stack.rested && !enteredThisTurn && !hasLock(stack, 'noRest')) {
+        mk('💀 エグゼキュートでアタック(終了時に自身消滅)', () => declareTurnEndAttack(stack, '💀 ≪エグゼキュート≫', true));
+      }
+      if (hasOverclockKeyword(stack) && !enteredThisTurn) {
+        mk('⚙️ オーバークロックでアタック(他を消滅させレストせず攻撃)', () => declareOverclockAttack(stack));
+      }
+    }
+    // ≪進撃≫: メモリーが相手側1以上のとき、レスト状態でなければ追加でアタック宣言できる。
+    if (isTurnPlayersOwnBattleStack && !stack.rested && !evolveMode && !materialTargetMode && !attackState &&
+        isDigimonLikeStack(stack) && !hasLock(stack, 'noAttack') && !hasLock(stack, 'noRest') &&
+        hasAdvanceKeyword(stack) && memoryTowardOpponent() >= 1) {
+      mk('🏹 進撃でアタック宣言', () => declareTurnEndAttack(stack, '🏹 ≪進撃≫'));
+    }
     // 「相手のデジモン1体とバトルする」という効果は多いため、アタック宣言とは別に、
     // 対象を選んでその場でDP比較バトルだけを行う専用ボタンを用意する
     // (レスト等は伴わない。アタック時の各種タイミング処理も挟まない、純粋なバトルのみ)。
+    // アタックの重複宣言はできないが、これは新たなアタック宣言ではないため、
+    // アタック中(トリガー/カウンター等のステップ)でも使える。
     if (isDigimonLikeStack(stack) && stackOwner && stackOwner.zone === 'battle' &&
-        stackOwner.player === practiceState.players[practiceState.viewingIndex] && !attackState) {
+        stackOwner.player === practiceState.players[practiceState.viewingIndex]) {
       mk('🥊 バトルする(効果)', () => startEffectBattle(stack));
     }
     if (stack.burstEvolved) {
