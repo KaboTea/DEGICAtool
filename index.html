@@ -1508,7 +1508,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.24.6</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.24.9</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -2882,7 +2882,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.24.6`);
+    log(`DigiCA Tool build v0.24.9`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -3133,9 +3133,13 @@
   function hasKeywordLineInText(text, keyword) {
     if (!text) return false;
     const bareLine = /^(≪[^≫]+≫)+(（.*）)?$/;
+    // ≪オーバークロック《特徴「合成型」》≫や≪デコイ《黒》≫のように、キーワード名の直後に
+    // 《条件》が挟まる書式のカードがあるため、単純な完全一致(≪keyword≫)だけでなく、
+    // その形も許容する。
+    const kwPattern = new RegExp(`≪${keyword}(《[^》]*》)?≫`);
     return text.split('\n').some(line => {
       const t = line.trim();
-      return bareLine.test(t) && t.includes(`≪${keyword}≫`);
+      return bareLine.test(t) && kwPattern.test(t);
     });
   }
   function hasInnateKeywordLine(card, keyword) {
@@ -3562,9 +3566,18 @@
 
   // ≪進撃≫(16-16): 「メモリーが相手側の1以上なら、このデジモンでアタックできる」。
   // 実質ターン終了時条件を満たした状態での追加アタック用。
+  // ≪進撃≫は他のキーワードと違い、他の文と混ざらない独立行ではなく、ほぼ全てのカードで
+  // 「【進化時】≪進撃≫」という進化時トリガーの形式で書かれる(DB調査で確認済み)。
+  // このため独立行判定は使わず専用パターンで検出し、かつ実際にこの一番上のカードが
+  // 進化で場に出た場合(進化元が1枚以上ある場合)のみ自動判定の対象とする。
+  // (直接登場したデジモンや、進化元がない場合は、たとえ同じ効果テキストを持っていても
+  // 「進化時」の条件を満たしていないため対象外)
   function hasAdvanceKeyword(stack) {
     if (stack.advanceOverride === true || stack.advanceOverride === false) return stack.advanceOverride;
-    return hasInnateOrLinkedKeyword(stack, '進撃');
+    if (stack.cards.length <= 1) return false;
+    const card = getStackTopCard(stack);
+    const text = (card && card.effect) || '';
+    return /【進化時】≪進撃≫/.test(text);
   }
   function toggleAdvance(stack) {
     stack.advanceOverride = !hasAdvanceKeyword(stack);
@@ -6712,21 +6725,22 @@
       practiceState.viewingIndex === practiceState.turn.playerIndex &&
       stackOwner.player === practiceState.players[practiceState.viewingIndex];
     const enteredThisTurn = stack.enteredTurn === practiceState.turn.count;
+    // ≪ヴォルテクス≫≪急襲≫≪エグゼキュート≫≪オーバークロック≫≪進撃≫: 通常はアタック
+    // できない状況でもアタックを可能にする効果群。個別ボタンを常に並べるのではなく、
+    // 実際に発揮できるものが1つ以上あるときだけ、まとめて1つのボタンから選べるようにする。
+    // 通常の「アタック宣言」と誤って混同しやすいため、該当する場合はこちらを先に表示する。
+    if (isTurnPlayersOwnBattleStack && !evolveMode && !materialTargetMode && !attackState &&
+        isDigimonLikeStack(stack) && !hasLock(stack, 'noAttack')) {
+      const specialOpts = specialAttackOptions(stack);
+      if (specialOpts.length > 0) {
+        mk('✨ キーワード効果でアタック(急襲/エグゼキュート等)', (e) => openZonePopup(e, 'どの効果でアタックしますか?(通常の「⚔️ アタック宣言」ではなく、こちらを選ぶとキーワード効果の追加処理が適用されます)', specialOpts, true));
+      }
+    }
     // 総合ルール11-1: デジモンは登場したターンにはアタックできない(≪速攻≫を持つ場合を除く)。
     if (isTurnPlayersOwnBattleStack && !stack.rested && ['main', 'end'].includes(practiceState.turn.phase) &&
         !evolveMode && !materialTargetMode && !attackState && isDigimonLikeStack(stack) && !hasLock(stack, 'noAttack') && !hasLock(stack, 'noRest') &&
         (!enteredThisTurn || hasQuickKeyword(stack))) {
       mk('⚔️ アタック宣言', () => declareAttack(stack));
-    }
-    // ≪ヴォルテクス≫≪急襲≫≪エグゼキュート≫≪オーバークロック≫≪進撃≫: 通常はアタック
-    // できない状況でもアタックを可能にする効果群。個別ボタンを常に並べるのではなく、
-    // 実際に発揮できるものが1つ以上あるときだけ、まとめて1つのボタンから選べるようにする。
-    if (isTurnPlayersOwnBattleStack && !evolveMode && !materialTargetMode && !attackState &&
-        isDigimonLikeStack(stack) && !hasLock(stack, 'noAttack')) {
-      const specialOpts = specialAttackOptions(stack);
-      if (specialOpts.length > 0) {
-        mk('⚔️ 特殊なタイミングでアタック', (e) => openZonePopup(e, 'どの効果でアタックしますか?', specialOpts, true));
-      }
     }
     // 「相手のデジモン1体とバトルする」という効果は多いため、アタック宣言とは別に、
     // 対象を選んでその場でDP比較バトルだけを行う専用ボタンを用意する
