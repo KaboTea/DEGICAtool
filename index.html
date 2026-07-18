@@ -1354,7 +1354,7 @@
   }
   .st-renkei, .st-lock, .st-pierce, .st-armor, .st-charge, .st-evade,
   .st-barrier, .st-fragment, .st-scapegoat, .st-decoy, .st-guardian,
-  .st-vortex, .st-raid, .st-execute, .st-overclock, .st-advance {
+  .st-vortex, .st-raid, .st-execute, .st-overclock, .st-advance, .st-quick {
     position: static;
     font-size: 14px;
     filter: drop-shadow(0 1px 2px rgba(0,0,0,0.7));
@@ -1508,7 +1508,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.24.5</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.24.6</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -2882,7 +2882,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.24.5`);
+    log(`DigiCA Tool build v0.24.6`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -3270,6 +3270,7 @@
     delete stack.executeOverride;
     delete stack.overclockOverride;
     delete stack.advanceOverride;
+    delete stack.quickOverride;
     delete stack.sAttackBonus;
     delete stack.linkLimitBonus;
     // 4-8-6: リンクカードを持つカードが新しいカードになる場合、そのカードが持つ
@@ -3573,6 +3574,43 @@
     return practiceState.turn.playerIndex === 0 ? practiceState.memory : -practiceState.memory;
   }
 
+  // ≪速攻≫(16-15):「このデジモンは、登場したターンでもアタックできる」。総合ルール
+  // 11-1により、デジモンは本来登場したターンにアタックできないため、その例外を表す。
+  function hasQuickKeyword(stack) {
+    if (stack.quickOverride === true || stack.quickOverride === false) return stack.quickOverride;
+    return hasInnateOrLinkedKeyword(stack, '速攻');
+  }
+  function toggleQuick(stack) {
+    stack.quickOverride = !hasQuickKeyword(stack);
+  }
+
+  // 急襲・エグゼキュート・オーバークロック・ヴォルテクス・進撃をまとめて判定し、
+  // 「今この瞬間に実際に発揮できるもの」だけを選択肢として返す。個別ボタンを常時
+  // 並べるのではなく、1つ以上発揮可能なときだけ1つのボタンから選べるようにするため。
+  function specialAttackOptions(stack) {
+    if (!practiceState || !isDigimonLikeStack(stack)) return [];
+    const enteredThisTurn = stack.enteredTurn === practiceState.turn.count;
+    const opts = [];
+    if (practiceState.turn.phase === 'end') {
+      if (hasVortexKeyword(stack) && !stack.rested && !hasLock(stack, 'noRest')) {
+        opts.push({ label: '🪽 ヴォルテクスでアタック', onClick: () => declareTurnEndAttack(stack, '🪽 ≪ヴォルテクス≫') });
+      }
+      if (hasRaidKeyword(stack) && !stack.rested && !enteredThisTurn && !hasLock(stack, 'noRest')) {
+        opts.push({ label: '🚀 急襲でアタック', onClick: () => declareTurnEndAttack(stack, '🚀 ≪急襲≫') });
+      }
+      if (hasExecuteKeyword(stack) && !stack.rested && !enteredThisTurn && !hasLock(stack, 'noRest')) {
+        opts.push({ label: '💀 エグゼキュートでアタック(終了時に自身消滅)', onClick: () => declareTurnEndAttack(stack, '💀 ≪エグゼキュート≫', true) });
+      }
+      if (hasOverclockKeyword(stack) && !enteredThisTurn) {
+        opts.push({ label: '⚙️ オーバークロックでアタック(他を消滅させレストせず攻撃)', onClick: () => declareOverclockAttack(stack) });
+      }
+    }
+    if (hasAdvanceKeyword(stack) && !stack.rested && !hasLock(stack, 'noRest') && memoryTowardOpponent() >= 1) {
+      opts.push({ label: '🏹 進撃でアタック宣言', onClick: () => declareTurnEndAttack(stack, '🏹 ≪進撃≫') });
+    }
+    return opts;
+  }
+
   // バッジ付与/解除できるキーワード効果が増えてきたため、個別ボタンではなく
   // 「🏷 キーワード効果」1つにまとめ、押すと一覧(チェックボックス形式)で選べるようにする。
   const KEYWORD_TOGGLE_DEFS = [
@@ -3592,6 +3630,7 @@
     { label: 'エグゼキュート', icon: '💀', cls: 'st-execute', has: hasExecuteKeyword, toggle: toggleExecute },
     { label: 'オーバークロック', icon: '⚙️', cls: 'st-overclock', has: hasOverclockKeyword, toggle: toggleOverclock },
     { label: '進撃', icon: '🏹', cls: 'st-advance', has: hasAdvanceKeyword, toggle: toggleAdvance },
+    { label: '速攻', icon: '💨', cls: 'st-quick', has: hasQuickKeyword, toggle: toggleQuick },
   ];
   // スタックタイル/カード詳細のバッジ表示で共通利用する、現在持っているキーワード効果一覧。
   function stackKeywordBadges(stack) {
@@ -6672,37 +6711,22 @@
     const isTurnPlayersOwnBattleStack = stackOwner && stackOwner.zone === 'battle' &&
       practiceState.viewingIndex === practiceState.turn.playerIndex &&
       stackOwner.player === practiceState.players[practiceState.viewingIndex];
+    const enteredThisTurn = stack.enteredTurn === practiceState.turn.count;
+    // 総合ルール11-1: デジモンは登場したターンにはアタックできない(≪速攻≫を持つ場合を除く)。
     if (isTurnPlayersOwnBattleStack && !stack.rested && ['main', 'end'].includes(practiceState.turn.phase) &&
-        !evolveMode && !materialTargetMode && !attackState && isDigimonLikeStack(stack) && !hasLock(stack, 'noAttack') && !hasLock(stack, 'noRest')) {
+        !evolveMode && !materialTargetMode && !attackState && isDigimonLikeStack(stack) && !hasLock(stack, 'noAttack') && !hasLock(stack, 'noRest') &&
+        (!enteredThisTurn || hasQuickKeyword(stack))) {
       mk('⚔️ アタック宣言', () => declareAttack(stack));
     }
-    // ≪ヴォルテクス≫≪急襲≫≪エグゼキュート≫≪オーバークロック≫共通:「自分のターン終了時、
-    // このデジモンでアタックできる」系。誘発タイミング通り、終了フェイズでのみ表示する。
-    // 登場したターンでも発揮できるのは≪ヴォルテクス≫のみで、他は次のターンまで待つ必要がある。
-    // また≪オーバークロック≫はレストせずにアタックするためレスト状態でも発揮できるが、
-    // 他はアクティブ状態でなければ発揮できない。
-    const enteredThisTurn = stack.enteredTurn === practiceState.turn.count;
-    if (isTurnPlayersOwnBattleStack && practiceState.turn.phase === 'end' &&
-        !evolveMode && !materialTargetMode && !attackState && isDigimonLikeStack(stack) &&
-        !hasLock(stack, 'noAttack')) {
-      if (hasVortexKeyword(stack) && !stack.rested && !hasLock(stack, 'noRest')) {
-        mk('🪽 ヴォルテクスでアタック', () => declareTurnEndAttack(stack, '🪽 ≪ヴォルテクス≫'));
+    // ≪ヴォルテクス≫≪急襲≫≪エグゼキュート≫≪オーバークロック≫≪進撃≫: 通常はアタック
+    // できない状況でもアタックを可能にする効果群。個別ボタンを常に並べるのではなく、
+    // 実際に発揮できるものが1つ以上あるときだけ、まとめて1つのボタンから選べるようにする。
+    if (isTurnPlayersOwnBattleStack && !evolveMode && !materialTargetMode && !attackState &&
+        isDigimonLikeStack(stack) && !hasLock(stack, 'noAttack')) {
+      const specialOpts = specialAttackOptions(stack);
+      if (specialOpts.length > 0) {
+        mk('⚔️ 特殊なタイミングでアタック', (e) => openZonePopup(e, 'どの効果でアタックしますか?', specialOpts, true));
       }
-      if (hasRaidKeyword(stack) && !stack.rested && !enteredThisTurn && !hasLock(stack, 'noRest')) {
-        mk('🚀 急襲でアタック', () => declareTurnEndAttack(stack, '🚀 ≪急襲≫'));
-      }
-      if (hasExecuteKeyword(stack) && !stack.rested && !enteredThisTurn && !hasLock(stack, 'noRest')) {
-        mk('💀 エグゼキュートでアタック(終了時に自身消滅)', () => declareTurnEndAttack(stack, '💀 ≪エグゼキュート≫', true));
-      }
-      if (hasOverclockKeyword(stack) && !enteredThisTurn) {
-        mk('⚙️ オーバークロックでアタック(他を消滅させレストせず攻撃)', () => declareOverclockAttack(stack));
-      }
-    }
-    // ≪進撃≫: メモリーが相手側1以上のとき、レスト状態でなければ追加でアタック宣言できる。
-    if (isTurnPlayersOwnBattleStack && !stack.rested && !evolveMode && !materialTargetMode && !attackState &&
-        isDigimonLikeStack(stack) && !hasLock(stack, 'noAttack') && !hasLock(stack, 'noRest') &&
-        hasAdvanceKeyword(stack) && memoryTowardOpponent() >= 1) {
-      mk('🏹 進撃でアタック宣言', () => declareTurnEndAttack(stack, '🏹 ≪進撃≫'));
     }
     // 「相手のデジモン1体とバトルする」という効果は多いため、アタック宣言とは別に、
     // 対象を選んでその場でDP比較バトルだけを行う専用ボタンを用意する
