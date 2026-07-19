@@ -1508,7 +1508,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.24.9</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.24.13</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -2882,7 +2882,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.24.9`);
+    log(`DigiCA Tool build v0.24.13`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -3294,6 +3294,9 @@
     if (discarded.length > 0) {
       showToast(`進化後のリンク上限を超えたため、リンクを${discarded.length}枚破棄しました(${discarded.join('、')})`, true);
     }
+    // ≪進撃≫は「進化した、その瞬間」だけの一度きりの機会。ここ(進化完了時点)の
+    // メモリー状況で判定を確定させ、以後は変化しない(メモリーが後から変わっても不可)。
+    setAdvanceAvailable(stack, hasAdvanceKeyword(stack) && memoryTowardOpponent() >= 1);
   }
   // ≪回避≫≪アーマー解除≫≪突進≫も、ブロッカー等と同様に「デフォルト自動判定+手動上書き」
   // の形に統一する。バッジ表示と、実際に選べる場面(消滅確認/アタック時ステップ)の両方を
@@ -3572,6 +3575,11 @@
   // 進化で場に出た場合(進化元が1枚以上ある場合)のみ自動判定の対象とする。
   // (直接登場したデジモンや、進化元がない場合は、たとえ同じ効果テキストを持っていても
   // 「進化時」の条件を満たしていないため対象外)
+  // ≪進撃≫(16-16)は「【進化時】≪進撃≫」という進化時トリガーのため、実際に使える
+  // タイミングは「進化した、その瞬間」のみの一度きりの機会。進化した後にメモリーが
+  // 相手側1以上になっても使えないし、一度使った(またはその瞬間に条件を満たせず流れた)
+  // 後にアクティブへ戻っても再度使えない。この「今使えるかどうか」はstack.advanceAvailable
+  // で管理し、hasAdvanceKeywordは「このカードが≪進撃≫を持っているか」だけを判定する。
   function hasAdvanceKeyword(stack) {
     if (stack.advanceOverride === true || stack.advanceOverride === false) return stack.advanceOverride;
     if (stack.cards.length <= 1) return false;
@@ -3580,11 +3588,25 @@
     return /【進化時】≪進撃≫/.test(text);
   }
   function toggleAdvance(stack) {
-    stack.advanceOverride = !hasAdvanceKeyword(stack);
+    const next = !hasAdvanceKeyword(stack);
+    stack.advanceOverride = next;
+    // 手動で付与した場合は、その瞬間を「進化した瞬間」とみなし、今のメモリー状況で
+    // 一度きりの機会を新たに開く。手動で解除した場合は機会も閉じる。
+    setAdvanceAvailable(stack, next && memoryTowardOpponent() >= 1);
   }
   function memoryTowardOpponent() {
     if (!practiceState) return 0;
     return practiceState.turn.playerIndex === 0 ? practiceState.memory : -practiceState.memory;
+  }
+  // ≪進撃≫の一度きりの機会は、それが開いたターンのうちに使わなければ消える
+  // (ターンをまたいで持ち越せない)。付与したターン数も一緒に記録し、読み取り側で
+  // 「今も同じターンか」を確認する。
+  function setAdvanceAvailable(stack, available) {
+    stack.advanceAvailable = !!available;
+    stack.advanceAvailableTurn = practiceState ? practiceState.turn.count : null;
+  }
+  function isAdvanceAvailableNow(stack) {
+    return !!stack.advanceAvailable && practiceState && stack.advanceAvailableTurn === practiceState.turn.count;
   }
 
   // ≪速攻≫(16-15):「このデジモンは、登場したターンでもアタックできる」。総合ルール
@@ -3602,24 +3624,36 @@
   // 並べるのではなく、1つ以上発揮可能なときだけ1つのボタンから選べるようにするため。
   function specialAttackOptions(stack) {
     if (!practiceState || !isDigimonLikeStack(stack)) return [];
-    const enteredThisTurn = stack.enteredTurn === practiceState.turn.count;
+    // 総合ルール11-1「デジモンは登場したターンにはアタックできない」は、通常のアタックだけ
+    // でなく「〜でアタックする/アタックできる」形式のキーワード効果全般の前提条件でもある。
+    // ≪速攻≫はこの基本制限そのものを解除するキーワードのため、≪速攻≫を持っていれば
+    // 登場ターンでも急襲・エグゼキュート・オーバークロックを発揮できる
+    // (≪ヴォルテクス≫は元々この制限を受けないので≪速攻≫の有無を問わない)。
+    const blockedByEntryTurn = stack.enteredTurn === practiceState.turn.count && !hasQuickKeyword(stack);
+    // 終了フェイズの「〜でアタックする」系(ヴォルテクス/急襲/エグゼキュート/オーバークロック)は、
+    // それを持つデジモンが何体いても、1ターンにつき1回しか宣言できない仕様にする
+    // (≪進撃≫はメモリー条件による別枠の効果のため、この制限の対象外)。
+    const endPhaseAttackAlreadyUsed = practiceState.endPhaseAttackUsedTurn === practiceState.turn.count;
+    const markEndPhaseAttackUsed = () => { practiceState.endPhaseAttackUsedTurn = practiceState.turn.count; };
     const opts = [];
-    if (practiceState.turn.phase === 'end') {
+    if (practiceState.turn.phase === 'end' && !endPhaseAttackAlreadyUsed) {
       if (hasVortexKeyword(stack) && !stack.rested && !hasLock(stack, 'noRest')) {
-        opts.push({ label: '🪽 ヴォルテクスでアタック', onClick: () => declareTurnEndAttack(stack, '🪽 ≪ヴォルテクス≫') });
+        opts.push({ label: '🪽 ヴォルテクスでアタック', onClick: () => { markEndPhaseAttackUsed(); declareTurnEndAttack(stack, '🪽 ≪ヴォルテクス≫'); } });
       }
-      if (hasRaidKeyword(stack) && !stack.rested && !enteredThisTurn && !hasLock(stack, 'noRest')) {
-        opts.push({ label: '🚀 急襲でアタック', onClick: () => declareTurnEndAttack(stack, '🚀 ≪急襲≫') });
+      if (hasRaidKeyword(stack) && !stack.rested && !blockedByEntryTurn && !hasLock(stack, 'noRest')) {
+        opts.push({ label: '🚀 急襲でアタック', onClick: () => { markEndPhaseAttackUsed(); declareTurnEndAttack(stack, '🚀 ≪急襲≫'); } });
       }
-      if (hasExecuteKeyword(stack) && !stack.rested && !enteredThisTurn && !hasLock(stack, 'noRest')) {
-        opts.push({ label: '💀 エグゼキュートでアタック(終了時に自身消滅)', onClick: () => declareTurnEndAttack(stack, '💀 ≪エグゼキュート≫', true) });
+      if (hasExecuteKeyword(stack) && !stack.rested && !blockedByEntryTurn && !hasLock(stack, 'noRest')) {
+        opts.push({ label: '💀 エグゼキュートでアタック(終了時に自身消滅)', onClick: () => { markEndPhaseAttackUsed(); declareTurnEndAttack(stack, '💀 ≪エグゼキュート≫', true); } });
       }
-      if (hasOverclockKeyword(stack) && !enteredThisTurn) {
-        opts.push({ label: '⚙️ オーバークロックでアタック(他を消滅させレストせず攻撃)', onClick: () => declareOverclockAttack(stack) });
+      if (hasOverclockKeyword(stack) && !blockedByEntryTurn) {
+        opts.push({ label: '⚙️ オーバークロックでアタック(他を消滅させレストせず攻撃)', onClick: () => { markEndPhaseAttackUsed(); declareOverclockAttack(stack); } });
       }
     }
-    if (hasAdvanceKeyword(stack) && !stack.rested && !hasLock(stack, 'noRest') && memoryTowardOpponent() >= 1) {
-      opts.push({ label: '🏹 進撃でアタック宣言', onClick: () => declareTurnEndAttack(stack, '🏹 ≪進撃≫') });
+    // ≪進撃≫: 進化した瞬間に確定した一度きりの機会(advanceAvailable)が、同じターンの
+    // うちにまだ残っているときだけ使える。ターンをまたぐと自動的に消える。
+    if (hasAdvanceKeyword(stack) && isAdvanceAvailableNow(stack) && !stack.rested && !hasLock(stack, 'noRest')) {
+      opts.push({ label: '🏹 進撃でアタック宣言', onClick: () => { setAdvanceAvailable(stack, false); declareTurnEndAttack(stack, '🏹 ≪進撃≫'); } });
     }
     return opts;
   }
@@ -4938,6 +4972,7 @@
     mergedCards = mergedCards.concat(handMaterials);
     mergedCards.push(handNumber);
     const newStack = { cards: mergedCards, rested: false };
+    setAdvanceAvailable(newStack, hasAdvanceKeyword(newStack) && memoryTowardOpponent() >= 1);
 
     selected.forEach(s => {
       if (self.raising === s) self.raising = null;
@@ -5090,6 +5125,7 @@
     if (!canPayMemoryCost(practiceState.turn.playerIndex, cost)) { showToast('メモリーが上限(10)に達するため、このコストでは実行できません', true); return; }
     const self = practiceState.players[practiceState.viewingIndex];
     const newStack = { cards: [...assemblyMode.materialNumbers, assemblyMode.number], rested: false };
+    setAdvanceAvailable(newStack, hasAdvanceKeyword(newStack) && memoryTowardOpponent() >= 1);
     self.battle.push(newStack);
     payMemory(practiceState.turn.playerIndex, cost);
     const cardName = assemblyMode.card.name;
@@ -5209,6 +5245,7 @@
     });
     const mergedCards = [...primary.cards, ...secondStack.cards, evolveMode.handNumber];
     const newStack = { cards: mergedCards, rested: false }; // ジョグレスは強制アクティブ
+    setAdvanceAvailable(newStack, hasAdvanceKeyword(newStack) && memoryTowardOpponent() >= 1);
     [primary, secondStack].forEach(s => {
       if (self.raising === s) self.raising = null;
       else { const idx = self.battle.indexOf(s); if (idx >= 0) self.battle.splice(idx, 1); }
