@@ -1508,7 +1508,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.24.14</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.24.15</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -2882,7 +2882,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.24.14`);
+    log(`DigiCA Tool build v0.24.15`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -3585,7 +3585,15 @@
     if (stack.cards.length <= 1) return false;
     const card = getStackTopCard(stack);
     const text = (card && card.effect) || '';
-    return /【進化時】≪進撃≫/.test(text);
+    // 実カードの書式は「【進化時】≪進撃≫」だけでなく、「【進化時】...その後、≪進撃≫。」の
+    // ように文中に出てくるもの、括弧が《》のもの(EX3-063等)がある。このため
+    // 「【進化時】で始まる行の中に≪進撃≫/《進撃》が含まれる」ことを条件にする。
+    // (「赤のカードがあるとき、≪進撃≫」等の条件付きも一部含まれてしまうが、選択肢が
+    //  出るだけで強制ではないため、条件成立の判断はプレイヤーの自己判定に委ねる)
+    return text.split('\n').some(line => {
+      const t = line.trim();
+      return t.startsWith('【進化時】') && /[≪《]進撃[≫》]/.test(t);
+    });
   }
   function toggleAdvance(stack) {
     const next = !hasAdvanceKeyword(stack);
@@ -3604,6 +3612,10 @@
   function setAdvanceAvailable(stack, available) {
     stack.advanceAvailable = !!available;
     stack.advanceAvailableTurn = practiceState ? practiceState.turn.count : null;
+    if (available) {
+      // 直後に出る進化完了トーストに上書きされないよう、少し遅らせて表示する。
+      setTimeout(() => showToast('🏹 ≪進撃≫の機会が開きました(このターン中のみ、1回だけアタック宣言できます)'), 1600);
+    }
   }
   function isAdvanceAvailableNow(stack) {
     return !!stack.advanceAvailable && practiceState && stack.advanceAvailableTurn === practiceState.turn.count;
