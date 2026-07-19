@@ -1508,7 +1508,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.24.13</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.24.14</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -2882,7 +2882,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.24.13`);
+    log(`DigiCA Tool build v0.24.14`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -4972,7 +4972,6 @@
     mergedCards = mergedCards.concat(handMaterials);
     mergedCards.push(handNumber);
     const newStack = { cards: mergedCards, rested: false };
-    setAdvanceAvailable(newStack, hasAdvanceKeyword(newStack) && memoryTowardOpponent() >= 1);
 
     selected.forEach(s => {
       if (self.raising === s) self.raising = null;
@@ -4984,6 +4983,9 @@
     self.battle.push(newStack);
 
     payMemory(practiceState.turn.playerIndex, cost);
+    // ≪進撃≫の判定はコスト支払い後(=進化/登場が完全に完了した後)のメモリー状況で
+    // 行う必要があるため、payMemoryの後に呼ぶ。
+    setAdvanceAvailable(newStack, hasAdvanceKeyword(newStack) && memoryTowardOpponent() >= 1);
     // ジョグレスは進化なので進化解決時ドローがあるが、デジクロスは「登場」の一種のためドローしない。
     if (mode === 'jogress' && self.library.length > 0) self.hand.push(self.library.shift());
 
@@ -5125,9 +5127,9 @@
     if (!canPayMemoryCost(practiceState.turn.playerIndex, cost)) { showToast('メモリーが上限(10)に達するため、このコストでは実行できません', true); return; }
     const self = practiceState.players[practiceState.viewingIndex];
     const newStack = { cards: [...assemblyMode.materialNumbers, assemblyMode.number], rested: false };
-    setAdvanceAvailable(newStack, hasAdvanceKeyword(newStack) && memoryTowardOpponent() >= 1);
     self.battle.push(newStack);
     payMemory(practiceState.turn.playerIndex, cost);
+    setAdvanceAvailable(newStack, hasAdvanceKeyword(newStack) && memoryTowardOpponent() >= 1);
     const cardName = assemblyMode.card.name;
     assemblyMode = null;
     renderPracticeBoard();
@@ -5195,8 +5197,10 @@
     }
     targetStack.links = [];
     targetStack.cards.push(evolveMode.handNumber);
-    resetKeywordStateOnEvolve(targetStack, self);
     payMemory(practiceState.turn.playerIndex, cost);
+    // ≪進撃≫の判定はコスト支払い後(=進化が完全に完了した後)のメモリー状況で行う必要が
+    // あるため、resetKeywordStateOnEvolveはpayMemoryの後に呼ぶ。
+    resetKeywordStateOnEvolve(targetStack, self);
     if (self.library.length > 0) self.hand.push(self.library.shift()); // 進化解決時に1ドロー
     const evolvedName = evolveMode.card.name;
 
@@ -5245,7 +5249,6 @@
     });
     const mergedCards = [...primary.cards, ...secondStack.cards, evolveMode.handNumber];
     const newStack = { cards: mergedCards, rested: false }; // ジョグレスは強制アクティブ
-    setAdvanceAvailable(newStack, hasAdvanceKeyword(newStack) && memoryTowardOpponent() >= 1);
     [primary, secondStack].forEach(s => {
       if (self.raising === s) self.raising = null;
       else { const idx = self.battle.indexOf(s); if (idx >= 0) self.battle.splice(idx, 1); }
@@ -5253,6 +5256,7 @@
     self.battle.push(newStack);
 
     payMemory(practiceState.turn.playerIndex, cost);
+    setAdvanceAvailable(newStack, hasAdvanceKeyword(newStack) && memoryTowardOpponent() >= 1);
     if (self.library.length > 0) self.hand.push(self.library.shift()); // 進化解決時に1ドロー
     const evolvedName = evolveMode.card.name;
 
