@@ -1510,7 +1510,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.25.3</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.25.4</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -2884,7 +2884,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.25.3`);
+    log(`DigiCA Tool build v0.25.4`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -3815,13 +3815,16 @@
 
   // ≪パーティション≫≪デコード≫を選択肢の配列として組み立てる(消滅・場を離れる、両方の
   // フローで共通利用する)。cbは処理完了後に呼ぶコールバック。
-  function partitionOrDecodeOffer(stack, owner, cb) {
+  function partitionOrDecodeOffer(stack, owner, cb, used) {
     const opts = [];
     // 1枚のカードに同じキーワードが複数(条件違いで)付くことがあるため、それぞれを
-    // 独立した選択肢として並べる。使用後はcb()で呼び出し元のメニューに戻り、
-    // 残りの効果(他の条件のパーティション/デコード、他のキーワード等)も続けて選べる。
+    // 独立した選択肢として並べる。usedで一度使ったものを記録し、選択肢から消す。
+    // 使用後はcb()で呼び出し元のメニューに戻り、残りの効果(他の条件・他のキーワード)
+    // も続けて選べる(全て使い切ったら呼び出し元がポップアップごと閉じる)。
     if (hasPartitionKeyword(stack)) {
-      getPartitionConditions(stack).forEach((cond) => {
+      getPartitionConditions(stack).forEach((cond, idx) => {
+        const key = `partition:${idx}`;
+        if (used.has(key)) return;
         opts.push({
           label: `🧩 パーティション発揮(条件: ${cond || '?'})`,
           onClick: () => openMaterialPicker(
@@ -3829,6 +3832,7 @@
             `パーティションの条件(${cond || '?'})に合うカードを、進化元から1枚ずつ選んでください`,
             null,
             (entries) => {
+              used.add(key);
               entries.forEach(entry => owner.player.battle.push({ cards: [cardEntryNum(entry)], rested: false, enteredTurn: practiceState.turn.count }));
               renderPracticeBoard();
               showToast(`🧩 ≪パーティション≫: ${entries.length}枚をコストなしで登場させました`);
@@ -3839,7 +3843,9 @@
       });
     }
     if (hasDecodeKeyword(stack)) {
-      getDecodeConditions(stack).forEach((cond) => {
+      getDecodeConditions(stack).forEach((cond, idx) => {
+        const key = `decode:${idx}`;
+        if (used.has(key)) return;
         opts.push({
           label: `💾 デコード発揮(条件: ${cond || '?'})`,
           onClick: () => openMaterialPicker(
@@ -3847,6 +3853,7 @@
             `デコードの条件(${cond || '?'})に合うカードを、進化元から1枚選んでください`,
             1,
             (entries) => {
+              used.add(key);
               entries.forEach(entry => owner.player.battle.push({ cards: [cardEntryNum(entry)], rested: false, enteredTurn: practiceState.turn.count }));
               renderPracticeBoard();
               showToast(`💾 ≪デコード≫: 1枚をコストなしで登場させました`);
@@ -3862,9 +3869,10 @@
   // 「バトルエリアを離れる(消滅以外)」フロー用: パーティション/デコードだけを提示する。
   // 1つ発揮したあとも、他の条件のものが残っていれば続けて選べるようループする。
   function offerPartitionDecodeThenProceed(stack, owner, onProceed) {
+    const used = new Set();
     const showMenu = () => {
-      const opts = partitionOrDecodeOffer(stack, owner, showMenu);
-      if (opts.length === 0) { onProceed(); return; }
+      const opts = partitionOrDecodeOffer(stack, owner, showMenu, used);
+      if (opts.length === 0) { onProceed(); return; } // 全部使い切った/元々ない場合はポップアップを出さない
       opts.push({ label: '完了(これ以上発揮しない)', onClick: () => onProceed() });
       const c = getStackTopCard(stack);
       openZonePopup(centerPoint(), `「${c ? c.name : '?'}」が場を離れます。≪パーティション≫≪デコード≫があれば選んでください`, opts, true);
@@ -3882,9 +3890,11 @@
       checkIndomitableAndAscension(stack, owner, afterAll);
     };
     const materialSaveCount = getMaterialSaveCount(stack);
+    const used = new Set();
+    let materialSaveUsed = false;
     const offerMaterialSalvage = () => {
       const opts = [];
-      if (hasMaterialSaveKeyword(stack) && materialSaveCount && stack.cards.length > 1) {
+      if (!materialSaveUsed && hasMaterialSaveKeyword(stack) && materialSaveCount && stack.cards.length > 1) {
         const digixrosCond = getDigixrosConditionText(stack);
         opts.push({
           label: `📀 マテリアルセーブ発揮(最大${materialSaveCount}枚、条件: ${digixrosCond || '?'})`,
@@ -3898,6 +3908,7 @@
                 return c && c.category === 'tamer';
               });
               const placeUnder = (tamerStack) => {
+                materialSaveUsed = true;
                 entries.forEach(e => tamerStack.cards.unshift(cardEntryNum(e)));
                 renderPracticeBoard();
                 showToast(`📀 ≪マテリアルセーブ≫: ${entries.length}枚をテイマーの下に置きました`);
@@ -3906,6 +3917,7 @@
               if (tamers.length === 0) {
                 entries.slice().reverse().forEach(e => stack.cards.push(e));
                 showToast('自分のテイマーがいないため≪マテリアルセーブ≫は使えません', true);
+                materialSaveUsed = true;
                 offerMaterialSalvage();
               } else if (tamers.length === 1) {
                 placeUnder(tamers[0]);
@@ -3919,8 +3931,8 @@
           ),
         });
       }
-      opts.push(...partitionOrDecodeOffer(stack, owner, offerMaterialSalvage));
-      if (opts.length === 0) { proceedToTrash(); return; }
+      opts.push(...partitionOrDecodeOffer(stack, owner, offerMaterialSalvage, used));
+      if (opts.length === 0) { proceedToTrash(); return; } // 全部使い切った/元々ない場合はポップアップを出さない
       opts.push({ label: 'そのまま何もせず消滅させる', onClick: () => proceedToTrash() });
       const c = getStackTopCard(stack);
       openZonePopup(centerPoint(), `「${c ? c.name : '?'}」消滅時の追加効果を選べます`, opts, true);
