@@ -1355,7 +1355,8 @@
   .st-renkei, .st-lock, .st-pierce, .st-armor, .st-charge, .st-evade,
   .st-barrier, .st-fragment, .st-scapegoat, .st-decoy, .st-guardian,
   .st-vortex, .st-raid, .st-execute, .st-overclock, .st-advance, .st-quick,
-  .st-icearmor, .st-progress, .st-collision, .st-companion {
+  .st-icearmor, .st-progress, .st-collision, .st-companion,
+  .st-partition, .st-decode, .st-indomitable, .st-ascension, .st-materialsave {
     position: static;
     font-size: 14px;
     filter: drop-shadow(0 1px 2px rgba(0,0,0,0.7));
@@ -1509,7 +1510,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.25.1</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.25.2</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -2883,7 +2884,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.25.1`);
+    log(`DigiCA Tool build v0.25.2`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -3281,6 +3282,11 @@
     delete stack.progressOverride;
     delete stack.collisionOverride;
     delete stack.companionOverride;
+    delete stack.partitionOverride;
+    delete stack.decodeOverride;
+    delete stack.indomitableOverride;
+    delete stack.ascensionOverride;
+    delete stack.materialSaveOverride;
     delete stack.sAttackBonus;
     delete stack.linkLimitBonus;
     // 4-8-6: リンクカードを持つカードが新しいカードになる場合、そのカードが持つ
@@ -3467,9 +3473,8 @@
       return {
         label: c ? c.name : '?',
         onClick: () => {
-          trashEntireStack(s);
-          showToast(`🐐 ≪スケープゴート≫: 「${c ? c.name : '?'}」を身代わりにして消滅を回避しました`);
-          next();
+          showToast(`🐐 ≪スケープゴート≫: 「${c ? c.name : '?'}」を身代わりにします`);
+          resolveFinalDestruction(s, next);
         },
       };
     }), true);
@@ -3498,9 +3503,8 @@
   }
   function substituteDestruction(holder, label, icon, next) {
     const c = getStackTopCard(holder);
-    trashEntireStack(holder);
-    showToast(`${icon} ${label}: 「${c ? c.name : '?'}」が代わりに消滅しました`);
-    next();
+    showToast(`${icon} ${label}: 「${c ? c.name : '?'}」が代わりに消滅します`);
+    resolveFinalDestruction(holder, next);
   }
 
   // ---------- 「ターン終了時にアタックできる」系キーワード ----------
@@ -3557,17 +3561,18 @@
       return {
         label: c ? c.name : '?',
         onClick: () => {
-          trashEntireStack(s);
-          const defenderOwner = practiceState.players[1 - practiceState.viewingIndex];
-          snapshotPracticeState();
-          attackState = {
-            attackerStack: stack, attackerOwner: self, defenderOwner, targetType: 'player', targetStack: null,
-            renkeiCount: 0, renkeiBonusDP: 0, sAttackModifier: effectiveSAttackBonus(stack),
-          };
-          cardDetailModal.classList.remove('open');
-          renderPracticeBoard();
-          showToast('⚙️ ≪オーバークロック≫: レストせずプレイヤーへアタックします');
-          showAttackTriggerStep();
+          resolveFinalDestruction(s, () => {
+            const defenderOwner = practiceState.players[1 - practiceState.viewingIndex];
+            snapshotPracticeState();
+            attackState = {
+              attackerStack: stack, attackerOwner: self, defenderOwner, targetType: 'player', targetStack: null,
+              renkeiCount: 0, renkeiBonusDP: 0, sAttackModifier: effectiveSAttackBonus(stack),
+            };
+            cardDetailModal.classList.remove('open');
+            renderPracticeBoard();
+            showToast('⚙️ ≪オーバークロック≫: レストせずプレイヤーへアタックします');
+            showAttackTriggerStep();
+          });
         },
       };
     }), true);
@@ -3684,6 +3689,267 @@
     stack.companionOverride = !hasCompanionKeyword(stack);
   }
 
+  // ---------- 「バトルエリアを離れるとき、即時」系 ----------
+  // カッコ内の条件文(色/レベル/デジクロス条件等)は自動判定せず、そのまま表示だけして
+  // 選択はプレイヤーの手動判断に委ねる(方針確定済み)。
+  function getKeywordParam(card, keyword) {
+    const text = (card && card.effect) || '';
+    const m = text.match(new RegExp(`≪${keyword}《([^》]*)》≫`));
+    return m ? m[1] : null;
+  }
+  // ≪パーティション≫(16-29):「進化元に指定のカードが1枚ずつあるこのデジモンが、
+  // 自分の効果とバトル以外でバトルエリアを離れるとき、その進化元から指定のカードを
+  // 1枚ずつコストなしで登場できる」。バトル結果による消滅でも発動する。
+  function hasPartitionKeyword(stack) {
+    if (stack.partitionOverride === true || stack.partitionOverride === false) return stack.partitionOverride;
+    return hasInnateOrLinkedKeyword(stack, 'パーティション');
+  }
+  function togglePartition(stack) {
+    stack.partitionOverride = !hasPartitionKeyword(stack);
+  }
+  function getPartitionCondition(stack) {
+    return getKeywordParam(getStackTopCard(stack), 'パーティション');
+  }
+  // ≪デコード≫(16-36):「このデジモンがバトル以外でバトルエリアを離れるとき、
+  // その進化元から指定のデジモンカード1枚をコストなしで登場できる」。
+  function hasDecodeKeyword(stack) {
+    if (stack.decodeOverride === true || stack.decodeOverride === false) return stack.decodeOverride;
+    return hasInnateOrLinkedKeyword(stack, 'デコード');
+  }
+  function toggleDecode(stack) {
+    stack.decodeOverride = !hasDecodeKeyword(stack);
+  }
+  function getDecodeCondition(stack) {
+    return getKeywordParam(getStackTopCard(stack), 'デコード');
+  }
+  // ≪不屈≫(16-27):「進化元を持つこのデジモンが消滅したとき、このカードをコストを
+  // 支払わずに登場させる」。強制処理(確認なしで自動発動)。
+  function hasIndomitableKeyword(stack) {
+    if (stack.indomitableOverride === true || stack.indomitableOverride === false) return stack.indomitableOverride;
+    return hasInnateOrLinkedKeyword(stack, '不屈');
+  }
+  function toggleIndomitable(stack) {
+    stack.indomitableOverride = !hasIndomitableKeyword(stack);
+  }
+  // ≪天昇≫(16-43):「このデジモンが消滅したとき、このカードをセキュリティの上に
+  // 置ける」。任意処理(確認ポップアップを出す)。
+  function hasAscensionKeyword(stack) {
+    if (stack.ascensionOverride === true || stack.ascensionOverride === false) return stack.ascensionOverride;
+    return hasInnateOrLinkedKeyword(stack, '天昇');
+  }
+  function toggleAscension(stack) {
+    stack.ascensionOverride = !hasAscensionKeyword(stack);
+  }
+  // ≪マテリアルセーブN≫(16-21):「このデジモンが消滅するとき、そのデジクロス条件に
+  // 記述されているカードを、進化元の中から最大N枚選び、自分のテイマー1体の下に
+  // 置くことができる」。デジクロス条件は≪≪デジクロス-N≫≫:「A」×「B」の行から抽出し、
+  // 表示のみ行う(自動絞り込みはしない)。
+  function getMaterialSaveCount(stack) {
+    const card = getStackTopCard(stack);
+    return numericFromKeywordLine(card && card.effect, [/≪マテリアルセーブ(\d+)≫/]);
+  }
+  function hasMaterialSaveKeyword(stack) {
+    if (stack.materialSaveOverride === true || stack.materialSaveOverride === false) return stack.materialSaveOverride;
+    return getMaterialSaveCount(stack) !== null;
+  }
+  function toggleMaterialSave(stack) {
+    stack.materialSaveOverride = !hasMaterialSaveKeyword(stack);
+  }
+  function getDigixrosConditionText(stack) {
+    const card = getStackTopCard(stack);
+    const text = (card && card.effect) || '';
+    const m = text.match(/≪≪デジクロス[^≫]*≫≫[:：]\s*([^\n]+)/);
+    return m ? m[1].trim() : null;
+  }
+
+  // 進化元一覧(一番上の現在のカードを除く)から、プレイヤーが好きな枚数を選ぶ汎用ピッカー。
+  // maxCountを指定すると「最大N枚まで」の注記とチェックが付く(nullなら無制限)。
+  // 選ばれたカードはstack.cardsから取り除いた上でonConfirmに渡される。
+  function openMaterialPicker(stack, title, maxCount, onConfirm) {
+    const materials = stack.cards.slice(0, stack.cards.length - 1);
+    if (materials.length === 0) {
+      showToast('進化元がないため実行できません', true);
+      return;
+    }
+    openZonePopup(centerPoint(), title, [
+      {
+        custom: true,
+        render: (container) => {
+          container.style.cssText = 'display:flex;flex-direction:column;gap:6px;max-height:50vh;overflow-y:auto;';
+          const checkboxes = materials.map((entry, idx) => {
+            const num = cardEntryNum(entry);
+            const row = document.createElement('label');
+            row.style.cssText = 'display:flex;align-items:center;gap:8px;cursor:pointer;padding:3px 0;';
+            row.innerHTML = `<input type="checkbox" data-idx="${idx}" style="flex-shrink:0;">
+              <img src="${escapeHtml(miniCardImg(num))}" alt="" style="width:28px;border-radius:3px;flex-shrink:0;" onerror="this.style.opacity=0">
+              <span style="font-size:12px;">${escapeHtml(miniCardName(num))}</span>`;
+            container.appendChild(row);
+            return row.querySelector('input');
+          });
+          const confirmBtn = document.createElement('button');
+          confirmBtn.type = 'button';
+          confirmBtn.className = 'btn';
+          confirmBtn.textContent = maxCount ? `選んだカードで実行(最大${maxCount}枚)` : '選んだカードで実行';
+          confirmBtn.style.marginTop = '8px';
+          confirmBtn.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            const selectedIdx = checkboxes.map((cb, idx) => (cb.checked ? idx : -1)).filter(idx => idx >= 0);
+            if (selectedIdx.length === 0) { showToast('1枚も選ばれていません', true); return; }
+            if (maxCount && selectedIdx.length > maxCount) { showToast(`最大${maxCount}枚までです(現在${selectedIdx.length}枚選択中)`, true); return; }
+            closeZonePopup();
+            const selectedEntries = selectedIdx.sort((a, b) => b - a).map(idx => stack.cards.splice(idx, 1)[0]).reverse();
+            onConfirm(selectedEntries);
+          });
+          container.appendChild(confirmBtn);
+        },
+      },
+      { label: 'キャンセル', onClick: () => {} },
+    ], true);
+  }
+
+  // ≪パーティション≫≪デコード≫を選択肢の配列として組み立てる(消滅・場を離れる、両方の
+  // フローで共通利用する)。cbは処理完了後に呼ぶコールバック。
+  function partitionOrDecodeOffer(stack, owner, cb) {
+    const opts = [];
+    if (hasPartitionKeyword(stack)) {
+      const cond = getPartitionCondition(stack);
+      opts.push({
+        label: `🧩 パーティション発揮(条件: ${cond || '?'})`,
+        onClick: () => openMaterialPicker(
+          stack,
+          `パーティションの条件(${cond || '?'})に合うカードを、進化元から1枚ずつ選んでください`,
+          null,
+          (entries) => {
+            entries.forEach(entry => owner.player.battle.push({ cards: [cardEntryNum(entry)], rested: false, enteredTurn: practiceState.turn.count }));
+            renderPracticeBoard();
+            showToast(`🧩 ≪パーティション≫: ${entries.length}枚をコストなしで登場させました`);
+            cb();
+          }
+        ),
+      });
+    }
+    if (hasDecodeKeyword(stack)) {
+      const cond = getDecodeCondition(stack);
+      opts.push({
+        label: `💾 デコード発揮(条件: ${cond || '?'})`,
+        onClick: () => openMaterialPicker(
+          stack,
+          `デコードの条件(${cond || '?'})に合うカードを、進化元から1枚選んでください`,
+          1,
+          (entries) => {
+            entries.forEach(entry => owner.player.battle.push({ cards: [cardEntryNum(entry)], rested: false, enteredTurn: practiceState.turn.count }));
+            renderPracticeBoard();
+            showToast(`💾 ≪デコード≫: 1枚をコストなしで登場させました`);
+            cb();
+          }
+        ),
+      });
+    }
+    return opts;
+  }
+
+  // 「バトルエリアを離れる(消滅以外)」フロー用: パーティション/デコードだけを提示する。
+  function offerPartitionDecodeThenProceed(stack, owner, onProceed) {
+    const opts = partitionOrDecodeOffer(stack, owner, onProceed);
+    if (opts.length === 0) { onProceed(); return; }
+    opts.push({ label: 'そのまま移動させる(発揮しない)', onClick: () => onProceed() });
+    const c = getStackTopCard(stack);
+    openZonePopup(centerPoint(), `「${c ? c.name : '?'}」が場を離れます。≪パーティション≫≪デコード≫があれば選んでください`, opts, true);
+  }
+
+  // 「消滅が確定した」ときの最終処理: マテリアルセーブ/パーティション/デコードで
+  // 進化元を退避 → 残りをトラッシュ → 不屈(強制・自動)→ 天昇(任意) の順に処理する。
+  function resolveFinalDestruction(stack, afterAll) {
+    const owner = findStackOwnerAndZone(stack);
+    if (!owner) { afterAll(); return; }
+    const proceedToTrash = () => {
+      trashEntireStack(stack);
+      checkIndomitableAndAscension(stack, owner, afterAll);
+    };
+    const materialSaveCount = getMaterialSaveCount(stack);
+    const offerMaterialSalvage = () => {
+      const opts = [];
+      if (hasMaterialSaveKeyword(stack) && materialSaveCount && stack.cards.length > 1) {
+        const digixrosCond = getDigixrosConditionText(stack);
+        opts.push({
+          label: `📀 マテリアルセーブ発揮(最大${materialSaveCount}枚、条件: ${digixrosCond || '?'})`,
+          onClick: () => openMaterialPicker(
+            stack,
+            `デジクロス条件(${digixrosCond || '?'})に一致する進化元を、最大${materialSaveCount}枚選んでテイマーの下に置いてください`,
+            materialSaveCount,
+            (entries) => {
+              const tamers = owner.player.battle.filter(s => {
+                const c = getStackTopCard(s);
+                return c && c.category === 'tamer';
+              });
+              const placeUnder = (tamerStack) => {
+                entries.forEach(e => tamerStack.cards.unshift(cardEntryNum(e)));
+                renderPracticeBoard();
+                showToast(`📀 ≪マテリアルセーブ≫: ${entries.length}枚をテイマーの下に置きました`);
+                proceedToTrash();
+              };
+              if (tamers.length === 0) {
+                entries.slice().reverse().forEach(e => stack.cards.push(e));
+                showToast('自分のテイマーがいないため≪マテリアルセーブ≫は使えません', true);
+                proceedToTrash();
+              } else if (tamers.length === 1) {
+                placeUnder(tamers[0]);
+              } else {
+                openZonePopup(centerPoint(), 'どのテイマーの下に置きますか?', tamers.map(s => {
+                  const c = getStackTopCard(s);
+                  return { label: c ? c.name : '?', onClick: () => placeUnder(s) };
+                }), true);
+              }
+            }
+          ),
+        });
+      }
+      opts.push(...partitionOrDecodeOffer(stack, owner, proceedToTrash));
+      if (opts.length === 0) { proceedToTrash(); return; }
+      opts.push({ label: 'そのまま何もせず消滅させる', onClick: () => proceedToTrash() });
+      const c = getStackTopCard(stack);
+      openZonePopup(centerPoint(), `「${c ? c.name : '?'}」消滅時の追加効果を選べます`, opts, true);
+    };
+    offerMaterialSalvage();
+  }
+
+  // ≪不屈≫(強制・自動)→≪天昇≫(任意)の順で判定する。
+  function checkIndomitableAndAscension(stack, owner, afterAll) {
+    const topCard = getStackTopCard(stack);
+    if (!topCard || stack.cards.length === 0) { afterAll(); return; }
+    const topNumber = cardEntryNum(stack.cards[stack.cards.length - 1]);
+    const hadMaterials = stack.cards.length > 1;
+    const doAscensionCheck = () => {
+      if (hasAscensionKeyword(stack)) {
+        openZonePopup(centerPoint(), `🌅 ≪天昇≫:「${topCard.name}」をセキュリティの上に置きますか?(裏向き)`, [
+          {
+            label: '置く', onClick: () => {
+              const idx = owner.player.trash.lastIndexOf(topNumber);
+              if (idx >= 0) owner.player.trash.splice(idx, 1);
+              owner.player.security.unshift(topNumber);
+              renderPracticeBoard();
+              showToast(`🌅 ≪天昇≫: 「${topCard.name}」をセキュリティの上に置きました`);
+              afterAll();
+            },
+          },
+          { label: '置かない', onClick: () => afterAll() },
+        ], true);
+      } else {
+        afterAll();
+      }
+    };
+    if (hasIndomitableKeyword(stack) && hadMaterials) {
+      const idx = owner.player.trash.lastIndexOf(topNumber);
+      if (idx >= 0) owner.player.trash.splice(idx, 1);
+      owner.player.battle.push({ cards: [topNumber], rested: false, enteredTurn: practiceState.turn.count });
+      renderPracticeBoard();
+      showToast(`🐦‍🔥 ≪不屈≫: 「${topCard.name}」をコストなしで再登場させました`);
+      afterAll();
+    } else {
+      doAscensionCheck();
+    }
+  }
+
   // 急襲・エグゼキュート・オーバークロック・ヴォルテクス・進撃をまとめて判定し、
   // 「今この瞬間に実際に発揮できるもの」だけを選択肢として返す。個別ボタンを常時
   // 並べるのではなく、1つ以上発揮可能なときだけ1つのボタンから選べるようにするため。
@@ -3749,6 +4015,11 @@
     { label: 'プログレス', icon: '🚫', cls: 'st-progress', has: hasProgressKeyword, toggle: toggleProgress },
     { label: '衝突', icon: '💥', cls: 'st-collision', has: hasCollisionKeyword, toggle: toggleCollision },
     { label: '道連れ', icon: '🧟', cls: 'st-companion', has: hasCompanionKeyword, toggle: toggleCompanion },
+    { label: 'パーティション', icon: '🧩', cls: 'st-partition', has: hasPartitionKeyword, toggle: togglePartition },
+    { label: 'デコード', icon: '💾', cls: 'st-decode', has: hasDecodeKeyword, toggle: toggleDecode },
+    { label: '不屈', icon: '🐦‍🔥', cls: 'st-indomitable', has: hasIndomitableKeyword, toggle: toggleIndomitable },
+    { label: '天昇', icon: '🌅', cls: 'st-ascension', has: hasAscensionKeyword, toggle: toggleAscension },
+    { label: 'マテリアルセーブ', icon: '📀', cls: 'st-materialsave', has: hasMaterialSaveKeyword, toggle: toggleMaterialSave },
   ];
   // スタックタイル/カード詳細のバッジ表示で共通利用する、現在持っているキーワード効果一覧。
   function stackKeywordBadges(stack) {
@@ -6015,7 +6286,14 @@
   function removeCardFromStackAt(stack, cardIndexInStack, destination) {
     const isTopRemoval = cardIndexInStack === stack.cards.length - 1;
     if (isTopRemoval && destination !== 'trash') {
-      checkGuardianBeforeLeaving(stack, () => reallyRemoveCardFromStackAt(stack, cardIndexInStack, destination));
+      checkGuardianBeforeLeaving(stack, () => {
+        const owner = findStackOwnerAndZone(stack);
+        if (owner) {
+          offerPartitionDecodeThenProceed(stack, owner, () => reallyRemoveCardFromStackAt(stack, cardIndexInStack, destination));
+        } else {
+          reallyRemoveCardFromStackAt(stack, cardIndexInStack, destination);
+        }
+      });
       return;
     }
     reallyRemoveCardFromStackAt(stack, cardIndexInStack, destination);
@@ -6410,7 +6688,7 @@
       const c = getStackTopCard(stack);
       const name = c ? c.name : '?';
       const actions = [
-        { label: `「${name}」をそのまま消滅させる`, onClick: () => { trashEntireStack(stack); next(); } },
+        { label: `「${name}」をそのまま消滅させる`, onClick: () => resolveFinalDestruction(stack, next) },
       ];
       if (allowEvasion && isDigimonLikeStack(stack)) {
         if (hasEvadeKeyword(stack)) {
