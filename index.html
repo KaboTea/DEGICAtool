@@ -1356,7 +1356,8 @@
   .st-barrier, .st-fragment, .st-scapegoat, .st-decoy, .st-guardian,
   .st-vortex, .st-raid, .st-execute, .st-overclock, .st-advance, .st-quick,
   .st-icearmor, .st-progress, .st-collision, .st-companion,
-  .st-partition, .st-decode, .st-indomitable, .st-ascension, .st-materialsave {
+  .st-partition, .st-decode, .st-indomitable, .st-ascension, .st-materialsave,
+  .st-reboot, .st-training, .st-jamming {
     position: static;
     font-size: 14px;
     filter: drop-shadow(0 1px 2px rgba(0,0,0,0.7));
@@ -1510,7 +1511,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.25.4</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.25.5</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -2884,7 +2885,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.25.4`);
+    log(`DigiCA Tool build v0.25.5`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -3287,6 +3288,9 @@
     delete stack.indomitableOverride;
     delete stack.ascensionOverride;
     delete stack.materialSaveOverride;
+    delete stack.rebootOverride;
+    delete stack.trainingOverride;
+    delete stack.jammingOverride;
     delete stack.sAttackBonus;
     delete stack.linkLimitBonus;
     // 4-8-6: リンクカードを持つカードが新しいカードになる場合、そのカードが持つ
@@ -3768,6 +3772,51 @@
     return m ? m[1].trim() : null;
   }
 
+  // ---------- その他・複雑/ニッチ ----------
+  // ≪再起動≫(16-11):「このデジモンが、相手のアクティブフェイズでもアクティブになる」
+  // 常在型効果。強制処理だが、≪ロック≫(アクティブにならない)の方が優先される。
+  function hasRebootKeyword(stack) {
+    if (stack.rebootOverride === true || stack.rebootOverride === false) return stack.rebootOverride;
+    return hasInnateOrLinkedKeyword(stack, '再起動');
+  }
+  function toggleReboot(stack) {
+    stack.rebootOverride = !hasRebootKeyword(stack);
+  }
+  // ≪トレーニング≫(16-41):「メインフェイズ中、このデジモンをレストさせることで、
+  // 自分のデッキの上から1枚をこのデジモンの進化元の下に裏向きで置く。育成エリアでも
+  // 発揮できる」起動型効果。
+  function hasTrainingKeyword(stack) {
+    if (stack.trainingOverride === true || stack.trainingOverride === false) return stack.trainingOverride;
+    return hasInnateOrLinkedKeyword(stack, 'トレーニング');
+  }
+  function toggleTraining(stack) {
+    stack.trainingOverride = !hasTrainingKeyword(stack);
+  }
+  function activateTraining(stack) {
+    const owner = findStackOwnerAndZone(stack);
+    if (!owner) return;
+    if (owner.player.library.length === 0) {
+      showToast('デッキがないため≪トレーニング≫は使えません', true);
+      return;
+    }
+    snapshotPracticeState();
+    stack.rested = true;
+    const drawn = owner.player.library.shift();
+    stack.cards.unshift(drawn); // 進化元の一番下に裏向きで追加
+    renderPracticeBoard();
+    showToast('🎓 ≪トレーニング≫: デッキの上から1枚を進化元の下に裏向きで置きました');
+  }
+  // ≪ジャミング≫(16-9):「この効果を持つデジモンが、相手のセキュリティデジモンとの
+  // バトルで消滅しない」常在型効果。バトル自体(DP比較)は通常通り発生するが、
+  // その結果によるこのデジモンの消滅だけを防ぐ(選択の余地なく常に発動する)。
+  function hasJammingKeyword(stack) {
+    if (stack.jammingOverride === true || stack.jammingOverride === false) return stack.jammingOverride;
+    return hasInnateOrLinkedKeyword(stack, 'ジャミング');
+  }
+  function toggleJamming(stack) {
+    stack.jammingOverride = !hasJammingKeyword(stack);
+  }
+
   // 進化元一覧(一番上の現在のカードを除く)から、プレイヤーが好きな枚数を選ぶ汎用ピッカー。
   // maxCountを指定すると「最大N枚まで」の注記とチェックが付く(nullなら無制限)。
   // 選ばれたカードはstack.cardsから取り除いた上でonConfirmに渡される。
@@ -4047,6 +4096,9 @@
     { label: '不屈', icon: '🐦‍🔥', cls: 'st-indomitable', has: hasIndomitableKeyword, toggle: toggleIndomitable },
     { label: '天昇', icon: '🌅', cls: 'st-ascension', has: hasAscensionKeyword, toggle: toggleAscension },
     { label: 'マテリアルセーブ', icon: '📀', cls: 'st-materialsave', has: hasMaterialSaveKeyword, toggle: toggleMaterialSave },
+    { label: '再起動', icon: '🔄', cls: 'st-reboot', has: hasRebootKeyword, toggle: toggleReboot },
+    { label: 'トレーニング', icon: '🎓', cls: 'st-training', has: hasTrainingKeyword, toggle: toggleTraining },
+    { label: 'ジャミング', icon: '🌫', cls: 'st-jamming', has: hasJammingKeyword, toggle: toggleJamming },
   ];
   // スタックタイル/カード詳細のバッジ表示で共通利用する、現在持っているキーワード効果一覧。
   function stackKeywordBadges(stack) {
@@ -6966,6 +7018,13 @@
         const atkDP = getEffectiveDP(attackState.attackerStack) + renkeiBonus;
         const secDP = card.dp ?? 0;
         if (atkDP <= secDP) {
+          // ≪ジャミング≫(16-9): バトル自体(DP比較)は通常通り発生するが、その結果による
+          // アタック側の消滅だけを常に防ぐ(選択の余地なく発動する)。
+          if (hasJammingKeyword(attackState.attackerStack)) {
+            showToast('🌫 ≪ジャミング≫: セキュリティデジモンとのバトルでは消滅しません');
+            advanceSecurityCheck();
+            return;
+          }
           resolveDestructionQueue([attackState.attackerStack], () => advanceSecurityCheck(), { battleContext: true });
           return;
         }
@@ -7204,6 +7263,14 @@
         stackOwner.player === practiceState.players[practiceState.viewingIndex]) {
       mk('🥊 バトルする(効果)', () => startEffectBattle(stack));
     }
+    // ≪トレーニング≫(16-41): 起動型効果。自分のメインフェイズ中、レストしていれば
+    // 使えない(コストがレストのため)。育成エリアのデジモンでも発揮できる。
+    if (isDigimonLikeStack(stack) && stackOwner && (stackOwner.zone === 'battle' || stackOwner.zone === 'raising') &&
+        stackOwner.player === practiceState.players[practiceState.viewingIndex] &&
+        practiceState.viewingIndex === practiceState.turn.playerIndex && practiceState.turn.phase === 'main' &&
+        !stack.rested && !hasLock(stack, 'noRest') && hasTrainingKeyword(stack)) {
+      mk('🎓 トレーニング(レストしてデッキ上から1枚を進化元へ)', () => activateTraining(stack));
+    }
     if (stack.burstEvolved) {
       mk('🔥 バースト進化を解除(一番上を破棄)', () => discardBurstTop(stack));
     }
@@ -7417,6 +7484,19 @@
         const names = [lockedRaisingSkipped ? nextPlayer.raising : null, ...lockedBattleSkipped]
           .filter(Boolean).map(s => getStackTopCard(s)?.name || '?').join('、');
         showToast(`🔒「アクティブにならない」により、このアクティブフェイズでアクティブになりませんでした: ${names}`, true);
+      }
+      // ≪再起動≫(16-11): 相手(=このアクティブフェイズの持ち主ではない側)のデジモンも、
+      // ≪再起動≫を持っていればこのアクティブフェイズで強制的にアクティブになる。
+      // ≪ロック≫(アクティブにならない)の方が優先されるため、そちらは除外する。
+      const rebooted = [];
+      turnPlayer.battle.forEach(s => {
+        if (s.rested && hasRebootKeyword(s) && !hasLock(s, 'noActive')) {
+          s.rested = false;
+          rebooted.push(s);
+        }
+      });
+      if (rebooted.length > 0) {
+        showToast(`🔄 ≪再起動≫: ${rebooted.map(s => getStackTopCard(s)?.name || '?').join('、')}が相手のアクティブフェイズでアクティブになりました`);
       }
       // 🔒ロックは「そのカードの持ち主のターンが終了したとき」に自動解除される。
       // 今終わったのは turnPlayer(=turn.playerIndex)のターンなので、そのプレイヤーの
