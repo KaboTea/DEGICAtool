@@ -1354,7 +1354,8 @@
   }
   .st-renkei, .st-lock, .st-pierce, .st-armor, .st-charge, .st-evade,
   .st-barrier, .st-fragment, .st-scapegoat, .st-decoy, .st-guardian,
-  .st-vortex, .st-raid, .st-execute, .st-overclock, .st-advance, .st-quick {
+  .st-vortex, .st-raid, .st-execute, .st-overclock, .st-advance, .st-quick,
+  .st-icearmor, .st-progress, .st-collision, .st-companion {
     position: static;
     font-size: 14px;
     filter: drop-shadow(0 1px 2px rgba(0,0,0,0.7));
@@ -1508,7 +1509,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.24.15</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.25.1</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -2882,7 +2883,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.24.15`);
+    log(`DigiCA Tool build v0.25.1`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -3132,7 +3133,8 @@
   // 「（説明文）」が付くことがあるため、末尾の全角カッコ説明は任意で許容する。
   function hasKeywordLineInText(text, keyword) {
     if (!text) return false;
-    const bareLine = /^(≪[^≫]+≫)+(（.*）)?$/;
+    // 末尾の説明文は全角（）が基本だが、一部のカードは半角()で書かれているため両方許容する。
+    const bareLine = /^(≪[^≫]+≫)+([（(].*[）)])?$/;
     // ≪オーバークロック《特徴「合成型」》≫や≪デコイ《黒》≫のように、キーワード名の直後に
     // 《条件》が挟まる書式のカードがあるため、単純な完全一致(≪keyword≫)だけでなく、
     // その形も許容する。
@@ -3193,7 +3195,7 @@
   // 手動でSアタック/リンク上限を設定した場合は、その値を優先する(未設定=undefinedの間だけ自動値を使う)。
   function numericFromKeywordLine(text, patterns) {
     if (!text) return null;
-    const bareLine = /^(≪[^≫]+≫)+(（.*）)?$/;
+    const bareLine = /^(≪[^≫]+≫)+([（(].*[）)])?$/;
     let found = null;
     text.split('\n').some(line => {
       const t = line.trim();
@@ -3275,6 +3277,10 @@
     delete stack.overclockOverride;
     delete stack.advanceOverride;
     delete stack.quickOverride;
+    delete stack.iceArmorOverride;
+    delete stack.progressOverride;
+    delete stack.collisionOverride;
+    delete stack.companionOverride;
     delete stack.sAttackBonus;
     delete stack.linkLimitBonus;
     // 4-8-6: リンクカードを持つカードが新しいカードになる場合、そのカードが持つ
@@ -3631,6 +3637,53 @@
     stack.quickOverride = !hasQuickKeyword(stack);
   }
 
+  // ---------- バトル・アタックのルール変更系 ----------
+  // ≪氷装≫(16-35): セキュリティデジモン以外とのバトルでは、DPではなく進化元枚数を
+  // 比べる常在型効果。進化元枚数は「一番上の現在のカードを除いた枚数」。
+  function hasIceArmorKeyword(stack) {
+    if (stack.iceArmorOverride === true || stack.iceArmorOverride === false) return stack.iceArmorOverride;
+    return hasInnateOrLinkedKeyword(stack, '氷装');
+  }
+  function toggleIceArmor(stack) {
+    stack.iceArmorOverride = !hasIceArmorKeyword(stack);
+  }
+  function getMaterialCount(stack) {
+    return Math.max(0, stack.cards.length - 1);
+  }
+
+  // ≪プログレス≫(16-39):「アタック中のこのデジモンは相手の効果を受けない」常在型効果。
+  // 効果の受け付け判定を自動化するのは範囲が広すぎるため、バッジ表示のみで対応する。
+  function hasProgressKeyword(stack) {
+    if (stack.progressOverride === true || stack.progressOverride === false) return stack.progressOverride;
+    return hasInnateOrLinkedKeyword(stack, 'プログレス');
+  }
+  function toggleProgress(stack) {
+    stack.progressOverride = !hasProgressKeyword(stack);
+  }
+
+  // ≪衝突≫(16-30):「このデジモンのアタック中、相手のデジモン全てに≪ブロッカー≫を
+  // 与え、相手プレイヤーに可能ならブロックタイミングでブロックさせる」常在型効果。
+  // 実際の付与状態は変えず、ブロック候補の判定(showAttackBlockStep)側で一時的に
+  // 条件を緩めるだけなので、他のカードの本来のブロッカー所持状態には一切影響しない。
+  function hasCollisionKeyword(stack) {
+    if (stack.collisionOverride === true || stack.collisionOverride === false) return stack.collisionOverride;
+    return hasInnateOrLinkedKeyword(stack, '衝突');
+  }
+  function toggleCollision(stack) {
+    stack.collisionOverride = !hasCollisionKeyword(stack);
+  }
+
+  // ≪道連れ≫(16-13):「このデジモンだけがバトルで消滅したとき、バトルした相手の
+  // デジモンを消滅させる」誘発型・強制効果。相打ち(両者消滅)のときは「単独で」の
+  // 条件を満たさないため発動しない(resolveBattleの勝敗分岐でのみ判定する)。
+  function hasCompanionKeyword(stack) {
+    if (stack.companionOverride === true || stack.companionOverride === false) return stack.companionOverride;
+    return hasInnateOrLinkedKeyword(stack, '道連れ');
+  }
+  function toggleCompanion(stack) {
+    stack.companionOverride = !hasCompanionKeyword(stack);
+  }
+
   // 急襲・エグゼキュート・オーバークロック・ヴォルテクス・進撃をまとめて判定し、
   // 「今この瞬間に実際に発揮できるもの」だけを選択肢として返す。個別ボタンを常時
   // 並べるのではなく、1つ以上発揮可能なときだけ1つのボタンから選べるようにするため。
@@ -3664,7 +3717,9 @@
     }
     // ≪進撃≫: 進化した瞬間に確定した一度きりの機会(advanceAvailable)が、同じターンの
     // うちにまだ残っているときだけ使える。ターンをまたぐと自動的に消える。
-    if (hasAdvanceKeyword(stack) && isAdvanceAvailableNow(stack) && !stack.rested && !hasLock(stack, 'noRest')) {
+    // アタック宣言自体はメイン/終了フェイズでしか行えないため、フェイズも確認する。
+    if (['main', 'end'].includes(practiceState.turn.phase) &&
+        hasAdvanceKeyword(stack) && isAdvanceAvailableNow(stack) && !stack.rested && !hasLock(stack, 'noRest')) {
       opts.push({ label: '🏹 進撃でアタック宣言', onClick: () => { setAdvanceAvailable(stack, false); declareTurnEndAttack(stack, '🏹 ≪進撃≫'); } });
     }
     return opts;
@@ -3690,6 +3745,10 @@
     { label: 'オーバークロック', icon: '⚙️', cls: 'st-overclock', has: hasOverclockKeyword, toggle: toggleOverclock },
     { label: '進撃', icon: '🏹', cls: 'st-advance', has: hasAdvanceKeyword, toggle: toggleAdvance },
     { label: '速攻', icon: '💨', cls: 'st-quick', has: hasQuickKeyword, toggle: toggleQuick },
+    { label: '氷装', icon: '🧊', cls: 'st-icearmor', has: hasIceArmorKeyword, toggle: toggleIceArmor },
+    { label: 'プログレス', icon: '🚫', cls: 'st-progress', has: hasProgressKeyword, toggle: toggleProgress },
+    { label: '衝突', icon: '💥', cls: 'st-collision', has: hasCollisionKeyword, toggle: toggleCollision },
+    { label: '道連れ', icon: '🧟', cls: 'st-companion', has: hasCompanionKeyword, toggle: toggleCompanion },
   ];
   // スタックタイル/カード詳細のバッジ表示で共通利用する、現在持っているキーワード効果一覧。
   function stackKeywordBadges(stack) {
@@ -6279,14 +6338,23 @@
     lastAttackStepFn = showAttackBlockStep;
     if (attackState) attackState.stepName = 'block';
     if (attackState.targetType !== 'player') { resolveAttack(); return; }
+    // ≪衝突≫(16-30): このデジモンのアタック中、相手のデジモン全てに≪ブロッカー≫を
+    // 与え、相手プレイヤーに可能ならブロックさせる常在型効果。実際の所持状態は
+    // 変更せず、この場面の候補判定だけを一時的に緩めることで表現する
+    // (アタックが終われば自動的に元に戻る=状態を保存する必要がない)。
+    const collision = hasCollisionKeyword(attackState.attackerStack);
     const blockers = attackState.defenderOwner.battle.filter(s =>
-      !s.rested && s !== attackState.attackerStack && isDigimonLikeStack(s) && hasBlockerKeyword(s) && !hasLock(s, 'noRest')
+      !s.rested && s !== attackState.attackerStack && isDigimonLikeStack(s) &&
+      (collision || hasBlockerKeyword(s)) && !hasLock(s, 'noRest')
     );
-    const actions = [
-      { label: 'ブロックしない', onClick: () => resolveAttack() },
-      ...renkeiActionItems(),
-      ...sAttackActionItems(),
-    ];
+    const actions = [];
+    // ≪衝突≫は「可能ならブロックさせる」強制のため、ブロック可能な相手が1体でも
+    // いる場合は「ブロックしない」を選ばせない。誰もブロックできない場合は通常通り
+    // (「可能なら」の条件を満たさないため)。
+    if (!collision || blockers.length === 0) {
+      actions.push({ label: 'ブロックしない', onClick: () => resolveAttack() });
+    }
+    actions.push(...renkeiActionItems(), ...sAttackActionItems());
     blockers.forEach(s => {
       const c = getStackTopCard(s);
       actions.push({
@@ -6301,7 +6369,10 @@
         },
       });
     });
-    openZonePopup(centerPoint(), 'ブロックタイミング(≪ブロッカー≫を持つアクティブなデジモンのみ。視点を切り替えて相手側を操作できます)', actions, true);
+    const title = collision && blockers.length > 0
+      ? '≪衝突≫: 相手のデジモン全てにブロッカーが付与され、可能ならブロックしなければなりません(視点を切り替えて相手側を操作できます)'
+      : 'ブロックタイミング(≪ブロッカー≫を持つアクティブなデジモンのみ。視点を切り替えて相手側を操作できます)';
+    openZonePopup(centerPoint(), title, actions, true);
   }
 
   // ブロック成立後、「ブロックしたとき」「レストしたとき」等の効果が誘発しうるため、
@@ -6384,9 +6455,21 @@
   function resolveBattle(a, b, opts) {
     const isMainAttackBattle = !opts || opts.isMainAttackBattle !== false;
     const onComplete = (opts && opts.onComplete) || resumeAttackStepIfAny;
-    const renkeiBonus = attackState ? (attackState.renkeiBonusDP || 0) : 0;
-    const dpA = getEffectiveDP(a) + (attackState && a === attackState.attackerStack ? renkeiBonus : 0);
-    const dpB = getEffectiveDP(b) + (attackState && b === attackState.attackerStack ? renkeiBonus : 0);
+    // ≪氷装≫(16-35): セキュリティデジモン以外とのバトルでは、DPではなく進化元枚数を
+    // 比べる。どちらか一方が持っているだけで、このバトル全体の比較方法が切り替わる。
+    // (セキュリティチェックのDPバトルはresolveBattleを使っていないので自動的に対象外)
+    const iceArmor = hasIceArmorKeyword(a) || hasIceArmorKeyword(b);
+    let dpA, dpB, compareUnit;
+    if (iceArmor) {
+      dpA = getMaterialCount(a);
+      dpB = getMaterialCount(b);
+      compareUnit = '進化元枚数';
+    } else {
+      const renkeiBonus = attackState ? (attackState.renkeiBonusDP || 0) : 0;
+      dpA = getEffectiveDP(a) + (attackState && a === attackState.attackerStack ? renkeiBonus : 0);
+      dpB = getEffectiveDP(b) + (attackState && b === attackState.attackerStack ? renkeiBonus : 0);
+      compareUnit = 'DP';
+    }
     const nameA = getStackTopCard(a) ? getStackTopCard(a).name : '?';
     const nameB = getStackTopCard(b) ? getStackTopCard(b).name : '?';
     // ≪貫通≫(16-7-1)は「アタックした相手のデジモンを、そのバトルで消滅させたとき」に誘発する。
@@ -6396,10 +6479,10 @@
 
     if (dpA === dpB) {
       showBattleResultStep(
-        `DPが同じ(${dpA})のため相打ちになります。「ブロックしたとき」「レストしたとき」「バトルに勝ったとき」等の効果があれば、消滅処理の前に処理してください`,
+        `${compareUnit}が同じ(${dpA})のため相打ちになります。「ブロックしたとき」「レストしたとき」「バトルに勝ったとき」等の効果があれば、消滅処理の前に処理してください`,
         () => {
           resolveDestructionQueue([a, b], () => {
-            showToast(`DPが同じ(${dpA})のため相打ち処理が完了しました`);
+            showToast(`${compareUnit}が同じ(${dpA})のため相打ち処理が完了しました`);
             if (attackerHasPierce) {
               showToast('≪貫通≫が誘発しましたが、アタック中のデジモンが消滅しているためチェックできません(16-7-6)', true);
             }
@@ -6411,22 +6494,34 @@
       return;
     }
     const aWins = dpA > dpB;
-    const winnerName = aWins ? nameA : nameB;
+    const winner = aWins ? a : b;
     const loser = aWins ? b : a;
+    const winnerName = aWins ? nameA : nameB;
     const winnerDP = aWins ? dpA : dpB;
     const loserDP = aWins ? dpB : dpA;
     showBattleResultStep(
-      `「${winnerName}」がバトルに勝利(DP${winnerDP} vs ${loserDP})。「ブロックしたとき」「レストしたとき」「バトルに勝ったとき」等の効果があれば、消滅処理の前に処理してください`,
+      `「${winnerName}」がバトルに勝利(${compareUnit}${winnerDP} vs ${loserDP})。「ブロックしたとき」「レストしたとき」「バトルに勝ったとき」等の効果があれば、消滅処理の前に処理してください`,
       () => {
+        // ≪道連れ≫(16-13)は「このデジモンだけがバトルで消滅したとき」の誘発型・強制効果。
+        // 敗者(=単独で消滅する側)が持っている場合、実際に消滅したら勝者も道連れで消滅させる。
+        const loserHasCompanion = hasCompanionKeyword(loser);
         resolveDestructionQueue([loser], () => {
           const loserWasDestroyed = !findStackOwnerAndZone(loser);
           showToast(`「${winnerName}」の勝利で相手の消滅処理が完了しました`);
-          if (isMainAttackBattle) {
-            // ≪貫通≫は「相手のデジモンを消滅させたとき」が条件のため、≪回避≫等で
-            // 消滅を免れた場合は誘発しない。
-            triggerPierceThenEndAttack(aWins && attackerHasPierce && loserWasDestroyed);
+          const finishUp = () => {
+            if (isMainAttackBattle) {
+              // ≪貫通≫は「相手のデジモンを消滅させたとき」が条件のため、≪回避≫等で
+              // 消滅を免れた場合は誘発しない。
+              triggerPierceThenEndAttack(aWins && attackerHasPierce && loserWasDestroyed);
+            } else {
+              onComplete();
+            }
+          };
+          if (loserWasDestroyed && loserHasCompanion && findStackOwnerAndZone(winner)) {
+            showToast('🧟 ≪道連れ≫が誘発しました');
+            resolveDestructionQueue([winner], finishUp, { battleContext: true });
           } else {
-            onComplete();
+            finishUp();
           }
         }, { battleContext: true });
       }
