@@ -1511,7 +1511,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.26.3</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.26.5</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -1624,6 +1624,7 @@
             <button class="btn" id="newDeckBtn">新規</button>
             <button class="btn primary" id="saveDeckBtn">保存</button>
             <button class="btn" id="deleteDeckBtn">削除</button>
+            <button class="btn" id="bulkImportDeckBtn">📋 一括インポート</button>
           </div>
           <div class="deck-validation" id="deckValidation"></div>
           <div class="deck-status-msg" id="deckStatusMsg"></div>
@@ -2585,6 +2586,69 @@
     updateDeckStatusHeader();
   }
 
+  // ---------- デッキ一括インポート(カード番号+枚数のテキストを貼り付け) ----------
+  // 「BT24-003 x4」「BT24-003　4枚」「BT24-003,4」等、行ごとに「カード番号」と
+  // 「数値」を1つずつ拾えれば良い緩い書式で受け付ける。既存のデッキ内容は上書きする。
+  function bulkImportDeckList(text) {
+    if (!currentDb || !Array.isArray(currentDb.cards)) {
+      showToast('カードDBが読み込まれていません', true);
+      return;
+    }
+    const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+    let addedCount = 0;
+    let matchedLines = 0;
+    const notFound = [];
+    const overLimit = [];
+    lines.forEach(line => {
+      const numMatch = line.match(/[A-Za-z]+\d*-\d+/);
+      if (!numMatch) return;
+      const number = numMatch[0].toUpperCase();
+      const rest = line.slice(numMatch.index + numMatch[0].length);
+      const countMatch = rest.match(/(\d+)/);
+      const count = countMatch ? parseInt(countMatch[1], 10) : 1;
+      matchedLines++;
+      const card = cardIndexByNumber.get(number);
+      if (!card) { notFound.push(number); return; }
+      const target = card.category === 'digi-egg' ? 'eggs' : 'main';
+      const copyLimit = getCardCopyLimit(card);
+      const finalCount = Math.min(count, copyLimit);
+      if (count > copyLimit) overLimit.push(`${card.name}(${number})`);
+      deckState[target][number] = finalCount;
+      addedCount += finalCount;
+    });
+    renderDeckLists();
+    if (matchedLines === 0) {
+      showToast('カード番号を1件も読み取れませんでした(例: 「BT24-003 x4」のような行が必要です)', true);
+      return;
+    }
+    let msg = `${addedCount}枚を読み込みました`;
+    if (notFound.length > 0) msg += ` / 見つからなかったカード: ${notFound.join('、')}`;
+    if (overLimit.length > 0) msg += ` / 上限枚数に調整: ${overLimit.join('、')}`;
+    showToast(msg, notFound.length > 0 || overLimit.length > 0);
+  }
+  function openBulkImportPopup(e) {
+    openZonePopup(e, 'デッキを一括インポート', [
+      {
+        custom: true,
+        render: (container) => {
+          container.style.cssText = 'display:flex;flex-direction:column;gap:8px;width:260px;';
+          container.innerHTML = `
+            <div style="font-size:11px;color:var(--text-dim);">1行に1種類、「カード番号 枚数」の形式で貼り付けてください(例: BT24-003 x4)。既存のデッキ内容は上書きされます。</div>
+            <textarea id="bulkImportTextarea" rows="10" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px;color:var(--text);font-size:12px;font-family:'JetBrains Mono',monospace;resize:vertical;" placeholder="BT24-003 x4&#10;BT24-031 x4&#10;BT25-030 x4&#10;..."></textarea>
+            <button type="button" id="bulkImportGoBtn" class="btn primary" style="font-size:12px;">インポート実行</button>
+          `;
+          container.querySelector('#bulkImportGoBtn').addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            const text = container.querySelector('#bulkImportTextarea').value;
+            closeZonePopup();
+            bulkImportDeckList(text);
+          });
+        },
+      },
+    ], true);
+  }
+  document.getElementById('bulkImportDeckBtn').addEventListener('click', (e) => openBulkImportPopup(e));
+
   deckNameInput.addEventListener('input', updateDeckStatusHeader);
 
   function renderDeckSearchGrid() {
@@ -2899,7 +2963,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.26.3`);
+    log(`DigiCA Tool build v0.26.5`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -4844,9 +4908,23 @@
     if (practiceHistory.length === 0) return;
     practiceState = JSON.parse(practiceHistory.pop());
     document.getElementById('practiceUndoBtn').disabled = practiceHistory.length === 0;
+    // practiceStateを丸ごと差し替えるため、それ以前に開いていたポップアップ/モードが
+    // 古いオブジェクトを参照したまま残ってしまう(ボタンを押しても反応しない・消えない
+    // という不具合の原因になる)。カードを戻す等の副作用は行わず、単純にフラグと
+    // ポップアップを全てクリアする。
     exitEvolveMode();
     exitMaterialTargetMode();
+    multiEvolveMode = null;
+    assemblyMode = null;
+    linkTargetMode = null;
+    deckToTamerMode = false;
+    artsEvolveMode = null;
     attackState = null;
+    lastAttackStepFn = null;
+    revealSessionReopen = null;
+    activeRevealSession = null;
+    closeZonePopup();
+    cardDetailModal.classList.remove('open');
     renderPracticeBoard();
     showToast('1手戻しました');
   });
