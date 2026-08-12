@@ -1511,7 +1511,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.26.5</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.26.6</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -2603,8 +2603,10 @@
       const numMatch = line.match(/[A-Za-z]+\d*-\d+/);
       if (!numMatch) return;
       const number = numMatch[0].toUpperCase();
-      const rest = line.slice(numMatch.index + numMatch[0].length);
-      const countMatch = rest.match(/(\d+)/);
+      // 「BT24-003 x4」のように番号の後に枚数がある形式だけでなく、
+      // 「4 BT21-003」のように枚数が番号より前にある形式にも対応する。
+      const restOfLine = line.slice(0, numMatch.index) + ' ' + line.slice(numMatch.index + numMatch[0].length);
+      const countMatch = restOfLine.match(/(\d+)/);
       const count = countMatch ? parseInt(countMatch[1], 10) : 1;
       matchedLines++;
       const card = cardIndexByNumber.get(number);
@@ -2963,7 +2965,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.26.5`);
+    log(`DigiCA Tool build v0.26.6`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
