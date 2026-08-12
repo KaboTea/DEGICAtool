@@ -826,6 +826,19 @@
     padding: 6px 8px;
     font-size: 12px;
   }
+  .stack-row-wrap { margin-bottom: 4px; }
+  .stack-row-wrap .deck-list-item { margin-bottom: 0; }
+  .stack-row-effect {
+    font-size: 10px;
+    line-height: 1.5;
+    color: var(--text-dim);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-top: none;
+    border-radius: 0 0 6px 6px;
+    padding: 5px 8px 5px 52px;
+    white-space: pre-wrap;
+  }
   .deck-list-item .dli-number {
     font-family: 'JetBrains Mono', monospace;
     color: var(--text-dim);
@@ -1511,7 +1524,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.26.6</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.26.7</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -2965,7 +2978,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.26.6`);
+    log(`DigiCA Tool build v0.26.7`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -4534,15 +4547,19 @@
       const reorderBtns = !isTop ? `
           <button type="button" class="btn stack-row-up" data-row-idx="${i}" style="font-size:10px;padding:3px 5px;" ${canMoveUp ? '' : 'disabled'} title="1つ上の進化元と入れ替え">▲</button>
           <button type="button" class="btn stack-row-down" data-row-idx="${i}" style="font-size:10px;padding:3px 5px;" ${canMoveDown ? '' : 'disabled'} title="1つ下の進化元と入れ替え">▼</button>` : '';
+      const effectText = c && c.inherited ? c.inherited : '';
       return `
-        <div class="deck-list-item" style="cursor:default;${isTop ? `border-color:var(--accent);background:var(--panel);` : ''}">
-          <img src="${escapeHtml(miniCardImg(number))}" alt="" class="stack-view-row" data-number="${escapeHtml(number)}" style="width:${isTop ? 52 : 40}px;border-radius:4px;cursor:pointer;flex-shrink:0;" onerror="this.style.opacity=0">
-          <span class="dli-number mono" style="${isTop ? 'color:var(--accent);font-weight:700;' : ''}">${escapeHtml(label)}</span>
-          <span class="dli-name stack-view-row" data-number="${escapeHtml(number)}" style="cursor:pointer;${isTop ? 'font-weight:700;' : ''}">${escapeHtml(miniCardName(number))}${faceDown ? ' <span style="color:var(--text-dim);">(裏向き)</span>' : ''}</span>
-          ${cost ? `<span class="mono" style="font-size:11px;color:var(--text-dim);">${escapeHtml(cost)}</span>` : ''}
-          ${reorderBtns}
-          <button type="button" class="btn stack-row-move" data-row-idx="${i}" style="font-size:10px;padding:3px 6px;">送る▾</button>
-          ${linkBtn}
+        <div class="stack-row-wrap">
+          <div class="deck-list-item" style="cursor:default;${isTop ? `border-color:var(--accent);background:var(--panel);` : ''}">
+            <img src="${escapeHtml(miniCardImg(number))}" alt="" class="stack-view-row" data-number="${escapeHtml(number)}" style="width:${isTop ? 52 : 40}px;border-radius:4px;cursor:pointer;flex-shrink:0;" onerror="this.style.opacity=0">
+            <span class="dli-number mono" style="${isTop ? 'color:var(--accent);font-weight:700;' : ''}">${escapeHtml(label)}</span>
+            <span class="dli-name stack-view-row" data-number="${escapeHtml(number)}" style="cursor:pointer;${isTop ? 'font-weight:700;' : ''}">${escapeHtml(miniCardName(number))}${faceDown ? ' <span style="color:var(--text-dim);">(裏向き)</span>' : ''}</span>
+            ${cost ? `<span class="mono" style="font-size:11px;color:var(--text-dim);">${escapeHtml(cost)}</span>` : ''}
+            ${reorderBtns}
+            <button type="button" class="btn stack-row-move" data-row-idx="${i}" style="font-size:10px;padding:3px 6px;">送る▾</button>
+            ${linkBtn}
+          </div>
+          ${effectText ? `<div class="stack-row-effect">${escapeHtml(effectText)}</div>` : ''}
         </div>`;
     }).join('');
     const topNumber = cardEntryNum(stack.cards[stack.cards.length - 1]);
