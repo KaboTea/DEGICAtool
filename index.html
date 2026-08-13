@@ -1531,7 +1531,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.27.1</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.27.3</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -2985,7 +2985,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.27.1`);
+    log(`DigiCA Tool build v0.27.3`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -5066,18 +5066,36 @@
     }
 
     if (handCard.effect) {
-      // Two cost-notation patterns appear in card text:
-      //   "【進化】...:コストN"      (standard — content must not cross into the next 【進化】block)
+      // Three cost-notation patterns appear in card text:
+      //   "【進化】...:コストN"      (standard — content must not cross into the next 【XXX】block)
       //   "【進化】「X」からN"        (shorthand, e.g. "「コロモン」から0")
-      const stdRe = /【進化】((?:(?!【進化】)[\s\S])*?)コスト(\d+)/g;
+      //   "【進化】...:コストN/...:コストM"  (multiple independent routes packed into one line,
+      //                                    e.g. "「スナッチモン」:コスト9/「ラグナモン」:コスト5")
+      // 「/」は、条件の途中(コストが1回だけ末尾に来る場合)ならOR条件の並記、
+      // 「条件:コストN」のまとまりが「/」で複数並ぶ場合は独立したルートの並記、という
+      // 2通りの意味で使われる。「/」で区切った各断片が全てコストを持つかどうかで判別する。
+      const stdRe = /【進化】((?:(?!【[^【】]+】)[\s\S])*?コスト\d+(?:\/(?:(?!【[^【】]+】)[^\n])*?コスト\d+)*)/g;
       let m;
       while ((m = stdRe.exec(handCard.effect))) {
-        const conditionText = m[1].replace(/\s+/g, '').trim();
-        const cost = parseInt(m[2], 10);
-        const key = `T${cost}-${conditionText}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        routes.push({ cost, label: `条件進化: コスト${cost}`, sub: conditionText });
+        const wholeBlock = m[1];
+        const segments = wholeBlock.split('/');
+        const costPattern = /コスト(\d+)\s*$/;
+        const eachHasOwnCost = segments.length > 1 && segments.every(seg => costPattern.test(seg.trim()));
+        const addRoute = (segText) => {
+          const cm = segText.trim().match(/^([\s\S]*?)コスト(\d+)\s*$/);
+          if (!cm) return;
+          const conditionText = cm[1].replace(/\s+/g, '').trim();
+          const cost = parseInt(cm[2], 10);
+          const key = `T${cost}-${conditionText}`;
+          if (seen.has(key)) return;
+          seen.add(key);
+          routes.push({ cost, label: `条件進化: コスト${cost}`, sub: conditionText });
+        };
+        if (eachHasOwnCost) {
+          segments.forEach(addRoute);
+        } else {
+          addRoute(wholeBlock);
+        }
       }
       const shortRe = /【進化】「([^」]+)」から(\d+)/g;
       while ((m = shortRe.exec(handCard.effect))) {
@@ -5428,7 +5446,11 @@
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'evolve-route-item';
-        btn.innerHTML = `<span class="eri-cost">コスト${r.cost}</span>${escapeHtml(r.label)}${r.sub ? `<span class="eri-text">${escapeHtml(r.sub)}</span>` : ''}`;
+        // 「名称に「グレイモン」を含むLv.5/特徴に「アドベンチャー」/「ヒーロー」を持つLv.5」
+        // のように「/」で複数条件が並記されているカードがあるため、それぞれを改行して
+        // 見やすくする(意味的な再構成はせず、印字通りの区切りをそのまま行分けするだけ)。
+        const subHtml = r.sub ? r.sub.split('/').map(part => escapeHtml(part.trim())).join('<br>') : '';
+        btn.innerHTML = `<span class="eri-cost">コスト${r.cost}</span>${escapeHtml(r.label)}${subHtml ? `<span class="eri-text">${subHtml}</span>` : ''}`;
         btn.addEventListener('click', () => {
           evolveRouteModal.classList.remove('open');
           if (pendingEvolveResolve) pendingEvolveResolve(r.cost);
