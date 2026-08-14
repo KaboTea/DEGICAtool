@@ -1537,7 +1537,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.28.3</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.28.4</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -3004,7 +3004,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.28.3`);
+    log(`DigiCA Tool build v0.28.4`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -8048,7 +8048,7 @@
   document.getElementById('fieldEffectsModal').addEventListener('click', (e) => {
     if (e.target.id === 'fieldEffectsModal') closeFieldEffectsModal();
   });
-  document.getElementById('fieldEffectAddBtn').addEventListener('click', openAddFieldEffectForm);
+  document.getElementById('fieldEffectAddBtn').addEventListener('click', () => openAddFieldEffectForm());
 
   function openAddFieldEffectForm(prefill) {
     const self = practiceState.players[practiceState.viewingIndex];
