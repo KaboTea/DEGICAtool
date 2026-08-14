@@ -1537,7 +1537,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.28.7</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.28.10</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -3004,7 +3004,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.28.7`);
+    log(`DigiCA Tool build v0.28.10`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -5552,8 +5552,8 @@
 
     if (targetStack.burstEvolved) targetStack.burstEvolved = false;
     targetStack.cards.push(sourceStack.cards[sourceStack.cards.length - 1]);
+    if (self.library.length > 0) self.hand.push(self.library.shift()); // 進化解決時に1ドロー(【進化時】効果より先)
     resetKeywordStateOnEvolve(targetStack, self);
-    if (self.library.length > 0) self.hand.push(self.library.shift()); // 進化解決時に1ドロー
 
     artsEvolveMode = null;
     evolveModeBanner.classList.remove('active');
@@ -5639,9 +5639,10 @@
     // 「ターン終了時に破棄」の保留は解消される。
     if (targetStack.burstEvolved) targetStack.burstEvolved = false;
     targetStack.cards.push(evolveMode.handNumber);
-    resetKeywordStateOnEvolve(targetStack, self);
     payMemory(practiceState.turn.playerIndex, cost);
-    if (self.library.length > 0) self.hand.push(self.library.shift()); // 進化解決時に1ドロー
+    if (self.library.length > 0) self.hand.push(self.library.shift()); // 進化解決時に1ドロー(【進化時】効果より先)
+    // ≪進撃≫の判定はコスト支払い後のメモリー状況で行う必要があるため、payMemoryの後に呼ぶ。
+    resetKeywordStateOnEvolve(targetStack, self);
     const evolvedName = evolveMode.card.name;
     if (isBurst) targetStack.burstEvolved = true;
 
@@ -5771,9 +5772,10 @@
     // 行う必要があるため、payMemoryの後に呼ぶ。
     setAdvanceAvailable(newStack, hasAdvanceKeyword(newStack) && memoryTowardOpponent() >= 1);
     // ジョグレスは「進化」、デジクロスは「登場」の一種として扱う(トリガー種別もそれに合わせる)。
-    checkAutoRevealTrigger(newStack, mode === 'jogress' ? '進化時' : '登場時');
     // ジョグレスは進化なので進化解決時ドローがあるが、デジクロスは「登場」の一種のためドローしない。
+    // ドローは【進化時】効果(自動オープン含む)より先に行う。
     if (mode === 'jogress' && self.library.length > 0) self.hand.push(self.library.shift());
+    checkAutoRevealTrigger(newStack, mode === 'jogress' ? '進化時' : '登場時');
 
     multiEvolveMode = null;
     renderPracticeBoard();
@@ -5986,10 +5988,10 @@
     targetStack.links = [];
     targetStack.cards.push(evolveMode.handNumber);
     payMemory(practiceState.turn.playerIndex, cost);
+    if (self.library.length > 0) self.hand.push(self.library.shift()); // 進化解決時に1ドロー(【進化時】効果より先)
     // ≪進撃≫の判定はコスト支払い後(=進化が完全に完了した後)のメモリー状況で行う必要が
     // あるため、resetKeywordStateOnEvolveはpayMemoryの後に呼ぶ。
     resetKeywordStateOnEvolve(targetStack, self);
-    if (self.library.length > 0) self.hand.push(self.library.shift()); // 進化解決時に1ドロー
     const evolvedName = evolveMode.card.name;
 
     evolveRouteTarget = null;
@@ -6044,9 +6046,9 @@
     self.battle.push(newStack);
 
     payMemory(practiceState.turn.playerIndex, cost);
+    if (self.library.length > 0) self.hand.push(self.library.shift()); // 進化解決時に1ドロー(【進化時】効果より先)
     setAdvanceAvailable(newStack, hasAdvanceKeyword(newStack) && memoryTowardOpponent() >= 1);
     checkAutoRevealTrigger(newStack, '進化時');
-    if (self.library.length > 0) self.hand.push(self.library.shift()); // 進化解決時に1ドロー
     const evolvedName = evolveMode.card.name;
 
     evolveRouteTarget = null;
@@ -6279,10 +6281,29 @@
   // オープンした後の振り分け(選択)は従来通り手動。コスト付き(「レストさせることで」等)や
   // 相手のデッキ対象、【アタック時】【消滅時】等の対象外タイミングは自動発動しない
   // (誤発動防止のため、直後に隣接している場合のみ検出する)。
+  // 「【メイン】≪ディレイ≫（説明）\n・メモリー+N。」のように、ディレイで破棄したとき
+  // 無条件でメモリーが増減するだけの効果は多いため、自動でメモリーに反映する。
+  // 「〜することで」「相手は〜できる。破棄しなかったなら」等、追加コストや条件・選択が
+  // 絡むものは誤動作の元になるため対象外にする(・メモリー行の直前が≪ディレイ≫の
+  // 独立行であることを要求することで、単純な形だけを拾う)。
+  function checkAutoDelayMemory(stack) {
+    const card = getStackTopCard(stack);
+    if (!card || !card.effect || !practiceState) return;
+    const pat = /≪ディレイ≫(?:[（(][^）)]*[）)])?\s*\n\s*・メモリー(?:を)?([+\-＋－]\d+)(?:する)?。/;
+    const m = pat.exec(card.effect);
+    if (!m) return;
+    const amount = parseInt(m[1].replace('＋', '+').replace('－', '-'), 10);
+    if (!canPayMemoryCost(practiceState.turn.playerIndex, amount)) {
+      showToast(`「${card.name}」のディレイ効果(メモリー${amount >= 0 ? '+' : ''}${amount})はメモリー上限のため適用できませんでした`, true);
+      return;
+    }
+    payMemory(practiceState.turn.playerIndex, amount);
+    showToast(`⏳「${card.name}」のディレイ効果: メモリー${amount >= 0 ? '+' : ''}${amount}`);
+  }
   function checkAutoRevealTrigger(stack, triggerLabel) {
     const card = getStackTopCard(stack);
     if (!card || !card.effect) return;
-    const pat = /((?:【(?:登場時|進化時|メイン)】)+)(?:［ターンに\d+回］|\[ターンに\d+回\])?自分のデッキの上から(\d+)枚オープン/g;
+    const pat = /((?:【(?:登場時|進化時|メイン|アタック時)】)+)(?:［ターンに\d+回］|\[ターンに\d+回\])?自分のデッキの上から(\d+)枚オープン/g;
     let m;
     while ((m = pat.exec(card.effect))) {
       if (m[1].includes(`【${triggerLabel}】`)) {
@@ -7095,6 +7116,13 @@
   function showAttackTriggerStep() {
     lastAttackStepFn = showAttackTriggerStep;
     if (attackState) attackState.stepName = 'trigger';
+    // 「【アタック時】自分のデッキの上からN枚オープンする」は、このステップに来た
+    // 最初の1回だけ自動発動する(連携・Sアタック処理等でステップが再表示されても
+    // 重複発動しないようフラグで管理)。
+    if (attackState && !attackState.autoRevealChecked) {
+      attackState.autoRevealChecked = true;
+      checkAutoRevealTrigger(attackState.attackerStack, 'アタック時');
+    }
     openZonePopup(centerPoint(), '「アタック時」「アタックしたとき」の効果を処理(ターン保持者→相手の順)', [
       { label: '次へ(カウンタータイミングへ)', onClick: () => showAttackCounterStep() },
       ...renkeiActionItems(),
@@ -7851,7 +7879,7 @@
     }
     if (topCardObj && (topCardObj.category === 'option' || stack.dualAsOption)) {
       const sameTurn = stack.enteredTurn === practiceState.turn.count;
-      mk(sameTurn ? 'ディレイ(このターンは発揮不可)' : 'ディレイ', () => trashEntireStack(stack), sameTurn);
+      mk(sameTurn ? 'ディレイ(このターンは発揮不可)' : 'ディレイ', () => { checkAutoDelayMemory(stack); trashEntireStack(stack); }, sameTurn);
     }
     if (topCardObj && topCardObj.dual && stack.dualAsOption && stack.cards.length === 1) {
       mk('🎨 アーツ進化させる(破棄せず進化元にする)', () => enterArtsEvolveMode(stack));
