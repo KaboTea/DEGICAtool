@@ -1537,7 +1537,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.28.10</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.28.11</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -3004,7 +3004,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.28.10`);
+    log(`DigiCA Tool build v0.28.11`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -6293,11 +6293,9 @@
     const m = pat.exec(card.effect);
     if (!m) return;
     const amount = parseInt(m[1].replace('＋', '+').replace('－', '-'), 10);
-    if (!canPayMemoryCost(practiceState.turn.playerIndex, amount)) {
-      showToast(`「${card.name}」のディレイ効果(メモリー${amount >= 0 ? '+' : ''}${amount})はメモリー上限のため適用できませんでした`, true);
-      return;
-    }
-    payMemory(practiceState.turn.playerIndex, amount);
+    // payMemory(payerIndex, cost)は「costを支払って相手側へ動かす」向きなので、
+    // 「メモリー+N」(相手側へ動いた分を自分側に巻き戻す)effectはその逆方向になる。
+    payMemory(practiceState.turn.playerIndex, -amount);
     showToast(`⏳「${card.name}」のディレイ効果: メモリー${amount >= 0 ? '+' : ''}${amount}`);
   }
   function checkAutoRevealTrigger(stack, triggerLabel) {
