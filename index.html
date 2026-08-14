@@ -1475,9 +1475,10 @@
     padding: 10px;
     box-shadow: 0 8px 24px rgba(0,0,0,0.5);
     min-width: 180px;
-    max-width: 260px;
+    max-width: 320px;
     max-height: 80vh;
     overflow-y: auto;
+    box-sizing: border-box;
   }
   .zone-popup.open { display: block; }
   .zp-title {
@@ -1536,7 +1537,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.28.1</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.28.3</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -1680,7 +1681,6 @@
     <div class="panel" id="practiceBoardPanel" style="display:none;">
       <div class="practice-topbar">
         <span class="mono" id="practiceHeaderLabel" style="font-size:12px;color:var(--text-dim);"></span>
-        <button class="btn" id="fieldEffectsBtn">🌐 フィールド効果</button>
         <button class="btn" id="practiceEndGameBtn">練習を終了</button>
       </div>
 
@@ -1709,6 +1709,7 @@
       <!-- フェーズ操作(視点切替・パス・次のフェーズへ)をメモリーの直上にまとめる -->
       <div class="practice-topbar" style="justify-content:center;margin-bottom:6px;padding-bottom:0;border-bottom:none;">
         <button class="btn" id="practiceSwitchViewBtn">🔄 視点切り替え</button>
+        <button class="btn" id="fieldEffectsBtn">🌐 フィールド効果</button>
         <span class="mono" id="phaseLabel" style="font-size:18px;font-weight:700;color:var(--accent);min-width:140px;text-align:center;"></span>
         <button class="btn" id="practicePassBtn">パス</button>
         <button class="btn primary" id="practiceNextPhaseBtn">次のフェーズへ</button>
@@ -2671,7 +2672,7 @@
       {
         custom: true,
         render: (container) => {
-          container.style.cssText = 'display:flex;flex-direction:column;gap:8px;width:260px;';
+          container.style.cssText = 'display:flex;flex-direction:column;gap:8px;width:280px;max-width:100%;box-sizing:border-box;';
           container.innerHTML = `
             <div style="font-size:11px;color:var(--text-dim);">1行に1種類、「カード番号 枚数」の形式で貼り付けてください(例: BT24-003 x4)。既存のデッキ内容は上書きされます。</div>
             <textarea id="bulkImportTextarea" rows="10" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px;color:var(--text);font-size:12px;font-family:'JetBrains Mono',monospace;resize:vertical;" placeholder="BT24-003 x4&#10;BT24-031 x4&#10;BT25-030 x4&#10;..."></textarea>
@@ -3003,7 +3004,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.28.1`);
+    log(`DigiCA Tool build v0.28.3`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -6449,6 +6450,7 @@
         <div class="deck-list-item" style="cursor:default;border-color:var(--accent);">
           <img src="${escapeHtml(miniCardImg(number))}" alt="" class="sec-list-img" data-idx="${idx}" style="width:34px;border-radius:3px;cursor:pointer;" onerror="this.style.opacity=0">
           <span class="dli-name sec-list-name" data-idx="${idx}" style="cursor:pointer;">${escapeHtml(miniCardName(number))} <span style="color:var(--accent);">(表向き)</span></span>
+          <button type="button" class="btn sec-row-fieldeffect" data-idx="${idx}" style="font-size:10px;padding:3px 6px;">🌐 効果発動</button>
           <button type="button" class="btn sec-row-hide" data-idx="${idx}" style="font-size:10px;padding:3px 6px;">裏にする</button>
           <button type="button" class="btn sec-row-move" data-idx="${idx}" style="font-size:10px;padding:3px 6px;">送る▾</button>
         </div>`;
@@ -6476,6 +6478,17 @@
           renderPracticeBoard();
           render();
           cardDetailModal.classList.add('open');
+        });
+      });
+      detailBody.querySelectorAll('.sec-row-fieldeffect').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const idx = parseInt(btn.dataset.idx, 10);
+          const number = cardEntryNum(self.security[idx]);
+          const card = cardIndexByNumber.get(number);
+          if (!card) return;
+          const ownerIndex = practiceState.players.indexOf(self);
+          openAddFieldEffectForm({ card, ownerIndex });
         });
       });
       detailBody.querySelectorAll('.sec-row-hide').forEach(btn => {
@@ -8037,20 +8050,23 @@
   });
   document.getElementById('fieldEffectAddBtn').addEventListener('click', openAddFieldEffectForm);
 
-  function openAddFieldEffectForm() {
+  function openAddFieldEffectForm(prefill) {
     const self = practiceState.players[practiceState.viewingIndex];
     const otherIndex = 1 - practiceState.viewingIndex;
-    openZonePopup(centerPoint(), '新しいフィールド効果を追加', [
+    // prefill(セキュリティの表向きカードから起動した場合)があれば、そのカードの
+    // 持ち主を基準プレイヤーにし、持続タイミングも「特定のカードがある間」を既定にする。
+    const prefillOwnerIndex = prefill ? prefill.ownerIndex : practiceState.viewingIndex;
+    openZonePopup(centerPoint(), prefill ? `「${prefill.card.name}」を基準にフィールド効果を追加` : '新しいフィールド効果を追加', [
       {
         custom: true,
         render: (container) => {
-          container.style.cssText = 'display:flex;flex-direction:column;gap:8px;width:280px;';
+          container.style.cssText = 'display:flex;flex-direction:column;gap:8px;width:280px;max-width:100%;box-sizing:border-box;';
           container.innerHTML = `
             <div>
               <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px;">誰の効果か(「自分」「相手」の基準になるプレイヤー)</div>
               <select id="feOwner" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px;color:var(--text);font-size:12px;">
-                <option value="${practiceState.viewingIndex}">${escapeHtml(self.deckName)}(今見ている側)</option>
-                <option value="${otherIndex}">${escapeHtml(practiceState.players[otherIndex].deckName)}</option>
+                <option value="${practiceState.viewingIndex}" ${prefillOwnerIndex === practiceState.viewingIndex ? 'selected' : ''}>${escapeHtml(self.deckName)}(今見ている側)</option>
+                <option value="${otherIndex}" ${prefillOwnerIndex === otherIndex ? 'selected' : ''}>${escapeHtml(practiceState.players[otherIndex].deckName)}</option>
               </select>
             </div>
             <div>
@@ -8070,10 +8086,10 @@
                 <option value="thisTurn">このターンの間</option>
                 <option value="untilOpponentTurnEnd">相手のターン終了まで</option>
                 <option value="ownTurnOnly">自分のターンのみ(毎ターン継続)</option>
-                <option value="whileCard">特定のカードがある間</option>
+                <option value="whileCard" ${prefill ? 'selected' : ''}>特定のカードがある間</option>
               </select>
             </div>
-            <div id="feCardWrap" style="display:none;">
+            <div id="feCardWrap" style="display:${prefill ? 'block' : 'none'};">
               <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px;">対象カード(番号または名前で検索)</div>
               <input type="text" id="feCardQuery" placeholder="例: BT21-003 または カード名" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px;color:var(--text);font-size:12px;">
               <div id="feCardResults" style="max-height:120px;overflow-y:auto;margin-top:4px;"></div>
@@ -8089,7 +8105,10 @@
           durationSel.addEventListener('change', () => {
             cardWrap.style.display = durationSel.value === 'whileCard' ? 'block' : 'none';
           });
-          let selectedCard = null;
+          let selectedCard = prefill ? prefill.card : null;
+          if (prefill) {
+            container.querySelector('#feCardSelected').textContent = `${prefill.card.name}(${prefill.card.number})`;
+          }
           const queryInput = container.querySelector('#feCardQuery');
           const resultsEl = container.querySelector('#feCardResults');
           queryInput.addEventListener('input', () => {
