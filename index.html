@@ -1537,7 +1537,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.28.6</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.28.7</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -3004,7 +3004,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.28.6`);
+    log(`DigiCA Tool build v0.28.7`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -3536,6 +3536,7 @@
     // ≪進撃≫は「進化した、その瞬間」だけの一度きりの機会。ここ(進化完了時点)の
     // メモリー状況で判定を確定させ、以後は変化しない(メモリーが後から変わっても不可)。
     setAdvanceAvailable(stack, hasAdvanceKeyword(stack) && memoryTowardOpponent() >= 1);
+    checkAutoRevealTrigger(stack, '進化時');
   }
   // ≪回避≫≪アーマー解除≫≪突進≫も、ブロッカー等と同様に「デフォルト自動判定+手動上書き」
   // の形に統一する。バッジ表示と、実際に選べる場面(消滅確認/アタック時ステップ)の両方を
@@ -5769,6 +5770,8 @@
     // ≪進撃≫の判定はコスト支払い後(=進化/登場が完全に完了した後)のメモリー状況で
     // 行う必要があるため、payMemoryの後に呼ぶ。
     setAdvanceAvailable(newStack, hasAdvanceKeyword(newStack) && memoryTowardOpponent() >= 1);
+    // ジョグレスは「進化」、デジクロスは「登場」の一種として扱う(トリガー種別もそれに合わせる)。
+    checkAutoRevealTrigger(newStack, mode === 'jogress' ? '進化時' : '登場時');
     // ジョグレスは進化なので進化解決時ドローがあるが、デジクロスは「登場」の一種のためドローしない。
     if (mode === 'jogress' && self.library.length > 0) self.hand.push(self.library.shift());
 
@@ -5913,6 +5916,8 @@
     self.battle.push(newStack);
     payMemory(practiceState.turn.playerIndex, cost);
     setAdvanceAvailable(newStack, hasAdvanceKeyword(newStack) && memoryTowardOpponent() >= 1);
+    // アセンブリはデジクロスと同じく「登場」の一種として扱う。
+    checkAutoRevealTrigger(newStack, '登場時');
     const cardName = assemblyMode.card.name;
     assemblyMode = null;
     renderPracticeBoard();
@@ -6040,6 +6045,7 @@
 
     payMemory(practiceState.turn.playerIndex, cost);
     setAdvanceAvailable(newStack, hasAdvanceKeyword(newStack) && memoryTowardOpponent() >= 1);
+    checkAutoRevealTrigger(newStack, '進化時');
     if (self.library.length > 0) self.hand.push(self.library.shift()); // 進化解決時に1ドロー
     const evolvedName = evolveMode.card.name;
 
@@ -6083,6 +6089,7 @@
       renderPracticeBoard();
       showToast(`「${displayName}」を${verb}しました(コスト${cost})`);
       checkFieldEffectDP0OnEntry(self.battle[self.battle.length - 1]);
+      checkAutoRevealTrigger(self.battle[self.battle.length - 1], isOption ? 'メイン' : '登場時');
       resumeAttackStepIfAny();
     };
 
@@ -6266,6 +6273,26 @@
   });
 
   // ---------- Deck actions ----------
+  // 「【登場時】【進化時】自分のデッキの上からN枚オープンする」「【メイン】自分のデッキの
+  // 上からN枚オープンする」のように、場に出た/進化した/使用した直後に自動でオープン数を
+  // 判定できる効果は多いため、該当パターンを検出したら自動でrevealTopAndSortを起動する。
+  // オープンした後の振り分け(選択)は従来通り手動。コスト付き(「レストさせることで」等)や
+  // 相手のデッキ対象、【アタック時】【消滅時】等の対象外タイミングは自動発動しない
+  // (誤発動防止のため、直後に隣接している場合のみ検出する)。
+  function checkAutoRevealTrigger(stack, triggerLabel) {
+    const card = getStackTopCard(stack);
+    if (!card || !card.effect) return;
+    const pat = /((?:【(?:登場時|進化時|メイン)】)+)(?:［ターンに\d+回］|\[ターンに\d+回\])?自分のデッキの上から(\d+)枚オープン/g;
+    let m;
+    while ((m = pat.exec(card.effect))) {
+      if (m[1].includes(`【${triggerLabel}】`)) {
+        const n = parseInt(m[2], 10);
+        showToast(`📖「${card.name}」の${triggerLabel}効果: デッキの上から${n}枚オープンします`);
+        revealTopAndSort(n);
+        return;
+      }
+    }
+  }
   function revealTopAndSort(x) {
     const self = practiceState.players[practiceState.viewingIndex];
     if (self.library.length === 0) { showToast('デッキがありません', true); return; }
