@@ -1536,7 +1536,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.27.4</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.27.6</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -2990,7 +2990,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.27.4`);
+    log(`DigiCA Tool build v0.27.6`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -3226,7 +3226,37 @@
   function getEffectiveDP(stack) {
     const c = getStackTopCard(stack);
     const base = stack.actingAsDigimon ? (stack.assignedDP ?? 0) : (c ? (c.dp ?? 0) : 0);
-    return base + (stack.dpModifier || 0);
+    return base + (stack.dpModifier || 0) + getMaterialTurnDPBonus(stack);
+  }
+  // 進化元(一番上の現在のカードを除く)が「【お互いのターン/自分のターン/相手のターン】
+  // このデジモンをDP+N。」という独立行の記載を持つ場合、そのターン条件を満たしていれば
+  // 自動でDPに加算する。「自分/相手」は、このスタックの持ち主から見たターンで判定する。
+  // (通常のDP修正=stack.dpModifierとは別枠で、毎回のDP計算時に動的に判定し直す)
+  function getMaterialTurnDPBonus(stack) {
+    if (!practiceState || !stack.cards || stack.cards.length <= 1) return 0;
+    const owner = findStackOwnerAndZone(stack);
+    if (!owner) return 0;
+    const ownerIndex = practiceState.players.indexOf(owner.player);
+    const isOwnersTurn = practiceState.turn.playerIndex === ownerIndex;
+    const materials = stack.cards.slice(0, stack.cards.length - 1);
+    const pat = /^【(お互いのターン|自分のターン|相手のターン)】このデジモンをDP([+\-＋－]\d+)。?$/;
+    let sum = 0;
+    materials.forEach(entry => {
+      const card = cardIndexByNumber.get(cardEntryNum(entry));
+      const text = (card && card.inherited) || '';
+      text.split('\n').forEach(line => {
+        const m = pat.exec(line.trim());
+        if (!m) return;
+        const timing = m[1];
+        const applies = timing === 'お互いのターン' ||
+          (timing === '自分のターン' && isOwnersTurn) ||
+          (timing === '相手のターン' && !isOwnersTurn);
+        if (!applies) return;
+        const numStr = m[2].replace('＋', '+').replace('－', '-');
+        sum += parseInt(numStr, 10);
+      });
+    });
+    return sum;
   }
 
   // ---------- キーワード効果の「デフォルト所持」自動判定 ----------
@@ -3257,11 +3287,21 @@
   // DPと同様、リンクカードが持つキーワード効果は「リンクしている間だけ」有効。
   // リンクを破棄すればそのキーワードも自動的に外れる(stack.linksを毎回見るだけなので
   // 付与/剥奪の管理を別途持つ必要がない)。
+  // リンクしているカードだけでなく、通常の進化元(card.inherited欄)も同じ書式で
+  // 「進化元である間だけ発揮する」キーワード効果を持つことがある(総合ルール4-7-4:
+  // 進化元は通常効果を発揮しないが、進化元であるときに発揮する旨の記載がある場合は
+  // 例外的に発揮する)。実際のDBでも、グレイモン(AD1-001)の進化元効果欄に
+  // 「≪突進≫（...）」のような独立行の記載があることを確認済み。
+  // 一番上の現在のカード自身(=進化元ではない)は対象から除く。
   function stackHasLinkedKeyword(stack, keyword) {
-    if (!stack.links || stack.links.length === 0) return false;
-    return stack.links.some(num => hasKeywordLineInText((cardIndexByNumber.get(num) || {}).inherited, keyword));
+    if (stack.links && stack.links.length > 0 &&
+        stack.links.some(num => hasKeywordLineInText((cardIndexByNumber.get(num) || {}).inherited, keyword))) {
+      return true;
+    }
+    const materials = stack.cards.slice(0, stack.cards.length - 1);
+    return materials.some(entry => hasKeywordLineInText((cardIndexByNumber.get(cardEntryNum(entry)) || {}).inherited, keyword));
   }
-  // カードそのものが持つ(独立行)か、リンクしているカードが持つかのどちらかを見る、
+  // カードそのものが持つ(独立行)か、リンク/進化元が持つかのどちらかを見る、
   // という判定を1箇所にまとめたヘルパー。
   function hasInnateOrLinkedKeyword(stack, keyword) {
     return hasInnateKeywordLine(getStackTopCard(stack), keyword) || stackHasLinkedKeyword(stack, keyword);
@@ -3320,12 +3360,15 @@
   }
   // リンクカードが持つ数値付きキーワードは、リンクしている枚数分そのまま合算する
   // (DPと同じ考え方: リンクしていれば効いて、破棄されれば外れる)。
+  // リンクと同様、通常の進化元が持つ数値付きキーワード(≪Sアタック+N≫等)も合算する。
   function getLinkedNumericBonus(stack, patterns) {
-    if (!stack.links || stack.links.length === 0) return 0;
-    return stack.links.reduce((sum, num) => {
-      const v = numericFromKeywordLine((cardIndexByNumber.get(num) || {}).inherited, patterns);
-      return sum + (v || 0);
-    }, 0);
+    let sum = 0;
+    if (stack.links && stack.links.length > 0) {
+      sum += stack.links.reduce((s, num) => s + (numericFromKeywordLine((cardIndexByNumber.get(num) || {}).inherited, patterns) || 0), 0);
+    }
+    const materials = stack.cards.slice(0, stack.cards.length - 1);
+    sum += materials.reduce((s, entry) => s + (numericFromKeywordLine((cardIndexByNumber.get(cardEntryNum(entry)) || {}).inherited, patterns) || 0), 0);
+    return sum;
   }
   // 「Sアタック」は旧称「セキュリティアタック」表記のカードもあるため両方見る(16-4)。
   const S_ATTACK_PATTERNS = [/≪(?:Sアタック|セキュリティアタック)([+\-]\d+)≫/];
@@ -4446,7 +4489,7 @@
       <div class="stack-fan">${layerHtml}</div>
       ${linkHtml}
       ${stack.cards.length > 1 ? `<span class="st-count mono">${stack.cards.length}</span>` : ''}
-      ${(stack.actingAsDigimon || ((stack.dpModifier || 0) !== 0 && isDigimonLikeStack(stack))) ? `<span class="st-dp">DP${getEffectiveDP(stack)}</span>` : ''}
+      ${(stack.actingAsDigimon || (((stack.dpModifier || 0) !== 0 || getMaterialTurnDPBonus(stack) !== 0) && isDigimonLikeStack(stack))) ? `<span class="st-dp">DP${getEffectiveDP(stack)}</span>` : ''}
       ${badgesHtml}
       <button type="button" class="tile-quickadd" title="レスト/アクティブ切替" style="opacity:0.55;">⟳</button>
     `;
