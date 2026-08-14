@@ -1537,7 +1537,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.28.4</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.28.6</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -3004,7 +3004,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.28.4`);
+    log(`DigiCA Tool build v0.28.6`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -3240,7 +3240,7 @@
   function getEffectiveDP(stack) {
     const c = getStackTopCard(stack);
     const base = stack.actingAsDigimon ? (stack.assignedDP ?? 0) : (c ? (c.dp ?? 0) : 0);
-    return base + (stack.dpModifier || 0) + getMaterialTurnDPBonus(stack) + getFieldEffectDPBonus(stack);
+    return base + (stack.dpModifier || 0) + getTempDPModifierSum(stack) + getMaterialTurnDPBonus(stack) + getFieldEffectDPBonus(stack);
   }
   // 進化元(一番上の現在のカードを除く)が「【お互いのターン/自分のターン/相手のターン】
   // このデジモンをDP+N。」という独立行の記載を持つ場合、そのターン条件を満たしていれば
@@ -4565,7 +4565,7 @@
       <div class="stack-fan">${layerHtml}</div>
       ${linkHtml}
       ${stack.cards.length > 1 ? `<span class="st-count mono">${stack.cards.length}</span>` : ''}
-      ${(stack.actingAsDigimon || (((stack.dpModifier || 0) !== 0 || getMaterialTurnDPBonus(stack) !== 0) && isDigimonLikeStack(stack))) ? `<span class="st-dp">DP${getEffectiveDP(stack)}</span>` : ''}
+      ${(stack.actingAsDigimon || (((stack.dpModifier || 0) !== 0 || getTempDPModifierSum(stack) !== 0 || getMaterialTurnDPBonus(stack) !== 0 || getFieldEffectDPBonus(stack) !== 0) && isDigimonLikeStack(stack))) ? `<span class="st-dp">DP${getEffectiveDP(stack)}</span>` : ''}
       ${badgesHtml}
       <button type="button" class="tile-quickadd" title="レスト/アクティブ切替" style="opacity:0.55;">⟳</button>
     `;
@@ -4861,7 +4861,7 @@
     // 合わせてバトルエリアの右側(deckTrashClusterEl)に表示する。
     sideClusterEl.innerHTML = '';
     sideClusterEl.appendChild(buildFaceDownPile(
-      'セキュリティ', player.security.length, isSelf ? (e) => openSecurityPopup(e) : null,
+      'セキュリティ', player.security.length, isSelf ? (e) => openSecurityPopup(e) : (e) => openOpponentSecurityDiscardPopup(e, player),
       player.security.filter(entry => cardEntryFaceUp(entry)).map(entry => cardEntryNum(entry))
     ));
 
@@ -6404,14 +6404,23 @@
     renderPracticeBoard();
     showToast('セキュリティの一番下を手札に加えました');
   }
-  function securityTopDiscardBlind() {
-    const self = practiceState.players[practiceState.viewingIndex];
-    if (self.security.length === 0) { showToast('セキュリティがありません', true); return; }
+  function securityTopDiscardBlind(targetPlayer) {
+    const p = targetPlayer || practiceState.players[practiceState.viewingIndex];
+    if (p.security.length === 0) { showToast('セキュリティがありません', true); return; }
     snapshotPracticeState();
-    const num = cardEntryNum(self.security.shift());
-    self.trash.push(num);
+    const num = cardEntryNum(p.security.shift());
+    p.trash.push(num);
     renderPracticeBoard();
-    showToast('セキュリティの一番上を内容を確認せずに破棄しました');
+    showToast(`${p.deckName}のセキュリティの一番上を内容を確認せずに破棄しました`);
+  }
+
+  // 自分のターン中、相手のセキュリティは本来触れない(内容を見たり動かしたりできない)が、
+  // 「相手のセキュリティを上から1枚破棄する」という効果は多いため、破棄操作だけは
+  // 相手側のセキュリティ山からも実行できるようにする(内容の確認・移動先選択等は含めない)。
+  function openOpponentSecurityDiscardPopup(e, targetPlayer) {
+    openZonePopup(e, `${targetPlayer.deckName}のセキュリティ(${targetPlayer.security.length}枚)`, [
+      { label: '一番上を内容を確認せず破棄', onClick: () => securityTopDiscardBlind(targetPlayer) },
+    ]);
   }
 
   function openSecurityPopup(e) {
@@ -6419,7 +6428,7 @@
     openZonePopup(e, `セキュリティ(${self.security.length}枚)`, [
       { label: '1枚公開して処理', onClick: manualSecurityCheck },
       { label: '一番下を手札へ', onClick: securityBottomToHand },
-      { label: '破棄', onClick: securityTopDiscardBlind },
+      { label: '破棄', onClick: () => securityTopDiscardBlind() },
       { label: 'セキュリティを全て見る', onClick: openSecurityListView },
     ]);
   }
@@ -7489,16 +7498,37 @@
     ]);
   }
 
-  function modifyStackDP(stack, delta) {
+  // 恒久的な増減(stack.dpModifier)とは別に、期限付きの増減はstack.tempDPModifiersに
+  // 積んでおき、getEffectiveDPで毎回有効かどうか判定し直す(フィールド効果と同じ考え方)。
+  function getTempDPModifierSum(stack) {
+    if (!stack.tempDPModifiers || stack.tempDPModifiers.length === 0 || !practiceState) return 0;
+    return stack.tempDPModifiers.reduce((sum, m) => {
+      return sum + (practiceState.turn.count <= m.expireAtTurnCount ? m.amount : 0);
+    }, 0);
+  }
+  function pruneExpiredTempDPModifiers(stack) {
+    if (!stack.tempDPModifiers || !practiceState) return;
+    stack.tempDPModifiers = stack.tempDPModifiers.filter(m => practiceState.turn.count <= m.expireAtTurnCount);
+  }
+  function modifyStackDP(stack, delta, duration) {
     snapshotPracticeState();
-    stack.dpModifier = (stack.dpModifier || 0) + delta;
+    if (!duration || duration === 'permanent') {
+      stack.dpModifier = (stack.dpModifier || 0) + delta;
+    } else {
+      if (!stack.tempDPModifiers) stack.tempDPModifiers = [];
+      stack.tempDPModifiers.push({
+        amount: delta,
+        expireAtTurnCount: computeExpireAtTurnCount(duration, practiceState.turn.playerIndex),
+      });
+    }
     const newDP = getEffectiveDP(stack);
     cardDetailModal.classList.remove('open');
     renderPracticeBoard();
+    const durationLabel = duration === 'thisTurn' ? '(このターンの間)' : duration === 'untilOpponentTurnEnd' ? '(相手のターン終了まで)' : '';
     if (newDP <= 0) {
       promptDestructionChoice(stack);
     } else {
-      showToast(`DPを${delta > 0 ? '+' : ''}${delta}しました(現在DP${newDP})`);
+      showToast(`DPを${delta > 0 ? '+' : ''}${delta}しました${durationLabel}(現在DP${newDP})`);
       resumeAttackStepIfAny();
     }
   }
@@ -7509,17 +7539,28 @@
       {
         custom: true,
         render: (container) => {
-          container.style.cssText = 'display:flex;gap:6px;align-items:center;';
+          container.style.cssText = 'display:flex;flex-direction:column;gap:8px;width:220px;';
           container.innerHTML = `
-            <input type="number" id="dpDeltaInput" value="1000" min="0" step="1000" style="width:74px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:4px;color:var(--text);font-size:12px;">
-            <button type="button" id="dpPlusBtn" class="btn" style="font-size:11px;padding:6px 8px;">+適用</button>
-            <button type="button" id="dpMinusBtn" class="btn" style="font-size:11px;padding:6px 8px;">-適用</button>
+            <div style="display:flex;gap:6px;align-items:center;">
+              <input type="number" id="dpDeltaInput" value="1000" min="0" step="1000" style="width:74px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:4px;color:var(--text);font-size:12px;">
+              <button type="button" id="dpPlusBtn" class="btn" style="font-size:11px;padding:6px 8px;">+適用</button>
+              <button type="button" id="dpMinusBtn" class="btn" style="font-size:11px;padding:6px 8px;">-適用</button>
+            </div>
+            <div>
+              <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px;">持続タイミング</div>
+              <select id="dpDurationSel" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px;color:var(--text);font-size:12px;">
+                <option value="permanent">ずっと(手動で戻すまで)</option>
+                <option value="thisTurn">このターンの間</option>
+                <option value="untilOpponentTurnEnd">相手のターン終了まで</option>
+              </select>
+            </div>
           `;
           const apply = (sign) => {
             const v = parseInt(container.querySelector('#dpDeltaInput').value, 10);
             if (isNaN(v) || v < 0) { showToast('数値が不正です', true); return; }
+            const duration = container.querySelector('#dpDurationSel').value;
             closeZonePopup();
-            modifyStackDP(stack, sign * v);
+            modifyStackDP(stack, sign * v, duration);
           };
           container.querySelector('#dpPlusBtn').addEventListener('click', (e) => { e.stopPropagation(); apply(1); });
           container.querySelector('#dpMinusBtn').addEventListener('click', (e) => { e.stopPropagation(); apply(-1); });
@@ -7536,10 +7577,12 @@
     const wrap = document.createElement('div');
     wrap.style.cssText = 'display:flex;flex-direction:column;gap:8px;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--border);width:100%;';
     const mod = stack.dpModifier || 0;
+    const tempMod = getTempDPModifierSum(stack);
     const info = document.createElement('div');
-    info.style.cssText = 'font-size:16px;color:var(--text-dim);display:flex;gap:10px;align-items:center;';
+    info.style.cssText = 'font-size:16px;color:var(--text-dim);display:flex;gap:10px;align-items:center;flex-wrap:wrap;';
     info.innerHTML = `現在DP: <span class="mono" style="font-size:18px;font-weight:800;color:var(--accent);">${getEffectiveDP(stack)}</span>` +
-      (mod !== 0 ? `<span class="mono" style="font-size:15px;color:${mod > 0 ? 'var(--c-red)' : 'var(--c-blue)'};">(${mod > 0 ? '+' : ''}${mod})</span>` : '');
+      (mod !== 0 ? `<span class="mono" style="font-size:15px;color:${mod > 0 ? 'var(--c-red)' : 'var(--c-blue)'};">(${mod > 0 ? '+' : ''}${mod}・ずっと)</span>` : '') +
+      (tempMod !== 0 ? `<span class="mono" style="font-size:15px;color:${tempMod > 0 ? 'var(--c-red)' : 'var(--c-blue)'};">(${tempMod > 0 ? '+' : ''}${tempMod}・一時的)</span>` : '');
     wrap.appendChild(info);
 
     const row = document.createElement('div');
@@ -7561,6 +7604,7 @@
         e.stopPropagation();
         snapshotPracticeState();
         stack.dpModifier = 0;
+        stack.tempDPModifiers = [];
         cardDetailModal.classList.remove('open');
         renderPracticeBoard();
         showToast('DP増減をリセットしました');
@@ -7883,6 +7927,10 @@
       practiceState.turn = { count: turn.count + 1, playerIndex: nextPlayerIndex, phase: 'active' };
       practiceState.viewingIndex = nextPlayerIndex;
       pruneExpiredFieldEffects();
+      practiceState.players.forEach(p => {
+        if (p.raising) pruneExpiredTempDPModifiers(p.raising);
+        p.battle.forEach(s => pruneExpiredTempDPModifiers(s));
+      });
       const nextPlayer = practiceState.players[nextPlayerIndex];
       const lockedRaisingSkipped = nextPlayer.raising && hasLock(nextPlayer.raising, 'noActive');
       if (nextPlayer.raising && !lockedRaisingSkipped) nextPlayer.raising.rested = false;
@@ -8051,24 +8099,16 @@
   document.getElementById('fieldEffectAddBtn').addEventListener('click', () => openAddFieldEffectForm());
 
   function openAddFieldEffectForm(prefill) {
-    const self = practiceState.players[practiceState.viewingIndex];
-    const otherIndex = 1 - practiceState.viewingIndex;
-    // prefill(セキュリティの表向きカードから起動した場合)があれば、そのカードの
-    // 持ち主を基準プレイヤーにし、持続タイミングも「特定のカードがある間」を既定にする。
-    const prefillOwnerIndex = prefill ? prefill.ownerIndex : practiceState.viewingIndex;
+    // 基準プレイヤーは常に「今見ている側」に固定する(切り替えの選択肢は出さない)。
+    const ownerIndex = practiceState.viewingIndex;
+    const ownerName = practiceState.players[ownerIndex].deckName;
     openZonePopup(centerPoint(), prefill ? `「${prefill.card.name}」を基準にフィールド効果を追加` : '新しいフィールド効果を追加', [
       {
         custom: true,
         render: (container) => {
-          container.style.cssText = 'display:flex;flex-direction:column;gap:8px;width:280px;max-width:100%;box-sizing:border-box;';
+          container.style.cssText = 'display:flex;flex-direction:column;gap:8px;width:260px;max-width:100%;box-sizing:border-box;';
           container.innerHTML = `
-            <div>
-              <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px;">誰の効果か(「自分」「相手」の基準になるプレイヤー)</div>
-              <select id="feOwner" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px;color:var(--text);font-size:12px;">
-                <option value="${practiceState.viewingIndex}" ${prefillOwnerIndex === practiceState.viewingIndex ? 'selected' : ''}>${escapeHtml(self.deckName)}(今見ている側)</option>
-                <option value="${otherIndex}" ${prefillOwnerIndex === otherIndex ? 'selected' : ''}>${escapeHtml(practiceState.players[otherIndex].deckName)}</option>
-              </select>
-            </div>
+            <div style="font-size:11px;color:var(--text-dim);">基準プレイヤー: <b style="color:var(--text);">${escapeHtml(ownerName)}(今見ている側)</b></div>
             <div>
               <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px;">対象</div>
               <select id="feTarget" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px;color:var(--text);font-size:12px;">
@@ -8080,76 +8120,34 @@
               <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px;">DP増減(例: 2000 / -3000)</div>
               <input type="number" id="feAmount" step="1000" value="1000" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px;color:var(--text);font-size:12px;">
             </div>
-            <div>
-              <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px;">持続タイミング</div>
-              <select id="feDuration" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px;color:var(--text);font-size:12px;">
-                <option value="thisTurn">このターンの間</option>
-                <option value="untilOpponentTurnEnd">相手のターン終了まで</option>
-                <option value="ownTurnOnly">自分のターンのみ(毎ターン継続)</option>
-                <option value="whileCard" ${prefill ? 'selected' : ''}>特定のカードがある間</option>
-              </select>
-            </div>
-            <div id="feCardWrap" style="display:${prefill ? 'block' : 'none'};">
-              <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px;">対象カード(番号または名前で検索)</div>
-              <input type="text" id="feCardQuery" placeholder="例: BT21-003 または カード名" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px;color:var(--text);font-size:12px;">
-              <div id="feCardResults" style="max-height:120px;overflow-y:auto;margin-top:4px;"></div>
-              <div style="font-size:10px;color:var(--text-dim);margin-top:4px;">選択済み: <span id="feCardSelected">(未選択)</span></div>
-              <label style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:11px;">
-                <input type="checkbox" id="feCardAnywhere"> セキュリティの表向き以外(場にある場合)も含める
-              </label>
-            </div>
+            ${prefill ? `
+              <div style="font-size:11px;color:var(--text-dim);">持続タイミング: <b style="color:var(--text);">「${escapeHtml(prefill.card.name)}」がセキュリティの表向きにある間</b></div>
+            ` : `
+              <div>
+                <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px;">持続タイミング</div>
+                <select id="feDuration" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px;color:var(--text);font-size:12px;">
+                  <option value="thisTurn">このターンの間</option>
+                  <option value="untilOpponentTurnEnd">相手のターン終了まで</option>
+                </select>
+              </div>
+            `}
             <button type="button" id="feConfirmBtn" class="btn primary" style="margin-top:4px;">追加</button>
           `;
-          const durationSel = container.querySelector('#feDuration');
-          const cardWrap = container.querySelector('#feCardWrap');
-          durationSel.addEventListener('change', () => {
-            cardWrap.style.display = durationSel.value === 'whileCard' ? 'block' : 'none';
-          });
-          let selectedCard = prefill ? prefill.card : null;
-          if (prefill) {
-            container.querySelector('#feCardSelected').textContent = `${prefill.card.name}(${prefill.card.number})`;
-          }
-          const queryInput = container.querySelector('#feCardQuery');
-          const resultsEl = container.querySelector('#feCardResults');
-          queryInput.addEventListener('input', () => {
-            const q = queryInput.value.trim().toLowerCase();
-            resultsEl.innerHTML = '';
-            if (q.length < 2 || !currentDb || !Array.isArray(currentDb.cards)) return;
-            const matches = currentDb.cards.filter(c =>
-              (c.number || '').toLowerCase().includes(q) || (c.name || '').toLowerCase().includes(q)
-            ).slice(0, 8);
-            matches.forEach(c => {
-              const opt = document.createElement('div');
-              opt.style.cssText = 'font-size:11px;padding:4px 6px;cursor:pointer;border-radius:4px;';
-              opt.textContent = `${c.name}(${c.number})`;
-              opt.addEventListener('click', () => {
-                selectedCard = c;
-                container.querySelector('#feCardSelected').textContent = `${c.name}(${c.number})`;
-                resultsEl.innerHTML = '';
-                queryInput.value = '';
-              });
-              opt.addEventListener('mouseenter', () => { opt.style.background = 'var(--panel-raised)'; });
-              opt.addEventListener('mouseleave', () => { opt.style.background = ''; });
-              resultsEl.appendChild(opt);
-            });
-          });
           container.querySelector('#feConfirmBtn').addEventListener('click', (ev) => {
             ev.stopPropagation();
-            const ownerIndex = parseInt(container.querySelector('#feOwner').value, 10);
             const target = container.querySelector('#feTarget').value;
             const amount = parseInt(container.querySelector('#feAmount').value, 10);
-            const duration = durationSel.value;
             if (isNaN(amount) || amount === 0) { showToast('DP増減の数値が不正です', true); return; }
-            if (duration === 'whileCard' && !selectedCard) { showToast('対象カードを選んでください', true); return; }
+            const duration = prefill ? 'whileCard' : container.querySelector('#feDuration').value;
             closeZonePopup();
             snapshotPracticeState();
             const effect = {
               id: `fe-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
               ownerIndex, target, amount, duration,
               expireAtTurnCount: computeExpireAtTurnCount(duration, ownerIndex),
-              refCardNumber: duration === 'whileCard' ? selectedCard.number : null,
-              refCardName: duration === 'whileCard' ? selectedCard.name : null,
-              refCheck: (duration === 'whileCard' && container.querySelector('#feCardAnywhere').checked) ? 'anywhereOwn' : 'securityFaceUp',
+              refCardNumber: prefill ? prefill.card.number : null,
+              refCardName: prefill ? prefill.card.name : null,
+              refCheck: 'securityFaceUp',
               createdTurn: practiceState.turn.count,
             };
             if (!practiceState.fieldEffects) practiceState.fieldEffects = [];
