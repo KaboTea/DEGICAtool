@@ -1081,6 +1081,11 @@
     outline-offset: -2px;
     border-radius: 8px;
   }
+  .stack-tile.drop-hover-evolve {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
   .hand-card img {
     width: 100%;
     aspect-ratio: 43 / 60;
@@ -1531,7 +1536,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.27.3</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.27.4</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -2985,7 +2990,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.27.3`);
+    log(`DigiCA Tool build v0.27.4`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -4767,7 +4772,9 @@
       const onClick = isSelf && !stackIsTarget
         ? () => openStackActionView(player.raising)
         : () => openStackDetail(player.raising);
-      raisingAreaEl.appendChild(buildStackTile(player.raising, onClick, stackIsTarget));
+      const raisingTile = buildStackTile(player.raising, onClick, stackIsTarget);
+      if (isSelf) setupStackEvolveDropTarget(raisingTile, player.raising);
+      raisingAreaEl.appendChild(raisingTile);
     } else {
       raisingAreaEl.innerHTML = '<div class="empty-state" style="padding:14px 0;font-size:11px;">(空)</div>';
     }
@@ -4793,6 +4800,7 @@
           ? () => openStackActionView(stack)
           : () => openStackDetail(stack);
         const tile = buildStackTile(stack, onClick, stackIsTarget);
+        if (isSelf) setupStackEvolveDropTarget(tile, stack);
         const isHumanGroup = (topCard && (topCard.category === 'tamer' || topCard.category === 'option') && !stack.actingAsDigimon) || stack.dualAsOption;
         (isHumanGroup ? bottomGroup : topGroup).appendChild(tile);
       });
@@ -4959,6 +4967,27 @@
   }
   setupHandDropZone(document.getElementById('selfRaisingArea'));
   setupHandDropZone(document.getElementById('selfBattleArea'));
+  // 手札→既存のスタック(育成/バトルエリア)へドラッグして離すと「進化」を行う。
+  // タイル側で受けるため、親エリアの「登場」ドロップに伝播しないようstopPropagationする。
+  function setupStackEvolveDropTarget(el, stack) {
+    el.addEventListener('dragover', (e) => {
+      if (!draggedHandCard) return;
+      e.preventDefault();
+      e.stopPropagation();
+      el.classList.add('drop-hover-evolve');
+    });
+    el.addEventListener('dragleave', () => el.classList.remove('drop-hover-evolve'));
+    el.addEventListener('drop', (e) => {
+      if (!draggedHandCard) return;
+      e.preventDefault();
+      e.stopPropagation();
+      el.classList.remove('drop-hover-evolve');
+      const { index, number } = draggedHandCard;
+      draggedHandCard = null;
+      enterEvolveMode(index, number);
+      performEvolve(stack);
+    });
+  }
 
   function snapshotPracticeState() {
     if (!practiceState) return;
