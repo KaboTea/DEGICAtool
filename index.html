@@ -1536,7 +1536,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.27.6</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.28.1</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -1680,6 +1680,7 @@
     <div class="panel" id="practiceBoardPanel" style="display:none;">
       <div class="practice-topbar">
         <span class="mono" id="practiceHeaderLabel" style="font-size:12px;color:var(--text-dim);"></span>
+        <button class="btn" id="fieldEffectsBtn">🌐 フィールド効果</button>
         <button class="btn" id="practiceEndGameBtn">練習を終了</button>
       </div>
 
@@ -1865,6 +1866,18 @@
     <div class="modal-actions">
       <button class="btn" id="addToDeckFromDetail">＋ デッキに追加</button>
       <button class="btn" id="closeDetail">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<!-- Field Effects Modal -->
+<div class="modal-backdrop" id="fieldEffectsModal">
+  <div class="modal" style="width:min(560px, 94vw); max-height:86vh; overflow-y:auto;">
+    <h2>🌐 フィールド効果(自分/相手の全デジモンへのDP増減)</h2>
+    <div id="fieldEffectsList"></div>
+    <div class="modal-actions" style="margin-top:14px;">
+      <button class="btn primary" id="fieldEffectAddBtn">+ 新規追加</button>
+      <button class="btn" id="fieldEffectsCloseBtn">閉じる</button>
     </div>
   </div>
 </div>
@@ -2990,7 +3003,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.27.6`);
+    log(`DigiCA Tool build v0.28.1`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -3226,7 +3239,7 @@
   function getEffectiveDP(stack) {
     const c = getStackTopCard(stack);
     const base = stack.actingAsDigimon ? (stack.assignedDP ?? 0) : (c ? (c.dp ?? 0) : 0);
-    return base + (stack.dpModifier || 0) + getMaterialTurnDPBonus(stack);
+    return base + (stack.dpModifier || 0) + getMaterialTurnDPBonus(stack) + getFieldEffectDPBonus(stack);
   }
   // 進化元(一番上の現在のカードを除く)が「【お互いのターン/自分のターン/相手のターン】
   // このデジモンをDP+N。」という独立行の記載を持つ場合、そのターン条件を満たしていれば
@@ -3257,6 +3270,67 @@
       });
     });
     return sum;
+  }
+
+  // ---------- フィールド効果(自分/相手の全デジモンへのDP増減) ----------
+  // 「相手のデジモン全てはDP-2000」のような、個別のカードではなく場全体にかかる
+  // DP増減を管理する。practiceState.fieldEffectsに持続条件付きで積んでおき、
+  // getEffectiveDPで毎回判定し直す(材料由来のターン限定DPと同じ考え方)。
+  function computeExpireAtTurnCount(duration, ownerIndex) {
+    if (!practiceState) return null;
+    const cur = practiceState.turn.count;
+    if (duration === 'thisTurn') return cur;
+    if (duration === 'untilOpponentTurnEnd') {
+      // 自分のターン中に発動 → 次の相手のターン終了まで(cur+1)。
+      // 相手のターン中に発動(カウンター等) → そのターンの終了まで(cur)。
+      return practiceState.turn.playerIndex === ownerIndex ? cur + 1 : cur;
+    }
+    return null;
+  }
+  function isFieldEffectActive(effect) {
+    if (!practiceState) return false;
+    if (effect.duration === 'thisTurn' || effect.duration === 'untilOpponentTurnEnd') {
+      return practiceState.turn.count <= effect.expireAtTurnCount;
+    }
+    if (effect.duration === 'ownTurnOnly') {
+      return practiceState.turn.playerIndex === effect.ownerIndex;
+    }
+    if (effect.duration === 'whileCard') {
+      const owner = practiceState.players[effect.ownerIndex];
+      if (!owner || !effect.refCardNumber) return false;
+      const inSecurityFaceUp = owner.security.some(entry => cardEntryFaceUp(entry) && cardEntryNum(entry) === effect.refCardNumber);
+      if (effect.refCheck === 'securityFaceUp') return inSecurityFaceUp;
+      // anywhereOwn: セキュリティ表向き/バトルエリア/育成エリアのどこかにあればよい
+      const inBattle = owner.battle.some(s => s.cards.some(e => cardEntryNum(e) === effect.refCardNumber));
+      const inRaising = !!(owner.raising && owner.raising.cards.some(e => cardEntryNum(e) === effect.refCardNumber));
+      return inSecurityFaceUp || inBattle || inRaising;
+    }
+    return true;
+  }
+  function fieldEffectAppliesToStack(effect, stack) {
+    if (!isDigimonLikeStack(stack)) return false;
+    if (!isFieldEffectActive(effect)) return false;
+    const owner = findStackOwnerAndZone(stack);
+    if (!owner) return false;
+    const stackOwnerIndex = practiceState.players.indexOf(owner.player);
+    const isSameSide = stackOwnerIndex === effect.ownerIndex;
+    return effect.target === 'own' ? isSameSide : !isSameSide;
+  }
+  function getFieldEffectDPBonus(stack) {
+    if (!practiceState || !practiceState.fieldEffects || practiceState.fieldEffects.length === 0) return 0;
+    return practiceState.fieldEffects.reduce((sum, effect) => sum + (fieldEffectAppliesToStack(effect, stack) ? effect.amount : 0), 0);
+  }
+  // 期限切れ(このターン/相手のターン終了までの2種)のフィールド効果を一覧から削除する。
+  // ターンが進むたびに呼ぶ(一覧が無限に伸びないようにするための整理。判定自体は
+  // isFieldEffectActiveで都度行っているのでこの掃除自体は必須ではない)。
+  function pruneExpiredFieldEffects() {
+    if (!practiceState || !practiceState.fieldEffects) return;
+    practiceState.fieldEffects = practiceState.fieldEffects.filter(effect => {
+      if (effect.duration === 'thisTurn' || effect.duration === 'untilOpponentTurnEnd') {
+        return practiceState.turn.count <= effect.expireAtTurnCount;
+      }
+      return true;
+    });
   }
 
   // ---------- キーワード効果の「デフォルト所持」自動判定 ----------
@@ -4396,6 +4470,7 @@
       memory: 0,
       players: order, // players[0] = 先攻
       viewingIndex: 0,
+      fieldEffects: [], // フィールド全体DP増減(自分/相手全デジモン対象)
     };
     practiceSetup = null;
     practiceMulliganArea.innerHTML = '';
@@ -6006,6 +6081,7 @@
       payMemory(practiceState.turn.playerIndex, cost);
       renderPracticeBoard();
       showToast(`「${displayName}」を${verb}しました(コスト${cost})`);
+      checkFieldEffectDP0OnEntry(self.battle[self.battle.length - 1]);
       resumeAttackStepIfAny();
     };
 
@@ -7380,6 +7456,17 @@
   }
 
   // ---------- DP modify (works on any Digimon, self or opponent, any time) ----------
+  // フィールド効果(場全体マイナスDP)により、登場した瞬間にDP0以下になっている
+  // デジモンは即座にルールチェック消滅の対象になる(17-1-3-1)。主要な登場経路
+  // (通常登場)から呼ぶ。他の経路(ジョグレス/デジクロス等)で出た場合は、
+  // 気づいたら手動で「±DP」を開けば同じ判定(promptDestructionChoice)が出る。
+  function checkFieldEffectDP0OnEntry(stack) {
+    if (!stack || !isDigimonLikeStack(stack)) return;
+    if (!findStackOwnerAndZone(stack)) return;
+    if (getEffectiveDP(stack) <= 0) {
+      promptDestructionChoice(stack);
+    }
+  }
   function promptDestructionChoice(stack) {
     const topCard = getStackTopCard(stack);
     const centerEvent = { clientX: window.innerWidth / 2 - 130, clientY: 70 };
@@ -7782,6 +7869,7 @@
       const nextPlayerIndex = 1 - turn.playerIndex;
       practiceState.turn = { count: turn.count + 1, playerIndex: nextPlayerIndex, phase: 'active' };
       practiceState.viewingIndex = nextPlayerIndex;
+      pruneExpiredFieldEffects();
       const nextPlayer = practiceState.players[nextPlayerIndex];
       const lockedRaisingSkipped = nextPlayer.raising && hasLock(nextPlayer.raising, 'noActive');
       if (nextPlayer.raising && !lockedRaisingSkipped) nextPlayer.raising.rested = false;
@@ -7890,6 +7978,174 @@
     }
     populatePracticeDeckSelects();
   });
+
+  // ---------- フィールド効果の管理UI ----------
+  function openFieldEffectsModal() {
+    renderFieldEffectsList();
+    document.getElementById('fieldEffectsModal').classList.add('open');
+  }
+  function closeFieldEffectsModal() {
+    document.getElementById('fieldEffectsModal').classList.remove('open');
+  }
+  function fieldEffectDescribe(effect) {
+    const ownerName = practiceState.players[effect.ownerIndex].deckName;
+    const targetLabel = effect.target === 'own' ? `${ownerName}の全デジモン` : `${ownerName}から見た相手の全デジモン`;
+    const amountLabel = `DP${effect.amount >= 0 ? '+' : ''}${effect.amount}`;
+    const durationLabel = {
+      thisTurn: 'このターンの間',
+      untilOpponentTurnEnd: '相手のターン終了まで',
+      ownTurnOnly: `${ownerName}のターンのみ・毎ターン継続`,
+      whileCard: effect.refCardName ? `「${effect.refCardName}」がある間` : '特定のカードがある間',
+    }[effect.duration] || '';
+    return `${targetLabel} ${amountLabel}(${durationLabel})`;
+  }
+  function renderFieldEffectsList() {
+    const listEl = document.getElementById('fieldEffectsList');
+    const effects = (practiceState && practiceState.fieldEffects) || [];
+    if (effects.length === 0) {
+      listEl.innerHTML = '<div class="placeholder">現在、場全体にかかっている効果はありません。</div>';
+      return;
+    }
+    listEl.innerHTML = '';
+    effects.forEach((effect, idx) => {
+      const active = isFieldEffectActive(effect);
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 4px;border-bottom:1px solid var(--border);';
+      row.innerHTML = `
+        <div style="font-size:12px;${active ? '' : 'color:var(--text-dim);'}">
+          ${active ? '' : '<span style="color:var(--danger);">(現在は条件を満たしていません)</span> '}${escapeHtml(fieldEffectDescribe(effect))}
+        </div>
+        <button type="button" class="btn" data-idx="${idx}" style="font-size:11px;padding:4px 8px;flex-shrink:0;">🗑 解除</button>
+      `;
+      listEl.appendChild(row);
+    });
+    listEl.querySelectorAll('button[data-idx]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = parseInt(btn.dataset.idx, 10);
+        snapshotPracticeState();
+        practiceState.fieldEffects.splice(idx, 1);
+        renderFieldEffectsList();
+        renderPracticeBoard();
+        showToast('フィールド効果を解除しました');
+      });
+    });
+  }
+  document.getElementById('fieldEffectsBtn').addEventListener('click', openFieldEffectsModal);
+  document.getElementById('fieldEffectsCloseBtn').addEventListener('click', closeFieldEffectsModal);
+  document.getElementById('fieldEffectsModal').addEventListener('click', (e) => {
+    if (e.target.id === 'fieldEffectsModal') closeFieldEffectsModal();
+  });
+  document.getElementById('fieldEffectAddBtn').addEventListener('click', openAddFieldEffectForm);
+
+  function openAddFieldEffectForm() {
+    const self = practiceState.players[practiceState.viewingIndex];
+    const otherIndex = 1 - practiceState.viewingIndex;
+    openZonePopup(centerPoint(), '新しいフィールド効果を追加', [
+      {
+        custom: true,
+        render: (container) => {
+          container.style.cssText = 'display:flex;flex-direction:column;gap:8px;width:280px;';
+          container.innerHTML = `
+            <div>
+              <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px;">誰の効果か(「自分」「相手」の基準になるプレイヤー)</div>
+              <select id="feOwner" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px;color:var(--text);font-size:12px;">
+                <option value="${practiceState.viewingIndex}">${escapeHtml(self.deckName)}(今見ている側)</option>
+                <option value="${otherIndex}">${escapeHtml(practiceState.players[otherIndex].deckName)}</option>
+              </select>
+            </div>
+            <div>
+              <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px;">対象</div>
+              <select id="feTarget" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px;color:var(--text);font-size:12px;">
+                <option value="own">自分の全デジモン</option>
+                <option value="opponent">相手の全デジモン</option>
+              </select>
+            </div>
+            <div>
+              <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px;">DP増減(例: 2000 / -3000)</div>
+              <input type="number" id="feAmount" step="1000" value="1000" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px;color:var(--text);font-size:12px;">
+            </div>
+            <div>
+              <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px;">持続タイミング</div>
+              <select id="feDuration" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px;color:var(--text);font-size:12px;">
+                <option value="thisTurn">このターンの間</option>
+                <option value="untilOpponentTurnEnd">相手のターン終了まで</option>
+                <option value="ownTurnOnly">自分のターンのみ(毎ターン継続)</option>
+                <option value="whileCard">特定のカードがある間</option>
+              </select>
+            </div>
+            <div id="feCardWrap" style="display:none;">
+              <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px;">対象カード(番号または名前で検索)</div>
+              <input type="text" id="feCardQuery" placeholder="例: BT21-003 または カード名" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px;color:var(--text);font-size:12px;">
+              <div id="feCardResults" style="max-height:120px;overflow-y:auto;margin-top:4px;"></div>
+              <div style="font-size:10px;color:var(--text-dim);margin-top:4px;">選択済み: <span id="feCardSelected">(未選択)</span></div>
+              <label style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:11px;">
+                <input type="checkbox" id="feCardAnywhere"> セキュリティの表向き以外(場にある場合)も含める
+              </label>
+            </div>
+            <button type="button" id="feConfirmBtn" class="btn primary" style="margin-top:4px;">追加</button>
+          `;
+          const durationSel = container.querySelector('#feDuration');
+          const cardWrap = container.querySelector('#feCardWrap');
+          durationSel.addEventListener('change', () => {
+            cardWrap.style.display = durationSel.value === 'whileCard' ? 'block' : 'none';
+          });
+          let selectedCard = null;
+          const queryInput = container.querySelector('#feCardQuery');
+          const resultsEl = container.querySelector('#feCardResults');
+          queryInput.addEventListener('input', () => {
+            const q = queryInput.value.trim().toLowerCase();
+            resultsEl.innerHTML = '';
+            if (q.length < 2 || !currentDb || !Array.isArray(currentDb.cards)) return;
+            const matches = currentDb.cards.filter(c =>
+              (c.number || '').toLowerCase().includes(q) || (c.name || '').toLowerCase().includes(q)
+            ).slice(0, 8);
+            matches.forEach(c => {
+              const opt = document.createElement('div');
+              opt.style.cssText = 'font-size:11px;padding:4px 6px;cursor:pointer;border-radius:4px;';
+              opt.textContent = `${c.name}(${c.number})`;
+              opt.addEventListener('click', () => {
+                selectedCard = c;
+                container.querySelector('#feCardSelected').textContent = `${c.name}(${c.number})`;
+                resultsEl.innerHTML = '';
+                queryInput.value = '';
+              });
+              opt.addEventListener('mouseenter', () => { opt.style.background = 'var(--panel-raised)'; });
+              opt.addEventListener('mouseleave', () => { opt.style.background = ''; });
+              resultsEl.appendChild(opt);
+            });
+          });
+          container.querySelector('#feConfirmBtn').addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            const ownerIndex = parseInt(container.querySelector('#feOwner').value, 10);
+            const target = container.querySelector('#feTarget').value;
+            const amount = parseInt(container.querySelector('#feAmount').value, 10);
+            const duration = durationSel.value;
+            if (isNaN(amount) || amount === 0) { showToast('DP増減の数値が不正です', true); return; }
+            if (duration === 'whileCard' && !selectedCard) { showToast('対象カードを選んでください', true); return; }
+            closeZonePopup();
+            snapshotPracticeState();
+            const effect = {
+              id: `fe-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+              ownerIndex, target, amount, duration,
+              expireAtTurnCount: computeExpireAtTurnCount(duration, ownerIndex),
+              refCardNumber: duration === 'whileCard' ? selectedCard.number : null,
+              refCardName: duration === 'whileCard' ? selectedCard.name : null,
+              refCheck: (duration === 'whileCard' && container.querySelector('#feCardAnywhere').checked) ? 'anywhereOwn' : 'securityFaceUp',
+              createdTurn: practiceState.turn.count,
+            };
+            if (!practiceState.fieldEffects) practiceState.fieldEffects = [];
+            practiceState.fieldEffects.push(effect);
+            // フィールド効果の追加により、既に場にいる相手のデジモンがDP0以下に
+            // なることもあるため、両陣営のバトルエリアを確認する。
+            practiceState.players.forEach(p => p.battle.forEach(s => checkFieldEffectDP0OnEntry(s)));
+            renderPracticeBoard();
+            showToast(`🌐 フィールド効果を追加しました: ${fieldEffectDescribe(effect)}`);
+            openFieldEffectsModal();
+          });
+        },
+      },
+    ], true);
+  }
 
   // ---------- Practice log (勝敗+最終盤面だけを記録・呼び出し) ----------
   const PRACTICE_LOG_KEY = 'digica_practice_logs';
