@@ -1537,7 +1537,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.28.11</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.28.14</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -3004,7 +3004,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.28.11`);
+    log(`DigiCA Tool build v0.28.14`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -3313,6 +3313,8 @@
     if (!isFieldEffectActive(effect)) return false;
     const owner = findStackOwnerAndZone(stack);
     if (!owner) return false;
+    // フィールド効果はバトルエリアのデジモンのみに影響する(育成エリアは対象外)。
+    if (owner.zone !== 'battle') return false;
     const stackOwnerIndex = practiceState.players.indexOf(owner.player);
     const isSameSide = stackOwnerIndex === effect.ownerIndex;
     return effect.target === 'own' ? isSameSide : !isSameSide;
@@ -6286,6 +6288,29 @@
   // 「〜することで」「相手は〜できる。破棄しなかったなら」等、追加コストや条件・選択が
   // 絡むものは誤動作の元になるため対象外にする(・メモリー行の直前が≪ディレイ≫の
   // 独立行であることを要求することで、単純な形だけを拾う)。
+  // 「【自分のターン開始時】自分のメモリーがN以下のとき、Mにする」という、多数のテイマー
+  // カードが持つ定型効果(スターターのテイマー等、87枚で確認)。そのプレイヤーのバトル
+  // エリアに該当テイマーがいれば、ターン開始時に自動で判定・適用する。
+  function applyTurnStartMemoryGuarantee() {
+    if (!practiceState) return;
+    const turnPlayer = practiceState.players[practiceState.turn.playerIndex];
+    const pat = /【自分のターン開始時】(?:自分の)?メモリーが(\d+)以下(?:のとき|なら)、(\d+)にする/;
+    let threshold = null;
+    let target = null;
+    for (const s of turnPlayer.battle) {
+      const c = getStackTopCard(s);
+      if (c && c.category === 'tamer' && c.effect) {
+        const m = pat.exec(c.effect);
+        if (m) { threshold = parseInt(m[1], 10); target = parseInt(m[2], 10); break; }
+      }
+    }
+    if (threshold === null) return;
+    const currentTowardOpponent = practiceState.turn.playerIndex === 0 ? practiceState.memory : -practiceState.memory;
+    if (currentTowardOpponent <= threshold) {
+      practiceState.memory = practiceState.turn.playerIndex === 0 ? target : -target;
+      showToast(`🃏 テイマー効果: メモリーが${threshold}以下だったため${target}にしました`);
+    }
+  }
   function checkAutoDelayMemory(stack) {
     const card = getStackTopCard(stack);
     if (!card || !card.effect || !practiceState) return;
@@ -7984,6 +8009,7 @@
         if (p.raising) pruneExpiredTempDPModifiers(p.raising);
         p.battle.forEach(s => pruneExpiredTempDPModifiers(s));
       });
+      applyTurnStartMemoryGuarantee();
       const nextPlayer = practiceState.players[nextPlayerIndex];
       const lockedRaisingSkipped = nextPlayer.raising && hasLock(nextPlayer.raising, 'noActive');
       if (nextPlayer.raising && !lockedRaisingSkipped) nextPlayer.raising.rested = false;
