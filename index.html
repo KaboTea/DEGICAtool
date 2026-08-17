@@ -1076,6 +1076,25 @@
   }
   .hand-card[draggable="true"] { cursor: grab; }
   .hand-card[draggable="true"]:active { cursor: grabbing; }
+  .hand-card .hc-mobile-btn {
+    display: none;
+    width: 100%;
+    justify-content: center;
+    align-items: center;
+    background: var(--panel-raised);
+    border: none;
+    border-top: 1px solid var(--border);
+    color: var(--text-dim);
+    font-size: 15px;
+    padding: 2px 0;
+    cursor: pointer;
+  }
+  @media (max-width: 700px) {
+    .hand-row { gap: 3px; }
+    .hand-card { width: 44px; }
+    .hand-card .hc-name, .hand-card .hc-actions { display: none; }
+    .hand-card .hc-mobile-btn { display: flex; }
+  }
   #selfRaisingArea.drop-hover, #selfBattleArea.drop-hover, .mat-pile.drop-hover {
     outline: 2px dashed var(--accent);
     outline-offset: -2px;
@@ -1407,12 +1426,16 @@
 
   .memory-line {
     display: flex;
-    justify-content: safe center;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 10px 0;
+  }
+  .memory-line .ml-row {
+    display: flex;
+    justify-content: center;
     align-items: center;
     gap: 3px;
-    padding: 10px 0;
-    flex-wrap: nowrap;
-    overflow-x: auto;
   }
   .memory-line .ml-slot {
     width: 22px;
@@ -1537,7 +1560,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.29.5</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.29.6</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -3004,7 +3027,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.29.5`);
+    log(`DigiCA Tool build v0.29.6`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -4940,19 +4963,28 @@
     const line = document.getElementById('memoryLine');
     line.innerHTML = '';
     const memoryFromSelfView = practiceState.viewingIndex === 0 ? practiceState.memory : -practiceState.memory;
-    // Slots go from -10 (leftmost, deep in self's favor) to +10 (rightmost, deep in opponent's favor)
-    for (let v = -10; v <= 10; v++) {
-      const slot = document.createElement('div');
-      slot.className = 'ml-slot mono' + (v === 0 ? ' zero' : '') + (v === memoryFromSelfView ? ' current' : '');
-      slot.textContent = v === 0 ? '0' : Math.abs(v);
-      slot.title = `メモリーを${v >= 0 ? '+' : ''}${v}にする`;
-      slot.addEventListener('click', () => {
-        const actual = practiceState.viewingIndex === 0 ? v : -v;
-        practiceState.memory = actual;
-        renderPracticeBoard();
+    // Slots go from -10 (深く自分寄り) to +10 (深く相手寄り)。スマホ幅で横スクロールが
+    // 必要にならないよう、21個を3行(7個ずつ)に分けて表示する。
+    const allValues = [];
+    for (let v = -10; v <= 10; v++) allValues.push(v);
+    const rows = [allValues.slice(0, 7), allValues.slice(7, 14), allValues.slice(14, 21)];
+    rows.forEach(rowValues => {
+      const rowEl = document.createElement('div');
+      rowEl.className = 'ml-row';
+      rowValues.forEach(v => {
+        const slot = document.createElement('div');
+        slot.className = 'ml-slot mono' + (v === 0 ? ' zero' : '') + (v === memoryFromSelfView ? ' current' : '');
+        slot.textContent = v === 0 ? '0' : Math.abs(v);
+        slot.title = `メモリーを${v >= 0 ? '+' : ''}${v}にする`;
+        slot.addEventListener('click', () => {
+          const actual = practiceState.viewingIndex === 0 ? v : -v;
+          practiceState.memory = actual;
+          renderPracticeBoard();
+        });
+        rowEl.appendChild(slot);
       });
-      line.appendChild(slot);
-    }
+      line.appendChild(rowEl);
+    });
   }
 
   function renderPracticeBoard() {
@@ -5022,6 +5054,7 @@
         <img src="${escapeHtml(miniCardImg(number))}" alt="" onerror="this.style.opacity=0">
         <div class="hc-name">${escapeHtml(miniCardName(number))}</div>
         <div class="hc-actions"></div>
+        <button type="button" class="hc-mobile-btn" title="操作">⋮</button>
       `;
       c.querySelector('img').addEventListener('click', () => { if (card) openCardDetail(card, true); });
       // ドラッグ&ドロップ(小さく試験導入): 手札カードを育成/バトルエリアへドラッグして
@@ -5035,25 +5068,35 @@
         c.addEventListener('dragend', () => { draggedHandCard = null; });
       }
 
+      const mobileBtn = c.querySelector('.hc-mobile-btn');
       if (canAct && card) {
+        // 操作の定義を1箇所にまとめ、PC向けのインラインボタンと、スマホ幅向けの
+        // 「⋮」メニュー(ポップアップ)の両方から同じ内容を使い回す。
+        const actionDefs = [];
+        actionDefs.push({ label: card.category === 'option' || card.dual ? '使用' : '登場', onClick: (e) => appearFromHand(index, number, e) });
+        if (card.category !== 'tamer' && card.category !== 'option') {
+          actionDefs.push({ label: '進化', onClick: () => enterEvolveMode(index, number) });
+        }
+        actionDefs.push({ label: '進化元に追加', onClick: () => enterMaterialTargetMode(number, 'hand', index) });
+        if (cardHasLinkEffect(card)) {
+          actionDefs.push({ label: '🔗 リンクする', onClick: () => enterLinkTargetMode('hand', index, number) });
+        }
+        actionDefs.push({ label: '捨てる', onClick: () => trashFromHand(index) });
+
         const actions = c.querySelector('.hc-actions');
-        const mkBtn = (label, fn, disabled) => {
+        actionDefs.forEach(def => {
           const b = document.createElement('button');
           b.type = 'button';
-          b.textContent = label;
-          b.disabled = !!disabled;
-          b.addEventListener('click', (e) => { e.stopPropagation(); fn(e); });
+          b.textContent = def.label;
+          b.addEventListener('click', (e) => { e.stopPropagation(); def.onClick(e); });
           actions.appendChild(b);
-        };
-        mkBtn(card.category === 'option' || card.dual ? '使用' : '登場', (e) => appearFromHand(index, number, e));
-        if (card.category !== 'tamer' && card.category !== 'option') {
-          mkBtn('進化', () => enterEvolveMode(index, number));
-        }
-        mkBtn('進化元に追加', () => enterMaterialTargetMode(number, 'hand', index));
-        if (cardHasLinkEffect(card)) {
-          mkBtn('🔗 リンクする', () => enterLinkTargetMode('hand', index, number));
-        }
-        mkBtn('捨てる', () => trashFromHand(index));
+        });
+        mobileBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openZonePopup(e, `「${card.name}」の操作`, actionDefs);
+        });
+      } else {
+        mobileBtn.style.display = 'none';
       }
       handRow.appendChild(c);
     });
