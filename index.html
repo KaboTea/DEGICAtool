@@ -1063,8 +1063,9 @@
     border-radius: 8px;
     overflow: hidden;
   }
-  .hand-card[draggable="true"] { cursor: grab; }
+  .hand-card[draggable="true"] { cursor: grab; touch-action: none; }
   .hand-card[draggable="true"]:active { cursor: grabbing; }
+  .stack-tile[draggable="true"] { touch-action: none; }
   .hand-card .hc-mobile-btn {
     display: none;
     width: 100%;
@@ -1597,12 +1598,13 @@
     .mat-pile .mp-label { font-size: 8px; margin-top: 1px; }
     .sub-area .sa-label { font-size: 8px; margin-bottom: 3px; }
 
-    /* プレイマットの並び替え: 1段目=セキュリティ+デッキ/トラッシュ(横並び)、
-       2段目=バトルエリア(全幅)、3段目=デジタマ+育成(横並び・隣接)。
+    /* プレイマットの並び替え: 1段目=セキュリティ〜(左)/デッキ・トラッシュ(右寄せ)、
+       2段目=バトルエリア(全幅)、3段目=デジタマ+育成+孵化・移動ボタン(横並び・隣接)。
        (DOM順は変わらないが、orderで見た目の並びを変える) */
     .mat-row { flex-wrap: wrap; justify-content: flex-start; gap: 8px 14px; }
     .mat-side-col { width: auto; order: 1; }
-    .mat-side-col-right { order: 1; flex-direction: row; gap: 6px; padding-top: 0; }
+    /* デッキ/トラッシュはセキュリティの表向きカード表示と干渉しないよう右端に寄せる */
+    .mat-side-col-right { order: 1; flex-direction: row; gap: 6px; padding-top: 0; margin-left: auto; }
     .battle-sub-area { order: 2; width: 100%; flex: 1 1 100%; min-height: 140px; }
     #selfEggCluster, #opponentEggCluster { order: 3; }
     .raising-sub-area {
@@ -1618,6 +1620,8 @@
     .raising-sub-area > div:not(.sa-label) { display: flex; justify-content: center; }
     /* 育成エリアのカードサイズをデジタマ(.mat-pile)と揃える */
     .raising-sub-area .stack-tile { width: 42px; }
+    /* 孵化/移動ボタンはスペースを無駄にしないよう育成エリアの横に出す */
+    #raisingPhaseActions { order: 3; flex-direction: row; flex-wrap: wrap; align-self: center; }
 
     /* 戻すボタン等が画面外にはみ出さないよう折り返し可能にする */
     .practice-topbar, .turn-memory-row { flex-wrap: wrap; }
@@ -1637,6 +1641,17 @@
     touch-action: none;
   }
 </style>
+<!-- タッチ端末でもHTML5ドラッグ&ドロップがそのまま動くようにするポリフィル。
+     長押し(press-hold)でドラッグ開始するモードで有効化する。 -->
+<script type="module">
+  import { enableDragDropTouch } from "https://cdn.jsdelivr.net/npm/@dragdroptouch/drag-drop-touch@latest/dist/drag-drop-touch.esm.min.js";
+  enableDragDropTouch(document.body, document.body, {
+    isPressHoldMode: true,
+    pressHoldAwaitTimeout: 400,
+    pressHoldMargin: 25,
+    pressHoldThreshold: 0,
+  });
+</script>
 </head>
 <body>
 
@@ -1644,7 +1659,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.29.14</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.29.16</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -1832,10 +1847,10 @@
         <div class="mat-row">
           <div class="mat-side-col">
             <div class="mat-cluster" id="selfSideCluster"></div>
-            <div class="db-actions" id="raisingPhaseActions"></div>
           </div>
           <div class="mat-cluster" id="selfEggCluster"></div>
           <div class="sub-area raising-sub-area"><div class="sa-label">育成</div><div id="selfRaisingArea"></div></div>
+          <div class="db-actions" id="raisingPhaseActions"></div>
           <div class="sub-area battle-sub-area"><div class="sa-label">バトルエリア</div><div id="selfBattleArea" class="battle-groups-wrap"></div></div>
           <div class="mat-side-col-right" id="selfDeckTrashCluster"></div>
         </div>
@@ -3121,7 +3136,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.29.14`);
+    log(`DigiCA Tool build v0.29.16`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
