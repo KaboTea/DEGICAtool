@@ -1659,7 +1659,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.29.16</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.29.18</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -3136,7 +3136,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.29.16`);
+    log(`DigiCA Tool build v0.29.18`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -5827,8 +5827,8 @@
   function evaluateSpecialCondition(conditionText, topCard, targetStack) {
     if (!conditionText || !topCard) return null;
     const text = conditionText;
-    const nameRe = /名称に((?:「[^」]+」\/?)+)を含む(?:Lv\.?(\d+))?/g;
-    const traitRe = /特徴に((?:「[^」]+」\/?)+)を持つ(?:Lv\.?(\d+))?/g;
+    const nameRe = /名称に?((?:「[^」]+」\/?)+)を含む(?:Lv\.?(\d+))?/g;
+    const traitRe = /特徴に?((?:「[^」]+」\/?)+)を持つ(?:Lv\.?(\d+))?/g;
     const matRe = /進化元(?:枚数)?が(\d+)枚以上/g;
     const clauses = [];
     let matchedSpan = 0;
@@ -5845,6 +5845,9 @@
       const traits = (m[1].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
       const lvOk = !m[2] || (topCard.level != null && topCard.level >= parseInt(m[2], 10));
       const cardTraits = (topCard.type || '').split('/');
+      // 「アプモン」はDB上、通常の特徴欄(type)ではなくform欄(本来は進化段階を表す欄)に
+      // 記録されていることがあるため(heroi.ccの生データで確認済み)、その場合も拾う。
+      if (topCard.form && topCard.form.includes('アプモン')) cardTraits.push('アプモン');
       const traitOk = traits.some(t => cardTraits.some(ct => ct.includes(t)));
       clauses.push(lvOk && traitOk);
     }
