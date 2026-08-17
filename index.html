@@ -675,11 +675,6 @@
     box-shadow: 0 10px 40px rgba(0,0,0,0.5);
   }
 
-  @media (max-width: 480px) {
-    .detail-body { flex-direction: column; }
-    .detail-body img { width: 140px; margin: 0 auto; }
-  }
-
   /* ---- Deck building tab ---- */
   .deck-layout {
     display: flex;
@@ -891,12 +886,6 @@
     color: var(--accent);
     margin-top: 8px;
     min-height: 16px;
-  }
-
-  @media (max-width: 720px) {
-    .deck-layout { flex-direction: column; }
-    .deck-list-col { flex-basis: auto; }
-    .my-deck-list { max-height: 200px; }
   }
 
   /* ---- Practice (solo goldfishing) tab ---- */
@@ -1568,16 +1557,22 @@
     opacity: 1;
     transform: translateX(-50%) translateY(0);
   }
-  .toast.error { border-color: var(--danger); color: var(--danger); }
-
   /* ========================================================================
      スマホ幅向けの上書きスタイル。CSSは同じ詳細度なら「後に書かれた方が勝つ」
      ため、対象セレクタの通常ルールがこのファイルのどこにあっても確実に
      上書きできるよう、このブロックをstyleタグの一番最後に置く。
      (以前、このブロックを先頭寄りに置いていたときに、後方にある通常ルールに
      上書きされて一切反映されないという不具合があったため、この位置に固定する)
+     ブレイクポイントは768pxに統一する(以前は480px/700px/720pxが混在していた)。
      ======================================================================== */
-  @media (max-width: 700px) {
+  @media (max-width: 768px) {
+    .detail-body { flex-direction: column; }
+    .detail-body img { width: 140px; margin: 0 auto; }
+
+    .deck-layout { flex-direction: column; }
+    .deck-list-col { flex-basis: auto; }
+    .my-deck-list { max-height: 200px; }
+
     .hand-row { gap: 3px; }
     .hand-card { width: 44px; }
     .hand-card .hc-name, .hand-card .hc-actions { display: none; }
@@ -1587,19 +1582,56 @@
     .memory-line { flex-direction: column; flex-wrap: nowrap; overflow-x: visible; gap: 4px; }
     .memory-line .ml-row { display: flex; justify-content: center; align-items: center; gap: 3px; }
 
-    /* バトルエリア: 折り返さず横スクロールのレーンにする */
+    /* バトルエリア: 折り返さず横スクロールのレーンにする。
+       -webkit-overflow-scrolling:touchでiOSでも慣性スクロールが効くようにする。 */
     .battle-top-group, .battle-bottom-group {
       flex-wrap: nowrap;
       overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
       padding-top: 34px;
     }
     .stack-tile { flex-shrink: 0; }
 
-    /* デッキ/トラッシュ/育成/セキュリティをコンパクトに */
+    /* デッキ/トラッシュ/セキュリティをコンパクトに */
     .mat-pile { width: 42px; }
     .mat-pile .mp-label { font-size: 8px; margin-top: 1px; }
-    .raising-sub-area { width: 84px; min-height: 92px; padding: 4px; }
     .sub-area .sa-label { font-size: 8px; margin-bottom: 3px; }
+
+    /* プレイマットの並び替え: セキュリティ+デジタマ/デッキ・トラッシュを上段に
+       横並びで、バトルエリアと育成エリアはそれぞれ単独で全幅の行にする。
+       (DOM順は 側列/育成/バトル/右側列 のままだが、orderで見た目の並びを変える) */
+    .mat-row { flex-wrap: wrap; justify-content: space-between; gap: 8px; }
+    .mat-side-col { width: auto; order: 1; }
+    .mat-side-col-right { order: 2; }
+    .battle-sub-area { order: 3; width: 100%; flex: 1 1 100%; min-height: 140px; }
+    .raising-sub-area {
+      order: 4;
+      width: 100%;
+      flex: 1 1 100%;
+      min-height: 0;
+      padding: 6px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .raising-sub-area > div:not(.sa-label) { display: flex; justify-content: center; }
+
+    /* 戻すボタン等が画面外にはみ出さないよう折り返し可能にする */
+    .practice-topbar, .turn-memory-row { flex-wrap: wrap; }
+    #practiceUndoBtn { margin-left: auto; }
+
+    /* タッチ端末にはホバーがないため、「＋」等のクイック操作ボタンは常時表示にする */
+    .tile-quickadd {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  /* モーダル表示中は背面(body)のスクロールを止める(スクロールチェーン対策)。
+     各モーダルのopen/close処理でbodyにこのクラスを付け外しする。 */
+  body.modal-open {
+    overflow: hidden;
+    touch-action: none;
   }
 </style>
 </head>
@@ -1609,7 +1641,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.29.10</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.29.12</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -1768,11 +1800,9 @@
           <div class="mat-side-col">
             <div class="mat-cluster" id="opponentHandCluster"></div>
             <div class="mat-cluster" id="opponentSideCluster"></div>
-            <div class="mat-row" style="gap:6px;">
-              <div class="mat-cluster" id="opponentEggCluster"></div>
-              <div class="sub-area raising-sub-area"><div class="sa-label">育成</div><div id="opponentRaisingArea"></div></div>
-            </div>
+            <div class="mat-cluster" id="opponentEggCluster"></div>
           </div>
+          <div class="sub-area raising-sub-area"><div class="sa-label">育成</div><div id="opponentRaisingArea"></div></div>
           <div class="sub-area battle-sub-area"><div class="sa-label">バトルエリア</div><div id="opponentBattleArea" class="battle-groups-wrap"></div></div>
           <div class="mat-side-col-right" id="opponentDeckTrashCluster"></div>
         </div>
@@ -1788,7 +1818,7 @@
       </div>
 
       <!-- メモリーゲージ: 左にターン表示、右に1手戻す -->
-      <div style="display:flex;align-items:center;gap:10px;">
+      <div class="turn-memory-row" style="display:flex;align-items:center;gap:10px;">
         <span class="mono" id="turnIndicatorLabel" style="font-size:12px;color:var(--text-dim);white-space:nowrap;"></span>
         <div class="memory-line" id="memoryLine" style="flex:1;"></div>
         <button class="btn" id="practiceUndoBtn" disabled style="white-space:nowrap;">⟲ 1手戻す</button>
@@ -1800,11 +1830,9 @@
           <div class="mat-side-col">
             <div class="mat-cluster" id="selfSideCluster"></div>
             <div class="db-actions" id="raisingPhaseActions"></div>
-            <div class="mat-row" style="gap:6px;">
-              <div class="mat-cluster" id="selfEggCluster"></div>
-              <div class="sub-area raising-sub-area"><div class="sa-label">育成</div><div id="selfRaisingArea"></div></div>
-            </div>
+            <div class="mat-cluster" id="selfEggCluster"></div>
           </div>
+          <div class="sub-area raising-sub-area"><div class="sa-label">育成</div><div id="selfRaisingArea"></div></div>
           <div class="sub-area battle-sub-area"><div class="sa-label">バトルエリア</div><div id="selfBattleArea" class="battle-groups-wrap"></div></div>
           <div class="mat-side-col-right" id="selfDeckTrashCluster"></div>
         </div>
@@ -1991,6 +2019,20 @@
 
 <script>
 (function () {
+  // ---------- モーダル表示中の背面スクロール防止(スクロールチェーン対策) ----------
+  // 個々のモーダル(.modal-backdrop)のopen/closeを1箇所ずつ書き換える代わりに、
+  // 各モーダルのclass変化を監視し、いずれか1つでも.openを持っていれば
+  // body.modal-openを付与する(付いていなければ外す)。新規に追加されるモーダルにも
+  // このタグさえ付いていれば自動的に対応できる。
+  function updateBodyModalOpenState() {
+    const anyOpen = Array.from(document.querySelectorAll('.modal-backdrop')).some(el => el.classList.contains('open'));
+    document.body.classList.toggle('modal-open', anyOpen);
+  }
+  document.querySelectorAll('.modal-backdrop').forEach(el => {
+    new MutationObserver(updateBodyModalOpenState).observe(el, { attributes: true, attributeFilter: ['class'] });
+  });
+  updateBodyModalOpenState();
+
   // ---------- Tab switching ----------
   const tabButtons = document.querySelectorAll('.tab-btn');
   const tabPanels = {
@@ -3076,7 +3118,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.29.10`);
+    log(`DigiCA Tool build v0.29.12`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
