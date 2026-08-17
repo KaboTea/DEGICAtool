@@ -1133,30 +1133,6 @@
     white-space: nowrap;
   }
   .hand-card .hc-actions button:hover { color: var(--text); border-color: var(--accent-dim); }
-  @media (max-width: 700px) {
-    .hand-row { gap: 3px; }
-    .hand-card { width: 44px; }
-    .hand-card .hc-name, .hand-card .hc-actions { display: none; }
-    .hand-card .hc-mobile-btn { display: flex; }
-
-    /* メモリー: スマホ幅のときだけ21マスを3行×7列に折り返す */
-    .memory-line { flex-direction: column; flex-wrap: nowrap; overflow-x: visible; gap: 4px; }
-    .memory-line .ml-row { display: flex; justify-content: center; align-items: center; gap: 3px; }
-
-    /* バトルエリア: 折り返さず横スクロールのレーンにする */
-    .battle-top-group, .battle-bottom-group {
-      flex-wrap: nowrap;
-      overflow-x: auto;
-      padding-top: 34px;
-    }
-    .stack-tile { flex-shrink: 0; }
-
-    /* デッキ/トラッシュ/育成/セキュリティをコンパクトに */
-    .mat-pile { width: 42px; }
-    .mat-pile .mp-label { font-size: 8px; margin-top: 1px; }
-    .raising-sub-area { width: 84px; min-height: 92px; padding: 4px; }
-    .sub-area .sa-label { font-size: 8px; margin-bottom: 3px; }
-  }
   .hand-card.picking-target { outline: 2px solid var(--accent); }
 
   .evolve-mode-banner {
@@ -1593,6 +1569,38 @@
     transform: translateX(-50%) translateY(0);
   }
   .toast.error { border-color: var(--danger); color: var(--danger); }
+
+  /* ========================================================================
+     スマホ幅向けの上書きスタイル。CSSは同じ詳細度なら「後に書かれた方が勝つ」
+     ため、対象セレクタの通常ルールがこのファイルのどこにあっても確実に
+     上書きできるよう、このブロックをstyleタグの一番最後に置く。
+     (以前、このブロックを先頭寄りに置いていたときに、後方にある通常ルールに
+     上書きされて一切反映されないという不具合があったため、この位置に固定する)
+     ======================================================================== */
+  @media (max-width: 700px) {
+    .hand-row { gap: 3px; }
+    .hand-card { width: 44px; }
+    .hand-card .hc-name, .hand-card .hc-actions { display: none; }
+    .hand-card .hc-mobile-btn { display: flex; }
+
+    /* メモリー: スマホ幅のときだけ21マスを3行×7列に折り返す */
+    .memory-line { flex-direction: column; flex-wrap: nowrap; overflow-x: visible; gap: 4px; }
+    .memory-line .ml-row { display: flex; justify-content: center; align-items: center; gap: 3px; }
+
+    /* バトルエリア: 折り返さず横スクロールのレーンにする */
+    .battle-top-group, .battle-bottom-group {
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      padding-top: 34px;
+    }
+    .stack-tile { flex-shrink: 0; }
+
+    /* デッキ/トラッシュ/育成/セキュリティをコンパクトに */
+    .mat-pile { width: 42px; }
+    .mat-pile .mp-label { font-size: 8px; margin-top: 1px; }
+    .raising-sub-area { width: 84px; min-height: 92px; padding: 4px; }
+    .sub-area .sa-label { font-size: 8px; margin-bottom: 3px; }
+  }
 </style>
 </head>
 <body>
@@ -1601,7 +1609,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.29.9</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.29.10</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -3068,7 +3076,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.29.9`);
+    log(`DigiCA Tool build v0.29.10`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
