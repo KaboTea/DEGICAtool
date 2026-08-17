@@ -1537,7 +1537,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.29.2</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.29.5</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -3004,7 +3004,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.29.2`);
+    log(`DigiCA Tool build v0.29.5`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -5654,7 +5654,50 @@
 
   // 進化ルート選択モーダルを汎用化: 通常進化(1体)・ジョグレス/デジクロス(複数体)の
   // どちらからも呼べるようにし、コストが決まったら onResolve(cost) を呼ぶだけにする。
-  function openEvolveRouteModal(card, topCardForMatching, subtitleText, onResolve, showSpecialOptions, actionLabel, routesOverride) {
+  // 特殊な進化条件文(名称/特徴/進化元枚数)を、可能な範囲でカードDBと突き合わせて
+  // 自動判定する。true=満たす、false=満たさない、null=解析できなかった(自己判断のまま)。
+  // 「/」で並ぶ複数の名称・特徴はOR、複数の独立した条件節(名称条件と特徴条件が別々に
+  // 並ぶ場合等)もOR(いずれか1つを満たせばそのルート自体は成立)として扱う。
+  // テキスト全体をどれだけ解析できたか(網羅度)が低い場合は判定を諦め、nullを返す
+  // (未知の言い回しを含む条件を誤って除外しないため)。
+  function evaluateSpecialCondition(conditionText, topCard, targetStack) {
+    if (!conditionText || !topCard) return null;
+    const text = conditionText;
+    const nameRe = /名称に((?:「[^」]+」\/?)+)を含む(?:Lv\.?(\d+))?/g;
+    const traitRe = /特徴に((?:「[^」]+」\/?)+)を持つ(?:Lv\.?(\d+))?/g;
+    const matRe = /進化元(?:枚数)?が(\d+)枚以上/g;
+    const clauses = [];
+    let matchedSpan = 0;
+    let m;
+    while ((m = nameRe.exec(text))) {
+      matchedSpan += m[0].length;
+      const names = (m[1].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
+      const lvOk = !m[2] || (topCard.level != null && topCard.level >= parseInt(m[2], 10));
+      const nameOk = names.some(n => (topCard.name || '').includes(n));
+      clauses.push(lvOk && nameOk);
+    }
+    while ((m = traitRe.exec(text))) {
+      matchedSpan += m[0].length;
+      const traits = (m[1].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
+      const lvOk = !m[2] || (topCard.level != null && topCard.level >= parseInt(m[2], 10));
+      const cardTraits = (topCard.type || '').split('/');
+      const traitOk = traits.some(t => cardTraits.some(ct => ct.includes(t)));
+      clauses.push(lvOk && traitOk);
+    }
+    if (targetStack) {
+      while ((m = matRe.exec(text))) {
+        matchedSpan += m[0].length;
+        const need = parseInt(m[1], 10);
+        const have = targetStack.cards.length - 1;
+        clauses.push(have >= need);
+      }
+    }
+    if (clauses.length === 0) return null;
+    if (matchedSpan < text.length * 0.6) return null; // 未知の文言が多く残っている場合は判定を諦める
+    return clauses.some(Boolean);
+  }
+
+  function openEvolveRouteModal(card, topCardForMatching, subtitleText, onResolve, showSpecialOptions, actionLabel, routesOverride, targetStackForMatching) {
     pendingEvolveResolve = onResolve;
     const routes = routesOverride || buildEvolveRoutes(card, topCardForMatching);
     evolveRouteSubtitle.textContent = subtitleText;
@@ -5665,7 +5708,7 @@
     if (routes.length === 0) {
       evolveRouteList.innerHTML = '<div class="empty-state" style="padding:8px 0;">条件に一致するルートが見つかりませんでした。下の手動入力を使ってください。</div>';
     } else {
-      routes.forEach(r => {
+      const renderRoute = (r) => {
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'evolve-route-item';
@@ -5679,7 +5722,34 @@
           if (pendingEvolveResolve) pendingEvolveResolve(r.cost);
         });
         evolveRouteList.appendChild(btn);
+      };
+      // 特殊条件文(名称/特徴/進化元枚数)を、可能な範囲で自動判定する。判定できて
+      // 「満たさない」と分かったものだけ一旦隠し、手動で表示し直せるようにする
+      // (未知の言い回しは判定を諦めて常に表示する=既存の挙動のまま)。
+      const hiddenRoutes = [];
+      routes.forEach(r => {
+        const result = r.sub ? evaluateSpecialCondition(r.sub, topCardForMatching, targetStackForMatching) : null;
+        if (result === false) hiddenRoutes.push(r);
+        else renderRoute(r);
       });
+      if (evolveRouteList.children.length === 0 && hiddenRoutes.length > 0) {
+        evolveRouteList.innerHTML = '<div class="empty-state" style="padding:8px 0;">条件を満たすルートが見つかりませんでした(下で隠れたルートを表示できます)。</div>';
+      }
+      if (hiddenRoutes.length > 0) {
+        const toggleWrap = document.createElement('div');
+        toggleWrap.style.cssText = 'margin-top:6px;';
+        const toggleBtn = document.createElement('button');
+        toggleBtn.type = 'button';
+        toggleBtn.className = 'btn';
+        toggleBtn.style.cssText = 'font-size:11px;padding:5px 8px;';
+        toggleBtn.textContent = `条件を満たさないため隠れているルートを表示(${hiddenRoutes.length}件)`;
+        toggleBtn.addEventListener('click', () => {
+          toggleWrap.remove();
+          hiddenRoutes.forEach(renderRoute);
+        });
+        toggleWrap.appendChild(toggleBtn);
+        evolveRouteList.appendChild(toggleWrap);
+      }
     }
     document.getElementById('evolveSpecialRow').style.display = showSpecialOptions ? '' : 'none';
     evolveRouteModal.classList.add('open');
@@ -5693,9 +5763,9 @@
     const isRaisingTarget = self.raising === targetStack;
     openEvolveRouteModal(
       evolveMode.card, topCard,
-      `「${evolveMode.card.name}」→ 進化先: ${topCard ? topCard.name : '?'}`,
+      `「${topCard ? topCard.name : '?'}」→「${evolveMode.card.name}」に進化(進化元: ${topCard ? topCard.name : '?'})`,
       (cost) => finalizeEvolve(cost),
-      !isRaisingTarget
+      !isRaisingTarget, null, null, targetStack
     );
   }
 
@@ -6164,7 +6234,7 @@
       payMemory(practiceState.turn.playerIndex, cost);
       renderPracticeBoard();
       showToast(`「${displayName}」を${verb}しました(コスト${cost})`);
-      checkFieldEffectDP0OnEntry(self.battle[self.battle.length - 1]);
+      checkStackRuleViolation(self.battle[self.battle.length - 1]);
       checkAutoRevealTrigger(self.battle[self.battle.length - 1], isOption ? 'メイン' : '登場時');
       resumeAttackStepIfAny();
     };
@@ -6953,6 +7023,11 @@
       cardDetailModal.classList.remove('open');
       renderPracticeBoard();
       showToast(`カードを${DESTINATION_LABEL[destination]}移動しました${materialsDiscarded ? '(進化元・リンクも一緒にトラッシュされました)' : ''}`);
+      // 退化/バースト解除等で一番上のカードが変わった場合(進化元ごと離脱していない場合)、
+      // 新しく露出したカードがDP0以下・デジタマ単体等のルール違反状態でないか確認する。
+      if (!materialsDiscarded && stack.cards.length > 0) {
+        checkStackRuleViolation(stack);
+      }
     };
     if (destination === 'secTop' || destination === 'secBottom') {
       askFaceOrientation((faceDown) => finish(!faceDown));
@@ -7632,19 +7707,54 @@
   // デジモンは即座にルールチェック消滅の対象になる(17-1-3-1)。主要な登場経路
   // (通常登場)から呼ぶ。他の経路(ジョグレス/デジクロス等)で出た場合は、
   // 気づいたら手動で「±DP」を開けば同じ判定(promptDestructionChoice)が出る。
-  function checkFieldEffectDP0OnEntry(stack) {
-    if (!stack || !isDigimonLikeStack(stack)) return;
-    if (!findStackOwnerAndZone(stack)) return;
-    if (getEffectiveDP(stack) <= 0) {
-      promptDestructionChoice(stack);
+  // バトルエリアのルールチェック消滅(17-1-3-1/17-1-3-2)をまとめて判定する。
+  // ・DPが0以下になったデジモン → 即時消滅
+  // ・退化/上から破棄等で一番上がデジタマ(Lv2)になったスタック → デジタマ単体は
+  //   バトルエリアに存在できないため即時消滅
+  // 移動してきたもの・DP増減・進化元構成の変化等、あらゆる経路の後に呼べる汎用チェック。
+  function checkStackRuleViolation(stack, afterDone) {
+    if (!stack || !isDigimonLikeStack(stack)) { if (afterDone) afterDone(); return; }
+    if (!findStackOwnerAndZone(stack)) { if (afterDone) afterDone(); return; }
+    const topCard = getStackTopCard(stack);
+    if (topCard && topCard.category === 'digi-egg') {
+      promptDestructionChoice(stack, afterDone, `「${topCard.name}」はデジタマ単体でバトルエリアに存在できないため消滅します`);
+      return;
     }
+    if (getEffectiveDP(stack) <= 0) {
+      promptDestructionChoice(stack, afterDone);
+      return;
+    }
+    if (afterDone) afterDone();
   }
-  function promptDestructionChoice(stack) {
+  // 両陣営のバトルエリア全体を一括チェックする(ターン切替・フィールド効果変更等、
+  // 特定の1スタックに絞れないタイミングで使う)。同時に複数違反があっても、
+  // ポップアップが上書きされて見失われないよう1体ずつ順番に処理する。
+  function checkAllBattleAreaRuleViolations() {
+    if (!practiceState) return;
+    const violators = [];
+    practiceState.players.forEach(p => {
+      p.battle.forEach(s => {
+        if (!isDigimonLikeStack(s)) return;
+        const topCard = getStackTopCard(s);
+        const isEgg = topCard && topCard.category === 'digi-egg';
+        if (isEgg || getEffectiveDP(s) <= 0) violators.push(s);
+      });
+    });
+    const next = () => {
+      if (violators.length === 0) return;
+      const s = violators.shift();
+      checkStackRuleViolation(s, next);
+    };
+    next();
+  }
+  function promptDestructionChoice(stack, afterDone, reason) {
     const topCard = getStackTopCard(stack);
     const centerEvent = { clientX: window.innerWidth / 2 - 130, clientY: 70 };
-    openZonePopup(centerEvent, `「${topCard ? topCard.name : '?'}」がDP0以下になり消滅します`, [
-      { label: 'そのまま消滅させる', onClick: () => resolveDestructionQueue([stack], () => resumeAttackStepIfAny(), { allowEvasion: false }) },
-      { label: '消滅効果を発揮(トラッシュに送らない)', onClick: () => { showToast('消滅効果の処理は手動で行ってください'); resumeAttackStepIfAny(); } },
+    const after = afterDone || resumeAttackStepIfAny;
+    const message = reason || `「${topCard ? topCard.name : '?'}」がDP0以下になり消滅します`;
+    openZonePopup(centerEvent, message, [
+      { label: 'そのまま消滅させる', onClick: () => resolveDestructionQueue([stack], () => after(), { allowEvasion: false }) },
+      { label: '消滅効果を発揮(トラッシュに送らない)', onClick: () => { showToast('消滅効果の処理は手動で行ってください'); after(); } },
     ]);
   }
 
@@ -8082,6 +8192,9 @@
         p.battle.forEach(s => pruneExpiredTempDPModifiers(s));
       });
       applyTurnStartMemoryGuarantee();
+      // ターン限定の進化元DPボーナス等が切り替わることでDP0以下になる場合があるため、
+      // ターン開始時にもバトルエリア全体を確認する。
+      checkAllBattleAreaRuleViolations();
       const nextPlayer = practiceState.players[nextPlayerIndex];
       const lockedRaisingSkipped = nextPlayer.raising && hasLock(nextPlayer.raising, 'noActive');
       if (nextPlayer.raising && !lockedRaisingSkipped) nextPlayer.raising.rested = false;
@@ -8305,7 +8418,7 @@
             practiceState.fieldEffects.push(effect);
             // フィールド効果の追加により、既に場にいる相手のデジモンがDP0以下に
             // なることもあるため、両陣営のバトルエリアを確認する。
-            practiceState.players.forEach(p => p.battle.forEach(s => checkFieldEffectDP0OnEntry(s)));
+            practiceState.players.forEach(p => p.battle.forEach(s => checkStackRuleViolation(s)));
             renderPracticeBoard();
             showToast(`🌐 フィールド効果を追加しました: ${fieldEffectDescribe(effect)}`);
             openFieldEffectsModal();
