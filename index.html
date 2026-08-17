@@ -1379,6 +1379,27 @@
     z-index: 16;
     width: 100%; /* カード幅を超えたら折り返す */
   }
+  .kw-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 4px;
+    border-radius: 9px;
+    background: var(--panel-raised);
+    border: 1px solid var(--border);
+    font-size: 11px;
+    line-height: 1;
+  }
+  .kw-pill-more {
+    cursor: pointer;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    font-weight: 700;
+    color: var(--text-dim);
+  }
+  .kw-pill-more:hover { border-color: var(--accent-dim); color: var(--text); }
   .st-blocker {
     position: static;
     width: 20px;
@@ -1560,7 +1581,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.29.7</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.29.8</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -3027,7 +3048,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.29.7`);
+    log(`DigiCA Tool build v0.29.8`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -4581,9 +4602,14 @@
       ? `<div class="link-peek">${stack.links.map((num, i) => `<div class="link-card-wrap" style="z-index:${i + 1};top:${i * 17}px;"><img src="${escapeHtml(miniCardImg(num))}" alt="" title="リンク" onerror="this.style.opacity=0"></div>`).join('')}</div>`
       : '';
     const kwBadgeList = stackKeywordBadges(stack);
+    // ピルは3個まで表示し、4個目以降は「+N」にまとめてタップで一覧を確認できるようにする
+    // (タイルのサイズを安定させるため)。
+    const kwVisible = kwBadgeList.slice(0, 3);
+    const kwRest = kwBadgeList.slice(3);
     const badgesHtml = (kwBadgeList.length > 0 || hasAnyLock(stack))
       ? `<div class="status-badges-row">
-          ${kwBadgeList.map(def => `<span class="${def.cls}" title="${escapeHtml(def.label)}">${def.cls === 'st-blocker' ? 'B' : def.icon}</span>`).join('')}
+          ${kwVisible.map(def => `<span class="kw-pill" title="${escapeHtml(def.label)}">${def.icon}</span>`).join('')}
+          ${kwRest.length > 0 ? `<span class="kw-pill kw-pill-more">+${kwRest.length}</span>` : ''}
           ${hasAnyLock(stack) ? `<span class="st-lock" title="ロック: ${escapeHtml(Object.keys(LOCK_LABELS).filter(k => hasLock(stack, k)).map(k => LOCK_LABELS[k]).join('/'))}">🔒</span>` : ''}
         </div>`
       : '';
@@ -4609,6 +4635,13 @@
       stack.rested = !stack.rested;
       renderPracticeBoard();
     });
+    const kwMoreEl = el.querySelector('.kw-pill-more');
+    if (kwMoreEl) {
+      kwMoreEl.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openZonePopup(e, 'その他のキーワード効果', kwRest.map(def => ({ label: `${def.icon} ${def.label}`, onClick: () => {} })));
+      });
+    }
     if (isEvolveTarget) {
       el.title = 'クリックして選択';
       el.addEventListener('click', (e) => {
