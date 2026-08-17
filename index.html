@@ -1138,6 +1138,24 @@
     .hand-card { width: 44px; }
     .hand-card .hc-name, .hand-card .hc-actions { display: none; }
     .hand-card .hc-mobile-btn { display: flex; }
+
+    /* メモリー: スマホ幅のときだけ21マスを3行×7列に折り返す */
+    .memory-line { flex-direction: column; flex-wrap: nowrap; overflow-x: visible; gap: 4px; }
+    .memory-line .ml-row { display: flex; justify-content: center; align-items: center; gap: 3px; }
+
+    /* バトルエリア: 折り返さず横スクロールのレーンにする */
+    .battle-top-group, .battle-bottom-group {
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      padding-top: 34px;
+    }
+    .stack-tile { flex-shrink: 0; }
+
+    /* デッキ/トラッシュ/育成/セキュリティをコンパクトに */
+    .mat-pile { width: 42px; }
+    .mat-pile .mp-label { font-size: 8px; margin-top: 1px; }
+    .raising-sub-area { width: 84px; min-height: 92px; padding: 4px; }
+    .sub-area .sa-label { font-size: 8px; margin-bottom: 3px; }
   }
   .hand-card.picking-target { outline: 2px solid var(--accent); }
 
@@ -1447,16 +1465,18 @@
 
   .memory-line {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
+    justify-content: safe center;
     align-items: center;
-    gap: 4px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    gap: 3px;
     padding: 10px 0;
   }
   .memory-line .ml-row {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    gap: 3px;
+    /* デスクトップでは行の区切りを無効化し、21マスを1本の帯として扱う
+       (display:contentsで子要素だけを親のflexコンテキストに直接参加させる) */
+    display: contents;
   }
   .memory-line .ml-slot {
     width: 22px;
@@ -1581,7 +1601,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.29.8</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.29.9</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -3048,7 +3068,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.29.8`);
+    log(`DigiCA Tool build v0.29.9`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
