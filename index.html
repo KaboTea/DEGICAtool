@@ -1217,11 +1217,25 @@
     padding: 12px;
     margin-bottom: 10px;
   }
+  /* デスクトップでは、セキュリティの下に「孵化/移動ボタン」→「デジタマ+育成(横並び)」が
+     来る、以前の見た目をCSS Gridで再現する(HTML構造自体はスマホ向けにフラットな兄弟
+     要素に分解済みのため、Gridのgrid-template-areasで見た目だけを組み立て直す)。 */
   .mat-row {
-    display: flex;
-    align-items: flex-start;
-    gap: 12px;
+    display: grid;
+    grid-template-columns: 190px auto 1fr auto;
+    grid-template-areas:
+      "security  .        battle  decktrash"
+      "actions   .        battle  decktrash"
+      "egg       raising  battle  decktrash";
+    align-items: start;
+    gap: 8px 12px;
   }
+  .mat-side-col { grid-area: security; }
+  #selfEggCluster, #opponentEggCluster { grid-area: egg; }
+  #raisingPhaseActions { grid-area: actions; }
+  .raising-sub-area { grid-area: raising; }
+  .battle-sub-area { grid-area: battle; }
+  .mat-side-col-right { grid-area: decktrash; }
   .mat-cluster {
     display: flex;
     gap: 8px;
@@ -1600,11 +1614,12 @@
 
     /* プレイマットの並び替え: 1段目=セキュリティ〜(左)/デッキ・トラッシュ(右寄せ)、
        2段目=バトルエリア(全幅)、3段目=デジタマ+育成+孵化・移動ボタン(横並び・隣接)。
-       (DOM順は変わらないが、orderで見た目の並びを変える) */
-    .mat-row { flex-wrap: wrap; justify-content: flex-start; gap: 8px 14px; }
+       (デスクトップはCSS Gridだが、スマホではFlex+orderで並び替える) */
+    .mat-row { display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 8px 14px; }
     .mat-side-col { width: auto; order: 1; }
-    /* デッキ/トラッシュはセキュリティの表向きカード表示と干渉しないよう右端に寄せる */
-    .mat-side-col-right { order: 1; flex-direction: row; gap: 6px; padding-top: 0; margin-left: auto; }
+    /* デッキ/トラッシュはセキュリティの表向きカード表示と干渉しないよう右端に寄せる。
+       高さが微妙に異なるとズレて見えるため上端で揃える。 */
+    .mat-side-col-right { order: 1; flex-direction: row; align-items: flex-start; gap: 6px; padding-top: 0; margin-left: auto; }
     .battle-sub-area { order: 2; width: 100%; flex: 1 1 100%; min-height: 140px; }
     #selfEggCluster, #opponentEggCluster { order: 3; }
     .raising-sub-area {
@@ -1620,17 +1635,38 @@
     .raising-sub-area > div:not(.sa-label) { display: flex; justify-content: center; }
     /* 育成エリアのカードサイズをデジタマ(.mat-pile)と揃える */
     .raising-sub-area .stack-tile { width: 42px; }
+    /* 「育成」ラベルは、中にカードが入ったときだけ表示位置がズレて見えるため非表示にする
+       (デジタマの隣に置かれることで、見た目からも育成エリアだと分かるため) */
+    .raising-sub-area .sa-label { display: none; }
     /* 孵化/移動ボタンはスペースを無駄にしないよう育成エリアの横に出す */
     #raisingPhaseActions { order: 3; flex-direction: row; flex-wrap: wrap; align-self: center; }
 
     /* 戻すボタン等が画面外にはみ出さないよう折り返し可能にする */
     .practice-topbar, .turn-memory-row { flex-wrap: wrap; }
     #practiceUndoBtn { margin-left: auto; }
+    /* デッキ名の長さによって行の折り返し方が変わり、ターン表示の位置がターンごとに
+       ズレて見えてしまうため、幅を固定してはみ出す分は省略表示にする */
+    #turnIndicatorLabel {
+      max-width: 96px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      display: inline-block;
+      vertical-align: middle;
+    }
 
-    /* タッチ端末にはホバーがないため、「＋」等のクイック操作ボタンは常時表示にする */
+    /* タッチ端末にはホバーがないため、「＋」等のクイック操作ボタンは常時表示にする。
+       ただしバトルエリア/育成エリアのレスト切替ボタンは、狭いタイルに対して大きすぎるため
+       小さくする。 */
     .tile-quickadd {
       opacity: 1;
       transform: scale(1);
+    }
+    .stack-tile .tile-quickadd {
+      width: 16px;
+      height: 16px;
+      font-size: 9px;
+      top: 2px;
+      right: 2px;
     }
   }
 
@@ -1659,7 +1695,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.29.18</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.29.21</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -3136,7 +3172,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.29.18`);
+    log(`DigiCA Tool build v0.29.21`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -4707,22 +4743,27 @@
       ${stack.cards.length > 1 ? `<span class="st-count mono">${stack.cards.length}</span>` : ''}
       ${(stack.actingAsDigimon || (((stack.dpModifier || 0) !== 0 || getTempDPModifierSum(stack) !== 0 || getMaterialTurnDPBonus(stack) !== 0 || getFieldEffectDPBonus(stack) !== 0) && isDigimonLikeStack(stack))) ? `<span class="st-dp">DP${getEffectiveDP(stack)}</span>` : ''}
       ${badgesHtml}
-      <button type="button" class="tile-quickadd" title="レスト/アクティブ切替" style="opacity:0.55;">⟳</button>
+      ${!isEvolveTarget ? `<button type="button" class="tile-quickadd" title="レスト/アクティブ切替" style="opacity:0.55;">⟳</button>` : ''}
     `;
-    el.querySelector('.tile-quickadd').addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (stack.rested && hasLock(stack, 'noActive')) {
-        showToast('🔒「アクティブにならない」が付与されています(このロックが解除されるまでアクティブにできません)', true);
-        return;
-      }
-      if (!stack.rested && hasLock(stack, 'noRest')) {
-        showToast('🔒「レストできない」が付与されています(このロックが解除されるまでレストできません)', true);
-        return;
-      }
-      snapshotPracticeState();
-      stack.rested = !stack.rested;
-      renderPracticeBoard();
-    });
+    // 進化先選択中(isEvolveTarget)は、タイル自体のクリックで進化先を選ばせたいため
+    // レストボタンを出さない(タップの邪魔・誤操作防止)。
+    const quickaddBtn = el.querySelector('.tile-quickadd');
+    if (quickaddBtn) {
+      quickaddBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (stack.rested && hasLock(stack, 'noActive')) {
+          showToast('🔒「アクティブにならない」が付与されています(このロックが解除されるまでアクティブにできません)', true);
+          return;
+        }
+        if (!stack.rested && hasLock(stack, 'noRest')) {
+          showToast('🔒「レストできない」が付与されています(このロックが解除されるまでレストできません)', true);
+          return;
+        }
+        snapshotPracticeState();
+        stack.rested = !stack.rested;
+        renderPracticeBoard();
+      });
+    }
     const kwMoreEl = el.querySelector('.kw-pill-more');
     if (kwMoreEl) {
       kwMoreEl.addEventListener('click', (e) => {
