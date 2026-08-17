@@ -1089,12 +1089,6 @@
     padding: 2px 0;
     cursor: pointer;
   }
-  @media (max-width: 700px) {
-    .hand-row { gap: 3px; }
-    .hand-card { width: 44px; }
-    .hand-card .hc-name, .hand-card .hc-actions { display: none; }
-    .hand-card .hc-mobile-btn { display: flex; }
-  }
   #selfRaisingArea.drop-hover, #selfBattleArea.drop-hover, .mat-pile.drop-hover {
     outline: 2px dashed var(--accent);
     outline-offset: -2px;
@@ -1139,6 +1133,12 @@
     white-space: nowrap;
   }
   .hand-card .hc-actions button:hover { color: var(--text); border-color: var(--accent-dim); }
+  @media (max-width: 700px) {
+    .hand-row { gap: 3px; }
+    .hand-card { width: 44px; }
+    .hand-card .hc-name, .hand-card .hc-actions { display: none; }
+    .hand-card .hc-mobile-btn { display: flex; }
+  }
   .hand-card.picking-target { outline: 2px solid var(--accent); }
 
   .evolve-mode-banner {
@@ -1560,7 +1560,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.29.6</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.29.7</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -3027,7 +3027,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.29.6`);
+    log(`DigiCA Tool build v0.29.7`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
