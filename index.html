@@ -1537,7 +1537,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.29.1</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.29.2</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -3004,7 +3004,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.29.1`);
+    log(`DigiCA Tool build v0.29.2`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -5129,6 +5129,10 @@
   // バトルエリアのカードをトラッシュへドロップしたときの処理。
   // デジモン/テイマー→消滅、オプション→ディレイ可能ならディレイ(メモリー自動判定込み)、
   // 不可能なら消滅(=そのままトラッシュ)を自動で選ぶ。
+  // トラッシュへドロップした瞬間に「ディレイとして破棄したか」を判別する方法がない
+  // (相手の効果でオプションを破棄させられた場合等、ディレイの発揮条件=登場した次の
+  // ターン以降、を満たしていても実際にはディレイを選んでいないケースがあるため)。
+  // 自動で決め打ちせず、条件を満たす場合だけ選択肢を出してプレイヤーに選んでもらう。
   function handleTrashDropOnStack(stack) {
     if (!findStackOwnerAndZone(stack)) return;
     const card = getStackTopCard(stack);
@@ -5136,12 +5140,13 @@
     if (card.category === 'option' || stack.dualAsOption) {
       const sameTurn = stack.enteredTurn === practiceState.turn.count;
       if (!sameTurn) {
-        checkAutoDelayMemory(stack);
-        trashEntireStack(stack);
-        showToast(`「${card.name}」をディレイしました`);
+        openZonePopup(centerPoint(), `「${card.name}」をトラッシュへ`, [
+          { label: '🕐 ディレイとして破棄する(効果を発揮)', onClick: () => { checkAutoDelayMemory(stack); trashEntireStack(stack); } },
+          { label: '🗑 そのまま破棄する(効果は発揮しない)', onClick: () => { trashEntireStack(stack); showToast(`「${card.name}」を破棄しました`); } },
+        ], true);
       } else {
         trashEntireStack(stack);
-        showToast(`「${card.name}」を消滅させました(このターンはディレイ不可のため)`);
+        showToast(`「${card.name}」を破棄しました(このターンはディレイ不可のため)`);
       }
     } else {
       resolveDestructionQueue([stack], () => {}, { battleContext: false });
