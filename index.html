@@ -1252,14 +1252,17 @@
       "actions   .        battle  decktrash"
       "egg       raising  battle  decktrash";
     align-items: start;
-    gap: 8px 12px;
+    row-gap: 8px;
+    column-gap: 0;
   }
   .mat-side-col { grid-area: security; }
   #selfEggCluster, #opponentEggCluster { grid-area: egg; }
   #raisingPhaseActions { grid-area: actions; }
+  /* デジタマのすぐ隣に育成エリアを置き(列間の余白を無くした分)、
+     バトルエリアとの間にだけ余白を持たせて広く使う。 */
   .raising-sub-area { grid-area: raising; }
-  .battle-sub-area { grid-area: battle; }
-  .mat-side-col-right { grid-area: decktrash; }
+  .battle-sub-area { grid-area: battle; margin-left: 12px; }
+  .mat-side-col-right { grid-area: decktrash; margin-left: 12px; }
   .mat-cluster {
     display: flex;
     gap: 8px;
@@ -1673,18 +1676,21 @@
     /* 孵化/移動ボタンはスペースを無駄にしないよう育成エリアの横に出す */
     #raisingPhaseActions { order: 3; flex-direction: row; flex-wrap: wrap; align-self: center; }
 
-    /* 戻すボタン等が画面外にはみ出さないよう折り返し可能にする */
-    .practice-topbar, .turn-memory-row { flex-wrap: wrap; }
-    #practiceUndoBtn { margin-left: auto; }
-    /* デッキ名の長さによって行の折り返し方が変わり、ターン表示の位置がターンごとに
-       ズレて見えてしまうため、幅を固定してはみ出す分は省略表示にする */
+    /* 戻すボタン等が画面外にはみ出さないよう折り返し可能にする。
+       「ターン:」表示は次のフェーズへボタンのすぐ下に単独の行として置き、
+       メモリーと1手戻すボタンは同じ行に収まるようにする。 */
+    .practice-topbar { flex-wrap: wrap; }
+    .turn-memory-row { flex-wrap: wrap; row-gap: 6px; }
     #turnIndicatorLabel {
-      max-width: 96px;
+      order: 1;
+      flex: 1 1 100%;
+      max-width: none;
       overflow: hidden;
       text-overflow: ellipsis;
-      display: inline-block;
-      vertical-align: middle;
+      display: block;
     }
+    .memory-line { order: 2; flex: 1 1 auto; min-width: 0; }
+    #practiceUndoBtn { order: 3; flex-shrink: 0; margin-left: 0; }
 
     /* タッチ端末にはホバーがないため、「＋」等のクイック操作ボタンは常時表示にする。
        ただしバトルエリア/育成エリアのレスト切替ボタンは、狭いタイルに対して大きすぎるため
@@ -1727,7 +1733,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.29.27</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.29.29</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -2022,10 +2028,8 @@
     <div id="evolveRouteList" style="display:flex;flex-direction:column;gap:8px;max-height:340px;overflow-y:auto;"></div>
     <div class="field" style="margin-top:14px;">
       <label>その他(手動でコストを入力)</label>
-      <div style="display:flex;gap:8px;">
-        <input type="number" id="evolveManualCost" min="0" value="0" style="flex:1;">
-        <button class="btn" id="evolveManualApply">この内容で進化</button>
-      </div>
+      <div id="evolveManualCostStepperWrap" style="display:flex;flex-direction:column;gap:6px;"></div>
+      <button class="btn" id="evolveManualApply" style="margin-top:6px;width:100%;">この内容で進化</button>
     </div>
     <div class="field" id="evolveSpecialRow" style="margin-top:8px;display:none;">
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
@@ -2118,6 +2122,12 @@
     new MutationObserver(updateBodyModalOpenState).observe(el, { attributes: true, attributeFilter: ['class'] });
   });
   updateBodyModalOpenState();
+
+  // 進化の「手動でコストを入力」欄に、コスト用の共通ステッパーUI(上下ボタン+
+  // 1〜5クイックボタン)を注入する。evolveManualCostという同じidを使うので、
+  // 以降の他のコードからの参照(evolveManualCost.value等)はそのまま動く。
+  document.getElementById('evolveManualCostStepperWrap').innerHTML = buildCostStepperHTML('evolveManualCost', 0);
+  wireCostStepper(document.getElementById('evolveManualCostStepperWrap'), 'evolveManualCost');
 
   // ---------- Tab switching ----------
   const tabButtons = document.querySelectorAll('.tab-btn');
@@ -3212,7 +3222,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.29.27`);
+    log(`DigiCA Tool build v0.29.29`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -5328,6 +5338,38 @@
   // ドラッグ中に指の下に浮くプレビュー画像を約3倍のサイズで表示する
   // (標準のDataTransfer.setDragImageを使うため、PC/タッチ両対応のDragDropTouch
   // ポリフィルでも効く)。
+  // コスト等、変動しやすい数値入力向けの共通UI(上下ボタン+1〜5クイックボタン)。
+  // buildCostStepperHTML(id, initial)をinnerHTMLに埋め込み、その後
+  // wireCostStepper(container, id)を呼んで挙動を配線する。
+  function buildCostStepperHTML(id, initial) {
+    return `
+      <div style="display:flex;gap:4px;align-items:center;">
+        <button type="button" class="btn cost-step-btn" data-dir="-1" data-target="${id}" style="width:26px;padding:4px 0;">−</button>
+        <input type="number" id="${id}" value="${initial}" min="0" inputmode="numeric" style="width:44px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px 2px;color:var(--text);font-size:14px;text-align:center;">
+        <button type="button" class="btn cost-step-btn" data-dir="1" data-target="${id}" style="width:26px;padding:4px 0;">＋</button>
+      </div>
+      <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px;">
+        ${[1, 2, 3, 4, 5].map(n => `<button type="button" class="btn cost-preset-btn" data-target="${id}" data-v="${n}" style="font-size:11px;padding:4px 8px;">${n}</button>`).join('')}
+      </div>
+    `;
+  }
+  function wireCostStepper(container, id) {
+    container.querySelectorAll(`.cost-step-btn[data-target="${id}"]`).forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const input = container.querySelector('#' + id);
+        const dir = parseInt(btn.dataset.dir, 10);
+        const cur = parseInt(input.value, 10) || 0;
+        input.value = Math.max(0, cur + dir);
+      });
+    });
+    container.querySelectorAll(`.cost-preset-btn[data-target="${id}"]`).forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        container.querySelector('#' + id).value = btn.dataset.v;
+      });
+    });
+  }
   function setEnlargedDragImage(e, imgEl) {
     if (!imgEl || !e.dataTransfer || !e.dataTransfer.setDragImage) return;
     const scale = 2;
@@ -6519,11 +6561,12 @@
     actions.push({
       custom: true,
       render: (container) => {
-        container.style.cssText = 'display:flex;gap:6px;align-items:center;padding:4px 0;';
+        container.style.cssText = 'display:flex;flex-direction:column;gap:6px;padding:4px 0;';
         container.innerHTML = `
-          <input type="number" id="appearCostInput" value="0" min="0" style="width:56px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:4px;color:var(--text);font-size:12px;">
+          ${buildCostStepperHTML('appearCostInput', 0)}
           <button type="button" id="appearCostGo" class="btn" style="font-size:11px;padding:6px 8px;">このコストで${verb}</button>
         `;
+        wireCostStepper(container, 'appearCostInput');
         container.querySelector('#appearCostGo').addEventListener('click', (ev) => {
           ev.stopPropagation();
           const x = parseInt(container.querySelector('#appearCostInput').value, 10);
@@ -8115,8 +8158,10 @@
           container.style.cssText = 'display:flex;flex-direction:column;gap:8px;width:240px;';
           container.innerHTML = `
             <div style="display:flex;gap:6px;align-items:center;">
-              <input type="number" id="dpDeltaInput" value="1" min="0" max="99" step="1" inputmode="numeric" style="width:52px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px;color:var(--text);font-size:14px;text-align:center;">
-              <span id="dpDeltaPreview" class="mono" style="font-size:14px;color:var(--accent);font-weight:700;min-width:44px;">1000</span>
+              <div style="display:flex;align-items:center;">
+                <input type="number" id="dpDeltaInput" value="1" min="0" max="99" step="1" inputmode="numeric" style="width:40px;background:var(--bg);border:1px solid var(--border);border-right:none;border-radius:4px 0 0 4px;padding:6px 2px;color:var(--text);font-size:14px;text-align:right;">
+                <span class="mono" style="font-size:14px;color:var(--text-dim);background:var(--bg);border:1px solid var(--border);border-left:none;border-radius:0 4px 4px 0;padding:6px 4px 6px 0;">000</span>
+              </div>
               <button type="button" id="dpPlusBtn" class="btn" style="font-size:11px;padding:6px 8px;">+適用</button>
               <button type="button" id="dpMinusBtn" class="btn" style="font-size:11px;padding:6px 8px;">-適用</button>
             </div>
@@ -8133,17 +8178,10 @@
             </div>
           `;
           const deltaInput = container.querySelector('#dpDeltaInput');
-          const deltaPreview = container.querySelector('#dpDeltaPreview');
-          const updatePreview = () => {
-            const n = parseInt(deltaInput.value, 10);
-            deltaPreview.textContent = (isNaN(n) ? 0 : n) + '000';
-          };
-          deltaInput.addEventListener('input', updatePreview);
           container.querySelectorAll('.dp-preset-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
               e.stopPropagation();
               deltaInput.value = btn.dataset.v;
-              updatePreview();
             });
           });
           const apply = (sign) => {
@@ -8384,50 +8422,16 @@
         mk('デジモンにする', () => {
           cardDetailModal.classList.remove('open');
           const centerEvent = { clientX: window.innerWidth / 2 - 100, clientY: 70 };
-          openZonePopup(centerEvent, 'DPを設定してデジモンにする', [
-            {
-              custom: true,
-              render: (container) => {
-                container.style.cssText = 'display:flex;flex-direction:column;gap:6px;';
-                container.innerHTML = `
-                  <div style="display:flex;gap:6px;align-items:center;">
-                    <input type="number" id="tamerDpInput" value="3" min="0" max="99" step="1" inputmode="numeric" style="width:52px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px;color:var(--text);font-size:14px;text-align:center;">
-                    <span id="tamerDpPreview" class="mono" style="font-size:14px;color:var(--accent);font-weight:700;min-width:44px;">3000</span>
-                    <button type="button" id="tamerDpGo" class="btn" style="font-size:11px;padding:6px 8px;">決定</button>
-                  </div>
-                  <div style="display:flex;gap:4px;flex-wrap:wrap;">
-                    ${[1, 2, 3, 4, 5].map(n => `<button type="button" class="btn tamer-dp-preset-btn" data-v="${n}" style="font-size:11px;padding:4px 8px;">${n}</button>`).join('')}
-                  </div>
-                `;
-                const tamerDpInput = container.querySelector('#tamerDpInput');
-                const tamerDpPreview = container.querySelector('#tamerDpPreview');
-                const updateTamerDpPreview = () => {
-                  const n = parseInt(tamerDpInput.value, 10);
-                  tamerDpPreview.textContent = (isNaN(n) ? 0 : n) + '000';
-                };
-                tamerDpInput.addEventListener('input', updateTamerDpPreview);
-                container.querySelectorAll('.tamer-dp-preset-btn').forEach(btn => {
-                  btn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    tamerDpInput.value = btn.dataset.v;
-                    updateTamerDpPreview();
-                  });
-                });
-                container.querySelector('#tamerDpGo').addEventListener('click', (e) => {
-                  e.stopPropagation();
-                  const thousands = parseInt(tamerDpInput.value, 10);
-                  if (isNaN(thousands) || thousands < 0) { showToast('DPの入力が不正です', true); return; }
-                  const dp = thousands * 1000;
-                  closeZonePopup();
-                  snapshotPracticeState();
-                  stack.actingAsDigimon = true;
-                  stack.assignedDP = dp;
-                  renderPracticeBoard();
-                  showToast(`デジモンとして扱います(DP${dp})`);
-                });
-              },
+          openZonePopup(centerEvent, 'DPを設定してデジモンにする', [3000, 6000, 12000].map(dp => ({
+            label: `DP${dp}`,
+            onClick: () => {
+              snapshotPracticeState();
+              stack.actingAsDigimon = true;
+              stack.assignedDP = dp;
+              renderPracticeBoard();
+              showToast(`デジモンとして扱います(DP${dp})`);
             },
-          ]);
+          })));
         });
       }
     }
@@ -8735,9 +8739,9 @@
             </div>
             <div>
               <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px;">DP増減</div>
-              <div style="display:flex;gap:6px;align-items:center;">
-                <input type="number" id="feAmount" min="0" max="99" step="1" value="1" inputmode="numeric" style="width:52px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px;color:var(--text);font-size:14px;text-align:center;">
-                <span id="feAmountPreview" class="mono" style="font-size:14px;color:var(--accent);font-weight:700;min-width:44px;">1000</span>
+              <div style="display:flex;align-items:center;">
+                <input type="number" id="feAmount" min="0" max="99" step="1" value="1" inputmode="numeric" style="width:40px;background:var(--bg);border:1px solid var(--border);border-right:none;border-radius:6px 0 0 6px;padding:6px 2px;color:var(--text);font-size:14px;text-align:right;">
+                <span class="mono" style="font-size:14px;color:var(--text-dim);background:var(--bg);border:1px solid var(--border);border-left:none;border-radius:0 6px 6px 0;padding:6px 4px 6px 0;">000</span>
               </div>
               <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:6px;">
                 ${[1, 2, 3, 4, 5].map(n => `<button type="button" class="btn fe-preset-btn" data-v="${n}" style="font-size:11px;padding:4px 8px;">${n}</button>`).join('')}
@@ -8760,17 +8764,10 @@
             </div>
           `;
           const feAmountInput = container.querySelector('#feAmount');
-          const feAmountPreview = container.querySelector('#feAmountPreview');
-          const updateFeAmountPreview = () => {
-            const n = parseInt(feAmountInput.value, 10);
-            feAmountPreview.textContent = (isNaN(n) ? 0 : n) + '000';
-          };
-          feAmountInput.addEventListener('input', updateFeAmountPreview);
           container.querySelectorAll('.fe-preset-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
               e.stopPropagation();
               feAmountInput.value = btn.dataset.v;
-              updateFeAmountPreview();
             });
           });
           const confirmEffect = (sign) => {
