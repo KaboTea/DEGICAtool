@@ -1735,7 +1735,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.29.34</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.29.39</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -3224,7 +3224,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.29.34`);
+    log(`DigiCA Tool build v0.29.39`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -5976,28 +5976,209 @@
   function evaluateSpecialCondition(conditionText, topCard, targetStack) {
     if (!conditionText || !topCard) return null;
     const text = conditionText;
+    const getCardTraits = (card) => {
+      const traits = (card.type || '').split('/');
+      // 「アプモン」はDB上、通常の特徴欄(type)ではなくform欄(本来は進化段階を表す欄)に
+      // 記録されていることがあるため(heroi.ccの生データで確認済み)、その場合も拾う。
+      if (card.form && card.form.includes('アプモン')) traits.push('アプモン');
+      return traits;
+    };
+    // 盤面全体(バトルエリア/育成エリア/セキュリティ/トラッシュ等)を参照する条件向けの
+    // ヘルパー。「自分」は今操作しているプレイヤー(practiceState.viewingIndex)とする。
+    const getSelfPlayer = () => (typeof practiceState !== 'undefined' && practiceState ? practiceState.players[practiceState.viewingIndex] : null);
+    const battleTopCards = (self) => {
+      const list = self.battle.map(s => getStackTopCard(s)).filter(Boolean);
+      if (self.raising) {
+        const raisingTop = getStackTopCard(self.raising);
+        if (raisingTop) list.push(raisingTop);
+      }
+      return list;
+    };
     const nameRe = /名称に?((?:「[^」]+」\/?)+)を含む(?:Lv\.?(\d+))?/g;
     const traitRe = /特徴に?((?:「[^」]+」\/?)+)を持つ(?:Lv\.?(\d+))?/g;
     const matRe = /進化元(?:枚数)?が(\d+)枚以上/g;
+    // 「「オメガモン」の記述があるLv.3」のように、名称/特徴ではなく「カード自身の
+    // 効果テキストに特定の文字列が含まれているか」を見る条件。
+    const mentionRe = /「([^」]+)」の記述がある(?:Lv\.?(\d+))?/g;
+    // 「Lv.2の「アルゴモン」」のように、レベル+名前が逆順で書かれている形。
+    const lvNameRe = /Lv\.?(\d+)の「([^」]+)」/g;
+    // 「「パルスモン」か特徴に「シーカーズ」を持つLv.4」のように、名称一致条件と
+    // 特徴条件が「か」で混在するOR形。「/」で同様に混在するケースもある
+    // (例:「ホークモン」/特徴に「TS」を持つLv.3、「特徴」の後の「に」が省略される
+    // こともある)。
+    // 「自分の「X」がいる間、「Y」」のように、盤面(バトルエリア/育成エリア)に
+    // 特定の1枚がいるかどうかを見る条件。
+    const battlePresenceRe = /自分の「([^」]+)」がいる間、((?:「[^」]+」\/?)+)/g;
+    // 「自分のセキュリティがN枚以下の間、「X」」
+    const securityCountRe = /自分のセキュリティが(\d+)枚以下の間、((?:「[^」]+」\/?)+)/g;
+    // 「自分のトラッシュがN枚以上の間、名称に「X」を含むLv.M」
+    const trashCountRe = /自分のトラッシュが(\d+)枚以上の間、名称に?((?:「[^」]+」\/?)+)を含む(?:Lv\.?(\d+))?/g;
+    // 「DP10000以上の相手のデジモンがいる間、「X」」
+    const oppDPThresholdRe = /DP(\d+)以上の相手のデジモンがいる間、((?:「[^」]+」\/?)+)/g;
+    // 「特徴に「X」を持つ自分のテイマーがN体以上いる間、「Y」」
+    const ownTamerTraitCountRe = /特徴に((?:「[^」]+」\/?)+)を持つ自分のテイマーが(\d+)体以上いる間、((?:「[^」]+」\/?)+)/g;
+    const nameOrTraitRe = /「([^」]+)」(?:か|\/)特徴に?((?:「[^」]+」\/?)+)を持つ(?:Lv\.?(\d+))?/g;
+    // 「3色の「マグナガルルモン」」「紫の「ケルビモン」」のように、同名で色数/色違いの
+    // 印刷違いがあるカードのうち、特定の色構成のものだけを指定する条件。
+    const colorNameRe = /(?:(\d+)色(以外)?|([青赤黄緑黒紫白])色?)の「([^」]+)」/g;
+    const COLOR_JA_TO_EN = { 青: 'blue', 赤: 'red', 黄: 'yellow', 緑: 'green', 黒: 'black', 紫: 'purple', 白: 'white' };
+    // 「特徴に「ハイブリッド体」を持つカードが下に2枚以上ある「神原拓也」」のように、
+    // 進化元の総枚数ではなく「特徴を満たす枚数」だけを数える条件。
+    const traitCountRe = /特徴に((?:「[^」]+」\/?)+)を持つカードが下に(\d+)枚(?:以上)?ある((?:「[^」]+」\/?)+)/g;
+    // 「名称に「もんざえモン」を含み、特徴に「X抗体」を持たないLv.5」のように、
+    // 名称一致に加えて「特徴を持たない」という否定条件が付くもの。
+    const nameAndNotTraitRe = /名称に?((?:「[^」]+」\/?)+)を含み、?特徴に?((?:「[^」]+」\/?)+)を持たない(?:Lv\.?(\d+))?/g;
+    // 「進化元に「ヒポグリフォモン」を持つ「ダルクモン」」「「シェイドモン」が下にある
+    // 「天野ネネ」」のように、進化元の中に特定の1枚が実在するかを見る条件。
+    const materialHasRe = /(?:進化元に「([^」]+)」(?:を持つ|がある)|「([^」]+)」が下にある)((?:「[^」]+」\/?)+)/g;
     const clauses = [];
     let matchedSpan = 0;
     let m;
-    while ((m = nameRe.exec(text))) {
+    while ((m = colorNameRe.exec(text))) {
+      matchedSpan += m[0].length;
+      const nameOk = topCard.name === m[4];
+      const cardColors = topCard.color || [];
+      let colorOk;
+      if (m[1]) {
+        // 「N色の」「N色以外の」: そのカード自身が持つ色の数で判定
+        const n = parseInt(m[1], 10);
+        colorOk = m[2] ? cardColors.length !== n : cardColors.length === n;
+      } else {
+        // 「紫の」等、単色の指定
+        const en = COLOR_JA_TO_EN[m[3]];
+        colorOk = !!en && cardColors.includes(en);
+      }
+      clauses.push(nameOk && colorOk);
+    }
+    while ((m = traitCountRe.exec(text))) {
+      if (!targetStack) continue; // 進化元の中身を数える必要があるが参照できないため判定を諦める(未消費のまま)
+      matchedSpan += m[0].length;
+      const traits = (m[1].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
+      const need = parseInt(m[2], 10);
+      const names = (m[3].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
+      const nameOk = names.some(n => topCard.name === n);
+      const materials = targetStack.cards.slice(0, targetStack.cards.length - 1);
+      const have = materials.filter(entry => {
+        const mc = cardIndexByNumber.get(cardEntryNum(entry));
+        return mc && traits.some(t => getCardTraits(mc).some(ct => ct.includes(t)));
+      }).length;
+      clauses.push(nameOk && have >= need);
+    }
+    while ((m = nameAndNotTraitRe.exec(text))) {
+      matchedSpan += m[0].length;
+      const names = (m[1].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
+      const traits = (m[2].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
+      const lvOk = !m[3] || (topCard.level != null && topCard.level >= parseInt(m[3], 10));
+      const nameOk = names.some(n => (topCard.name || '').includes(n));
+      const traitOk = traits.some(t => getCardTraits(topCard).some(ct => ct.includes(t)));
+      clauses.push(lvOk && nameOk && !traitOk);
+    }
+    while ((m = materialHasRe.exec(text))) {
+      if (!targetStack) continue; // 進化元の中身を確認する必要があるが参照できないため判定を諦める(未消費のまま)
+      matchedSpan += m[0].length;
+      const wantedMaterial = m[1] || m[2];
+      const names = (m[3].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
+      const nameOk = names.some(n => topCard.name === n);
+      const materials = targetStack.cards.slice(0, targetStack.cards.length - 1);
+      const hasOk = materials.some(entry => {
+        const mc = cardIndexByNumber.get(cardEntryNum(entry));
+        return mc && mc.name === wantedMaterial;
+      });
+      clauses.push(nameOk && hasOk);
+    }
+    while ((m = battlePresenceRe.exec(text))) {
+      matchedSpan += m[0].length;
+      const wantedCard = m[1];
+      const names = (m[2].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
+      const nameOk = names.some(n => topCard.name === n);
+      const self = getSelfPlayer();
+      const presentOk = !!self && battleTopCards(self).some(c => c.name === wantedCard);
+      clauses.push(nameOk && presentOk);
+    }
+    while ((m = securityCountRe.exec(text))) {
+      matchedSpan += m[0].length;
+      const max = parseInt(m[1], 10);
+      const names = (m[2].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
+      const nameOk = names.some(n => topCard.name === n);
+      const self = getSelfPlayer();
+      const countOk = !!self && self.security.length <= max;
+      clauses.push(nameOk && countOk);
+    }
+    while ((m = trashCountRe.exec(text))) {
+      matchedSpan += m[0].length;
+      const min = parseInt(m[1], 10);
+      const names = (m[2].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
+      const lvOk = !m[3] || (topCard.level != null && topCard.level >= parseInt(m[3], 10));
+      const nameOk = names.some(n => (topCard.name || '').includes(n));
+      const self = getSelfPlayer();
+      const countOk = !!self && self.trash.length >= min;
+      clauses.push(lvOk && nameOk && countOk);
+    }
+    while ((m = oppDPThresholdRe.exec(text))) {
+      matchedSpan += m[0].length;
+      const minDP = parseInt(m[1], 10);
+      const names = (m[2].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
+      const nameOk = names.some(n => topCard.name === n);
+      const oppIndex = typeof practiceState !== 'undefined' && practiceState ? 1 - practiceState.viewingIndex : null;
+      const opp = oppIndex != null ? practiceState.players[oppIndex] : null;
+      const dpOk = !!opp && opp.battle.some(s => isDigimonLikeStack(s) && getEffectiveDP(s) >= minDP);
+      clauses.push(nameOk && dpOk);
+    }
+    while ((m = ownTamerTraitCountRe.exec(text))) {
+      matchedSpan += m[0].length;
+      const traits = (m[1].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
+      const need = parseInt(m[2], 10);
+      const names = (m[3].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
+      const nameOk = names.some(n => topCard.name === n);
+      const self = getSelfPlayer();
+      const have = self ? battleTopCards(self).filter(c => c.category === 'tamer' && traits.some(t => getCardTraits(c).some(ct => ct.includes(t)))).length : 0;
+      clauses.push(nameOk && have >= need);
+    }
+    while ((m = nameOrTraitRe.exec(text))) {
+      matchedSpan += m[0].length;
+      const nameOk = topCard.name === m[1];
+      const traits = (m[2].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
+      const lvOk = !m[3] || (topCard.level != null && topCard.level >= parseInt(m[3], 10));
+      const traitOk = lvOk && traits.some(t => getCardTraits(topCard).some(ct => ct.includes(t)));
+      clauses.push(nameOk || traitOk);
+    }
+    // ここまでの「複合・特殊パターン」で既に消費した範囲を取り除いてから、汎用の
+    // 名称/特徴/記述/Lv名パターンを判定する(同じ部分文字列に対して二重にマッチし、
+    // 一方の条件だけを見て誤ってtrueと判定してしまうのを防ぐため)。
+    const remainingText = text
+      .replace(colorNameRe, '')
+      .replace(traitCountRe, '')
+      .replace(nameAndNotTraitRe, '')
+      .replace(materialHasRe, '')
+      .replace(battlePresenceRe, '')
+      .replace(securityCountRe, '')
+      .replace(trashCountRe, '')
+      .replace(oppDPThresholdRe, '')
+      .replace(ownTamerTraitCountRe, '')
+      .replace(nameOrTraitRe, '');
+    while ((m = mentionRe.exec(remainingText))) {
+      matchedSpan += m[0].length;
+      const lvOk = !m[2] || (topCard.level != null && topCard.level >= parseInt(m[2], 10));
+      const mentionOk = (topCard.effect || '').includes(m[1]) || (topCard.inherited || '').includes(m[1]);
+      clauses.push(lvOk && mentionOk);
+    }
+    while ((m = lvNameRe.exec(remainingText))) {
+      matchedSpan += m[0].length;
+      const lvOk = topCard.level != null && topCard.level >= parseInt(m[1], 10);
+      clauses.push(lvOk && topCard.name === m[2]);
+    }
+    while ((m = nameRe.exec(remainingText))) {
       matchedSpan += m[0].length;
       const names = (m[1].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
       const lvOk = !m[2] || (topCard.level != null && topCard.level >= parseInt(m[2], 10));
       const nameOk = names.some(n => (topCard.name || '').includes(n));
       clauses.push(lvOk && nameOk);
     }
-    while ((m = traitRe.exec(text))) {
+    while ((m = traitRe.exec(remainingText))) {
       matchedSpan += m[0].length;
       const traits = (m[1].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
       const lvOk = !m[2] || (topCard.level != null && topCard.level >= parseInt(m[2], 10));
-      const cardTraits = (topCard.type || '').split('/');
-      // 「アプモン」はDB上、通常の特徴欄(type)ではなくform欄(本来は進化段階を表す欄)に
-      // 記録されていることがあるため(heroi.ccの生データで確認済み)、その場合も拾う。
-      if (topCard.form && topCard.form.includes('アプモン')) cardTraits.push('アプモン');
-      const traitOk = traits.some(t => cardTraits.some(ct => ct.includes(t)));
+      const traitOk = traits.some(t => getCardTraits(topCard).some(ct => ct.includes(t)));
       clauses.push(lvOk && traitOk);
     }
     if (targetStack) {
@@ -6007,6 +6188,15 @@
         const have = targetStack.cards.length - 1;
         clauses.push(have >= need);
       }
+    }
+    // 「「ジオグレイモン」:コスト3」のように、名称だけがそのまま条件になっている
+    // (「名称に〜を含む」のような文言を伴わない)ショートハンド表記。文字列全体が
+    // 「X」/「Y」...の並びだけの場合に、カード名との完全一致で判定する。
+    const bareNameMatch = text.trim().match(/^((?:「[^」]+」\/?)+):?$/);
+    if (bareNameMatch) {
+      matchedSpan += text.trim().length;
+      const names = (bareNameMatch[1].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
+      clauses.push(names.some(n => topCard.name === n));
     }
     if (clauses.length === 0) return null;
     if (matchedSpan < text.length * 0.6) return null; // 未知の文言が多く残っている場合は判定を諦める
