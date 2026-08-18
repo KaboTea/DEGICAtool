@@ -1074,7 +1074,11 @@
   }
   .hand-card[draggable="true"]:active { cursor: grabbing; }
   .stack-tile[draggable="true"] {
-    touch-action: none;
+    /* touch-action:noneだと、タイル上から始まる横スクロール(バトルエリアのレーン)の
+       ジェスチャーごとブロックされ、レーンがスワイプで動かせなくなってしまうため、
+       横方向のパン(pan-x、レーンのスクロール方向)はブラウザに許可し、長押し
+       ドラッグの判定自体はJS(DragDropTouchの長押しモード)側に委ねる。 */
+    touch-action: pan-x;
     -webkit-touch-callout: none;
     -webkit-user-select: none;
     user-select: none;
@@ -1613,6 +1617,14 @@
     .hand-card .hc-name, .hand-card .hc-actions { display: none; }
     .hand-card .hc-mobile-btn { display: flex; }
 
+    /* DPバッジが元々76px幅のタイル向けサイズのため、42px幅の縮小タイルだと隣と
+       重なってしまう。文字・余白を小さくして収まるようにする。 */
+    .st-dp {
+      font-size: 10px;
+      padding: 1px 6px;
+      top: -18px;
+    }
+
     /* メモリー: スマホ幅のときだけ21マスを3行×7列に折り返す */
     .memory-line { flex-direction: column; flex-wrap: nowrap; overflow-x: visible; gap: 4px; }
     .memory-line .ml-row { display: flex; justify-content: center; align-items: center; gap: 3px; }
@@ -1682,11 +1694,11 @@
       transform: scale(1);
     }
     .stack-tile .tile-quickadd {
-      width: 16px;
-      height: 16px;
-      font-size: 9px;
-      top: 2px;
-      right: 2px;
+      width: 22px;
+      height: 22px;
+      font-size: 12px;
+      top: 1px;
+      right: 1px;
     }
   }
 
@@ -1715,7 +1727,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.29.23</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.29.25</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -3200,7 +3212,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.29.23`);
+    log(`DigiCA Tool build v0.29.25`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -5258,6 +5270,9 @@
           setEnlargedDragImage(e, c.querySelector('img'));
         });
         c.addEventListener('dragend', () => { draggedHandCard = null; });
+        // Android Chrome等、-webkit-touch-calloutが効かないブラウザ向けに、
+        // 画像の長押しで出る標準コンテキストメニュー(プレビュー/保存等)を止める。
+        c.addEventListener('contextmenu', (e) => e.preventDefault());
       }
 
       const mobileBtn = c.querySelector('.hc-mobile-btn');
@@ -5315,7 +5330,7 @@
   // ポリフィルでも効く)。
   function setEnlargedDragImage(e, imgEl) {
     if (!imgEl || !e.dataTransfer || !e.dataTransfer.setDragImage) return;
-    const scale = 3;
+    const scale = 2;
     const w = (imgEl.offsetWidth || 44) * scale;
     const h = (imgEl.offsetHeight || 62) * scale;
     const ghost = imgEl.cloneNode(true);
@@ -5411,6 +5426,9 @@
       setEnlargedDragImage(e, tile.querySelector('.stack-fan img'));
     });
     tile.addEventListener('dragend', () => { draggedBattleStack = null; });
+    // Android Chrome等、-webkit-touch-calloutが効かないブラウザ向けに、
+    // 画像の長押しで出る標準コンテキストメニュー(プレビュー/保存等)を止める。
+    tile.addEventListener('contextmenu', (e) => e.preventDefault());
   }
   // 手札→既存のスタック(育成/バトルエリア)へドラッグして離すと「進化」を行う。
   // タイル側で受けるため、親エリアの「登場」ドロップに伝播しないようstopPropagationする。
