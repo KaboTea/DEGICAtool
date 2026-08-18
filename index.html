@@ -1727,7 +1727,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.29.25</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.29.26</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -3212,7 +3212,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.29.25`);
+    log(`DigiCA Tool build v0.29.26`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -6854,7 +6854,7 @@
           container.style.cssText = 'display:flex;gap:6px;align-items:center;padding:2px 0;';
           container.innerHTML = `
             <span style="font-size:11px;color:var(--text-dim);white-space:nowrap;">上から</span>
-            <input type="number" id="revealCountInput" value="3" min="1" style="width:48px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:4px;color:var(--text);font-size:12px;">
+            <input type="number" id="revealCountInput" value="3" min="1" inputmode="numeric" style="width:52px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px;color:var(--text);font-size:14px;text-align:center;">
             <button type="button" id="revealCountGo" class="btn" style="font-size:11px;padding:6px 8px;white-space:nowrap;">公開して振分</button>
           `;
           container.querySelector('#revealCountGo').addEventListener('click', (e) => {
@@ -8101,12 +8101,16 @@
       {
         custom: true,
         render: (container) => {
-          container.style.cssText = 'display:flex;flex-direction:column;gap:8px;width:220px;';
+          container.style.cssText = 'display:flex;flex-direction:column;gap:8px;width:240px;';
           container.innerHTML = `
             <div style="display:flex;gap:6px;align-items:center;">
-              <input type="number" id="dpDeltaInput" value="1000" min="0" step="1000" style="width:74px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:4px;color:var(--text);font-size:12px;">
+              <input type="number" id="dpDeltaInput" value="1" min="0" max="99" step="1" inputmode="numeric" style="width:52px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px;color:var(--text);font-size:14px;text-align:center;">
+              <span style="font-size:12px;color:var(--text-dim);">×1000</span>
               <button type="button" id="dpPlusBtn" class="btn" style="font-size:11px;padding:6px 8px;">+適用</button>
               <button type="button" id="dpMinusBtn" class="btn" style="font-size:11px;padding:6px 8px;">-適用</button>
+            </div>
+            <div style="display:flex;gap:4px;flex-wrap:wrap;">
+              ${[1, 2, 3, 4, 5].map(n => `<button type="button" class="btn dp-preset-btn" data-v="${n}" style="font-size:11px;padding:4px 8px;">${n}</button>`).join('')}
             </div>
             <div>
               <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px;">持続タイミング</div>
@@ -8117,9 +8121,16 @@
               </select>
             </div>
           `;
+          container.querySelectorAll('.dp-preset-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+              e.stopPropagation();
+              container.querySelector('#dpDeltaInput').value = btn.dataset.v;
+            });
+          });
           const apply = (sign) => {
-            const v = parseInt(container.querySelector('#dpDeltaInput').value, 10);
-            if (isNaN(v) || v < 0) { showToast('数値が不正です', true); return; }
+            const thousands = parseInt(container.querySelector('#dpDeltaInput').value, 10);
+            if (isNaN(thousands) || thousands < 0) { showToast('数値が不正です', true); return; }
+            const v = thousands * 1000;
             const duration = container.querySelector('#dpDurationSel').value;
             closeZonePopup();
             modifyStackDP(stack, sign * v, duration);
@@ -8360,13 +8371,15 @@
               render: (container) => {
                 container.style.cssText = 'display:flex;gap:6px;align-items:center;';
                 container.innerHTML = `
-                  <input type="number" id="tamerDpInput" value="3000" min="0" step="1000" style="width:74px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:4px;color:var(--text);font-size:12px;">
+                  <input type="number" id="tamerDpInput" value="3" min="0" max="99" step="1" inputmode="numeric" style="width:52px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px;color:var(--text);font-size:14px;text-align:center;">
+                  <span style="font-size:12px;color:var(--text-dim);">×1000</span>
                   <button type="button" id="tamerDpGo" class="btn" style="font-size:11px;padding:6px 8px;">決定</button>
                 `;
                 container.querySelector('#tamerDpGo').addEventListener('click', (e) => {
                   e.stopPropagation();
-                  const dp = parseInt(container.querySelector('#tamerDpInput').value, 10);
-                  if (isNaN(dp) || dp < 0) { showToast('DPの入力が不正です', true); return; }
+                  const thousands = parseInt(container.querySelector('#tamerDpInput').value, 10);
+                  if (isNaN(thousands) || thousands < 0) { showToast('DPの入力が不正です', true); return; }
+                  const dp = thousands * 1000;
                   closeZonePopup();
                   snapshotPracticeState();
                   stack.actingAsDigimon = true;
@@ -8683,8 +8696,11 @@
               </select>
             </div>
             <div>
-              <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px;">DP増減(例: 2000 / -3000)</div>
-              <input type="number" id="feAmount" step="1000" value="1000" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px;color:var(--text);font-size:12px;">
+              <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px;">DP増減(千の位のみ入力・例: 2 → +2000 / -3 → -3000)</div>
+              <div style="display:flex;gap:6px;align-items:center;">
+                <input type="number" id="feAmount" step="1" value="1" inputmode="numeric" style="width:60px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px;color:var(--text);font-size:14px;text-align:center;">
+                <span style="font-size:12px;color:var(--text-dim);">×1000</span>
+              </div>
             </div>
             ${prefill ? `
               <div style="font-size:11px;color:var(--text-dim);">持続タイミング: <b style="color:var(--text);">「${escapeHtml(prefill.card.name)}」がセキュリティの表向きにある間</b></div>
@@ -8702,8 +8718,9 @@
           container.querySelector('#feConfirmBtn').addEventListener('click', (ev) => {
             ev.stopPropagation();
             const target = container.querySelector('#feTarget').value;
-            const amount = parseInt(container.querySelector('#feAmount').value, 10);
-            if (isNaN(amount) || amount === 0) { showToast('DP増減の数値が不正です', true); return; }
+            const thousands = parseInt(container.querySelector('#feAmount').value, 10);
+            if (isNaN(thousands) || thousands === 0) { showToast('DP増減の数値が不正です', true); return; }
+            const amount = thousands * 1000;
             const duration = prefill ? 'whileCard' : container.querySelector('#feDuration').value;
             closeZonePopup();
             snapshotPracticeState();
