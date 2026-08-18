@@ -1260,7 +1260,7 @@
   }
   .mat-side-col { grid-area: security; }
   #selfEggCluster, #opponentEggCluster { grid-area: egg; justify-content: flex-end; }
-  #raisingPhaseActions { grid-area: actions; width: 190px; box-sizing: border-box; }
+  #raisingPhaseActions { grid-area: actions; justify-self: start; }
   /* デジタマのすぐ隣に育成エリアを置き(列間の余白を無くした分)、
      バトルエリアとの間にだけ余白を持たせて広く使う。 */
   .raising-sub-area { grid-area: raising; }
@@ -1736,7 +1736,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.29.32</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.29.33</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -3225,7 +3225,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.29.32`);
+    log(`DigiCA Tool build v0.29.33`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
