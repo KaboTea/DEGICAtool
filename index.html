@@ -1735,7 +1735,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.29.39</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.29.40</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -3224,7 +3224,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.29.39`);
+    log(`DigiCA Tool build v0.29.40`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -5620,8 +5620,27 @@
         const addRoute = (segText) => {
           const cm = segText.trim().match(/^([\s\S]*?)コスト(\d+)\s*$/);
           if (!cm) return;
-          const conditionText = cm[1].replace(/\s+/g, '').trim();
+          let conditionText = cm[1].replace(/\s+/g, '').trim();
           const cost = parseInt(cm[2], 10);
+          // DB上の入力ミスで「」の閉じ側が半角の"]"になっているケースがあるため
+          // (例:「特徴に「CS]を持つLv.3」)、正規化しておく。
+          conditionText = conditionText.replace(/\]/g, '」');
+          // 「自分のセキュリティ1枚ごとに、」のような可変コスト等の説明文が条件の中に
+          // 混入することがあるため(コスト軽減の一種で進化条件そのものではない)、
+          // 「自分の〜ごとに」の節をまるごと取り除く。
+          conditionText = conditionText.replace(/自分の[^、:：]*ごとに、?/g, '');
+          // 「「X」からN」の直後に余計な文字列が続く場合、無関係な後続の文章まで
+          // 誤って一緒に拾ってしまった抽出ミスの可能性が高いため、このルート自体を
+          // 追加しない(正しい「「X」からN」自体は別のshortRe/compoundReで
+          // 既に単独のルートとして正しく抽出されている)。
+          if (/^(?:「[^」]+」|『[^』]+』)から\d+./.test(conditionText)) return;
+          // 「。」(句点)を含む場合も、無関係な後続の文章まで誤って一緒に拾って
+          // しまった抽出ミスの可能性が高いため、このルート自体を追加しない。
+          if (conditionText.includes('。')) return;
+          // 条件文として意味を持つ語彙(名称/特徴/Lv/色/進化元/「」/から 等)が
+          // 一切含まれていない場合も、抽出ミス(効果文の断片が紛れ込んだだけ)の
+          // 可能性が高いため追加しない。
+          if (conditionText && !/[「」]|Lv\.?\d|色|特徴|名称|進化元|から/.test(conditionText)) return;
           const key = `T${cost}-${conditionText}`;
           if (seen.has(key)) return;
           seen.add(key);
@@ -5994,14 +6013,24 @@
       }
       return list;
     };
-    const nameRe = /名称に?((?:「[^」]+」\/?)+)を含む(?:Lv\.?(\d+))?/g;
-    const traitRe = /特徴に?((?:「[^」]+」\/?)+)を持つ(?:Lv\.?(\d+))?/g;
+    const nameRe = /名称に?((?:「[^」]+」[\/か]?)+)を含む(?:Lv\.?(\d+))?/g;
+    const traitRe = /特徴に?((?:「[^」]+」[\/か]?)+)(?:を持つ|を含む)(?:Lv\.?(\d+))?/g;
     const matRe = /進化元(?:枚数)?が(\d+)枚以上/g;
     // 「「オメガモン」の記述があるLv.3」のように、名称/特徴ではなく「カード自身の
-    // 効果テキストに特定の文字列が含まれているか」を見る条件。
-    const mentionRe = /「([^」]+)」の記述がある(?:Lv\.?(\d+))?/g;
+    // 効果テキストに特定の文字列が含まれているか」を見る条件。キーワード効果を指す
+    // 場合は「」ではなく≪≫で書かれることもある(例:≪セーブ≫の記述があるLv.2)。
+    const mentionRe = /(?:「([^」]+)」|≪([^≫]+)≫)の記述がある(?:Lv\.?(\d+))?/g;
     // 「Lv.2の「アルゴモン」」のように、レベル+名前が逆順で書かれている形。
     const lvNameRe = /Lv\.?(\d+)の「([^」]+)」/g;
+    // 「名称に「アグモン」を含み特徴に「恐竜型」を持つLv.3」のように、名称一致と
+    // 特徴一致が「含み」で肯定的に(否定ではなく)連結されるもの。
+    const nameAndTraitRe = /名称に?((?:「[^」]+」\/?)+)を含み、?特徴に?((?:「[^」]+」\/?)+)(?:を持つ|を含む)(?:Lv\.?(\d+))?/g;
+    // 「特徴に「X抗体」を持たず、「三銃士」を持つLv.6」のように、否定の後に
+    // 「特徴に」が省略された形で別の特徴条件が続くもの(両方とも特徴条件のAND)。
+    const notTraitAndTraitRe = /特徴に?((?:「[^」]+」\/?)+)を持たず、?((?:「[^」]+」\/?)+)を持つ(?:Lv\.?(\d+))?/g;
+    // 「特徴に「パペット型」を持つ黄/紫のLv.4」のように、特徴+複数色+レベルが
+    // 組み合わさったもの(色はそのカード自身が持つ色のいずれかに一致すればよい)。
+    const traitAndColorRe = /特徴に?((?:「[^」]+」\/?)+)(?:を持つ|を含む)((?:[青赤黄緑黒紫白]\/?)+)の(?:Lv\.?(\d+))?/g;
     // 「「パルスモン」か特徴に「シーカーズ」を持つLv.4」のように、名称一致条件と
     // 特徴条件が「か」で混在するOR形。「/」で同様に混在するケースもある
     // (例:「ホークモン」/特徴に「TS」を持つLv.3、「特徴」の後の「に」が省略される
@@ -6072,6 +6101,37 @@
       const nameOk = names.some(n => (topCard.name || '').includes(n));
       const traitOk = traits.some(t => getCardTraits(topCard).some(ct => ct.includes(t)));
       clauses.push(lvOk && nameOk && !traitOk);
+    }
+    while ((m = nameAndTraitRe.exec(text))) {
+      matchedSpan += m[0].length;
+      const names = (m[1].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
+      const traits = (m[2].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
+      const lvOk = !m[3] || (topCard.level != null && topCard.level >= parseInt(m[3], 10));
+      const nameOk = names.some(n => (topCard.name || '').includes(n));
+      const traitOk = traits.some(t => getCardTraits(topCard).some(ct => ct.includes(t)));
+      clauses.push(lvOk && nameOk && traitOk);
+    }
+    while ((m = notTraitAndTraitRe.exec(text))) {
+      matchedSpan += m[0].length;
+      const notTraits = (m[1].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
+      const traits = (m[2].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
+      const lvOk = !m[3] || (topCard.level != null && topCard.level >= parseInt(m[3], 10));
+      const notTraitOk = !notTraits.some(t => getCardTraits(topCard).some(ct => ct.includes(t)));
+      const traitOk = traits.some(t => getCardTraits(topCard).some(ct => ct.includes(t)));
+      clauses.push(lvOk && notTraitOk && traitOk);
+    }
+    while ((m = traitAndColorRe.exec(text))) {
+      matchedSpan += m[0].length;
+      const traits = (m[1].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
+      const colorsJa = m[2].split('/').filter(Boolean);
+      const lvOk = !m[3] || (topCard.level != null && topCard.level >= parseInt(m[3], 10));
+      const traitOk = traits.some(t => getCardTraits(topCard).some(ct => ct.includes(t)));
+      const cardColors = topCard.color || [];
+      const colorOk = colorsJa.some(cj => {
+        const en = COLOR_JA_TO_EN[cj];
+        return !!en && cardColors.includes(en);
+      });
+      clauses.push(lvOk && traitOk && colorOk);
     }
     while ((m = materialHasRe.exec(text))) {
       if (!targetStack) continue; // 進化元の中身を確認する必要があるが参照できないため判定を諦める(未消費のまま)
@@ -6149,6 +6209,9 @@
       .replace(colorNameRe, '')
       .replace(traitCountRe, '')
       .replace(nameAndNotTraitRe, '')
+      .replace(nameAndTraitRe, '')
+      .replace(notTraitAndTraitRe, '')
+      .replace(traitAndColorRe, '')
       .replace(materialHasRe, '')
       .replace(battlePresenceRe, '')
       .replace(securityCountRe, '')
@@ -6158,8 +6221,9 @@
       .replace(nameOrTraitRe, '');
     while ((m = mentionRe.exec(remainingText))) {
       matchedSpan += m[0].length;
-      const lvOk = !m[2] || (topCard.level != null && topCard.level >= parseInt(m[2], 10));
-      const mentionOk = (topCard.effect || '').includes(m[1]) || (topCard.inherited || '').includes(m[1]);
+      const mentionText = m[1] || m[2];
+      const lvOk = !m[3] || (topCard.level != null && topCard.level >= parseInt(m[3], 10));
+      const mentionOk = (topCard.effect || '').includes(mentionText) || (topCard.inherited || '').includes(mentionText);
       clauses.push(lvOk && mentionOk);
     }
     while ((m = lvNameRe.exec(remainingText))) {
@@ -6192,7 +6256,7 @@
     // 「「ジオグレイモン」:コスト3」のように、名称だけがそのまま条件になっている
     // (「名称に〜を含む」のような文言を伴わない)ショートハンド表記。文字列全体が
     // 「X」/「Y」...の並びだけの場合に、カード名との完全一致で判定する。
-    const bareNameMatch = text.trim().match(/^((?:「[^」]+」\/?)+):?$/);
+    const bareNameMatch = text.trim().match(/^((?:「[^」]+」\/?)+)(?::|から)?$/);
     if (bareNameMatch) {
       matchedSpan += text.trim().length;
       const names = (bareNameMatch[1].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
