@@ -1727,7 +1727,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.29.26</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.29.27</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -3212,7 +3212,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.29.26`);
+    log(`DigiCA Tool build v0.29.27`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -6851,12 +6851,23 @@
       {
         custom: true,
         render: (container) => {
-          container.style.cssText = 'display:flex;gap:6px;align-items:center;padding:2px 0;';
+          container.style.cssText = 'display:flex;flex-direction:column;gap:6px;padding:2px 0;';
           container.innerHTML = `
-            <span style="font-size:11px;color:var(--text-dim);white-space:nowrap;">上から</span>
-            <input type="number" id="revealCountInput" value="3" min="1" inputmode="numeric" style="width:52px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px;color:var(--text);font-size:14px;text-align:center;">
-            <button type="button" id="revealCountGo" class="btn" style="font-size:11px;padding:6px 8px;white-space:nowrap;">公開して振分</button>
+            <div style="display:flex;gap:6px;align-items:center;">
+              <span style="font-size:11px;color:var(--text-dim);white-space:nowrap;">上から</span>
+              <input type="number" id="revealCountInput" value="3" min="1" inputmode="numeric" style="width:52px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px;color:var(--text);font-size:14px;text-align:center;">
+              <button type="button" id="revealCountGo" class="btn" style="font-size:11px;padding:6px 8px;white-space:nowrap;">公開して振分</button>
+            </div>
+            <div style="display:flex;gap:4px;flex-wrap:wrap;">
+              ${[1, 2, 3, 4, 5].map(n => `<button type="button" class="btn reveal-preset-btn" data-v="${n}" style="font-size:11px;padding:4px 8px;">${n}</button>`).join('')}
+            </div>
           `;
+          container.querySelectorAll('.reveal-preset-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+              e.stopPropagation();
+              container.querySelector('#revealCountInput').value = btn.dataset.v;
+            });
+          });
           container.querySelector('#revealCountGo').addEventListener('click', (e) => {
             e.stopPropagation();
             const x = parseInt(container.querySelector('#revealCountInput').value, 10);
@@ -8105,7 +8116,7 @@
           container.innerHTML = `
             <div style="display:flex;gap:6px;align-items:center;">
               <input type="number" id="dpDeltaInput" value="1" min="0" max="99" step="1" inputmode="numeric" style="width:52px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px;color:var(--text);font-size:14px;text-align:center;">
-              <span style="font-size:12px;color:var(--text-dim);">×1000</span>
+              <span id="dpDeltaPreview" class="mono" style="font-size:14px;color:var(--accent);font-weight:700;min-width:44px;">1000</span>
               <button type="button" id="dpPlusBtn" class="btn" style="font-size:11px;padding:6px 8px;">+適用</button>
               <button type="button" id="dpMinusBtn" class="btn" style="font-size:11px;padding:6px 8px;">-適用</button>
             </div>
@@ -8121,10 +8132,18 @@
               </select>
             </div>
           `;
+          const deltaInput = container.querySelector('#dpDeltaInput');
+          const deltaPreview = container.querySelector('#dpDeltaPreview');
+          const updatePreview = () => {
+            const n = parseInt(deltaInput.value, 10);
+            deltaPreview.textContent = (isNaN(n) ? 0 : n) + '000';
+          };
+          deltaInput.addEventListener('input', updatePreview);
           container.querySelectorAll('.dp-preset-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
               e.stopPropagation();
-              container.querySelector('#dpDeltaInput').value = btn.dataset.v;
+              deltaInput.value = btn.dataset.v;
+              updatePreview();
             });
           });
           const apply = (sign) => {
@@ -8369,15 +8388,34 @@
             {
               custom: true,
               render: (container) => {
-                container.style.cssText = 'display:flex;gap:6px;align-items:center;';
+                container.style.cssText = 'display:flex;flex-direction:column;gap:6px;';
                 container.innerHTML = `
-                  <input type="number" id="tamerDpInput" value="3" min="0" max="99" step="1" inputmode="numeric" style="width:52px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px;color:var(--text);font-size:14px;text-align:center;">
-                  <span style="font-size:12px;color:var(--text-dim);">×1000</span>
-                  <button type="button" id="tamerDpGo" class="btn" style="font-size:11px;padding:6px 8px;">決定</button>
+                  <div style="display:flex;gap:6px;align-items:center;">
+                    <input type="number" id="tamerDpInput" value="3" min="0" max="99" step="1" inputmode="numeric" style="width:52px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px;color:var(--text);font-size:14px;text-align:center;">
+                    <span id="tamerDpPreview" class="mono" style="font-size:14px;color:var(--accent);font-weight:700;min-width:44px;">3000</span>
+                    <button type="button" id="tamerDpGo" class="btn" style="font-size:11px;padding:6px 8px;">決定</button>
+                  </div>
+                  <div style="display:flex;gap:4px;flex-wrap:wrap;">
+                    ${[1, 2, 3, 4, 5].map(n => `<button type="button" class="btn tamer-dp-preset-btn" data-v="${n}" style="font-size:11px;padding:4px 8px;">${n}</button>`).join('')}
+                  </div>
                 `;
+                const tamerDpInput = container.querySelector('#tamerDpInput');
+                const tamerDpPreview = container.querySelector('#tamerDpPreview');
+                const updateTamerDpPreview = () => {
+                  const n = parseInt(tamerDpInput.value, 10);
+                  tamerDpPreview.textContent = (isNaN(n) ? 0 : n) + '000';
+                };
+                tamerDpInput.addEventListener('input', updateTamerDpPreview);
+                container.querySelectorAll('.tamer-dp-preset-btn').forEach(btn => {
+                  btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    tamerDpInput.value = btn.dataset.v;
+                    updateTamerDpPreview();
+                  });
+                });
                 container.querySelector('#tamerDpGo').addEventListener('click', (e) => {
                   e.stopPropagation();
-                  const thousands = parseInt(container.querySelector('#tamerDpInput').value, 10);
+                  const thousands = parseInt(tamerDpInput.value, 10);
                   if (isNaN(thousands) || thousands < 0) { showToast('DPの入力が不正です', true); return; }
                   const dp = thousands * 1000;
                   closeZonePopup();
@@ -8696,10 +8734,13 @@
               </select>
             </div>
             <div>
-              <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px;">DP増減(千の位のみ入力・例: 2 → +2000 / -3 → -3000)</div>
+              <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px;">DP増減</div>
               <div style="display:flex;gap:6px;align-items:center;">
-                <input type="number" id="feAmount" step="1" value="1" inputmode="numeric" style="width:60px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px;color:var(--text);font-size:14px;text-align:center;">
-                <span style="font-size:12px;color:var(--text-dim);">×1000</span>
+                <input type="number" id="feAmount" min="0" max="99" step="1" value="1" inputmode="numeric" style="width:52px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px;color:var(--text);font-size:14px;text-align:center;">
+                <span id="feAmountPreview" class="mono" style="font-size:14px;color:var(--accent);font-weight:700;min-width:44px;">1000</span>
+              </div>
+              <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:6px;">
+                ${[1, 2, 3, 4, 5].map(n => `<button type="button" class="btn fe-preset-btn" data-v="${n}" style="font-size:11px;padding:4px 8px;">${n}</button>`).join('')}
               </div>
             </div>
             ${prefill ? `
@@ -8713,14 +8754,30 @@
                 </select>
               </div>
             `}
-            <button type="button" id="feConfirmBtn" class="btn primary" style="margin-top:4px;">追加</button>
+            <div style="display:flex;gap:6px;margin-top:4px;">
+              <button type="button" id="fePlusBtn" class="btn primary" style="flex:1;">+ 追加</button>
+              <button type="button" id="feMinusBtn" class="btn" style="flex:1;">− 追加</button>
+            </div>
           `;
-          container.querySelector('#feConfirmBtn').addEventListener('click', (ev) => {
-            ev.stopPropagation();
+          const feAmountInput = container.querySelector('#feAmount');
+          const feAmountPreview = container.querySelector('#feAmountPreview');
+          const updateFeAmountPreview = () => {
+            const n = parseInt(feAmountInput.value, 10);
+            feAmountPreview.textContent = (isNaN(n) ? 0 : n) + '000';
+          };
+          feAmountInput.addEventListener('input', updateFeAmountPreview);
+          container.querySelectorAll('.fe-preset-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+              e.stopPropagation();
+              feAmountInput.value = btn.dataset.v;
+              updateFeAmountPreview();
+            });
+          });
+          const confirmEffect = (sign) => {
             const target = container.querySelector('#feTarget').value;
-            const thousands = parseInt(container.querySelector('#feAmount').value, 10);
-            if (isNaN(thousands) || thousands === 0) { showToast('DP増減の数値が不正です', true); return; }
-            const amount = thousands * 1000;
+            const thousands = parseInt(feAmountInput.value, 10);
+            if (isNaN(thousands) || thousands <= 0) { showToast('DP増減の数値が不正です', true); return; }
+            const amount = sign * thousands * 1000;
             const duration = prefill ? 'whileCard' : container.querySelector('#feDuration').value;
             closeZonePopup();
             snapshotPracticeState();
@@ -8741,7 +8798,9 @@
             renderPracticeBoard();
             showToast(`🌐 フィールド効果を追加しました: ${fieldEffectDescribe(effect)}`);
             openFieldEffectsModal();
-          });
+          };
+          container.querySelector('#fePlusBtn').addEventListener('click', (e) => { e.stopPropagation(); confirmEffect(1); });
+          container.querySelector('#feMinusBtn').addEventListener('click', (e) => { e.stopPropagation(); confirmEffect(-1); });
         },
       },
     ], true);
