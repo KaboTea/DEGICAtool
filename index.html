@@ -1735,7 +1735,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.29.40</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.29.41</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -3224,7 +3224,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.29.40`);
+    log(`DigiCA Tool build v0.29.41`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -6020,6 +6020,9 @@
     // 効果テキストに特定の文字列が含まれているか」を見る条件。キーワード効果を指す
     // 場合は「」ではなく≪≫で書かれることもある(例:≪セーブ≫の記述があるLv.2)。
     const mentionRe = /(?:「([^」]+)」|≪([^≫]+)≫)の記述がある(?:Lv\.?(\d+))?/g;
+    // 「≪セーブ≫の記述がある赤か黒か紫のLv.4」のように、「記述がある」に複数色の
+    // 指定が続く形。
+    const mentionAndColorRe = /(?:「([^」]+)」|≪([^≫]+)≫)の記述がある((?:[青赤黄緑黒紫白]か?)+)の(?:Lv\.?(\d+))?/g;
     // 「Lv.2の「アルゴモン」」のように、レベル+名前が逆順で書かれている形。
     const lvNameRe = /Lv\.?(\d+)の「([^」]+)」/g;
     // 「名称に「アグモン」を含み特徴に「恐竜型」を持つLv.3」のように、名称一致と
@@ -6031,6 +6034,9 @@
     // 「特徴に「パペット型」を持つ黄/紫のLv.4」のように、特徴+複数色+レベルが
     // 組み合わさったもの(色はそのカード自身が持つ色のいずれかに一致すればよい)。
     const traitAndColorRe = /特徴に?((?:「[^」]+」\/?)+)(?:を持つ|を含む)((?:[青赤黄緑黒紫白]\/?)+)の(?:Lv\.?(\d+))?/g;
+    // 「名称に「ガルゴモン」を含むか緑を含む2色のLv.4」のように、名称一致 OR
+    // (特定の色を含むN色構成)、という条件。
+    const nameOrColorCountRe = /名称に?((?:「[^」]+」\/?)+)を含むか([青赤黄緑黒紫白])を含む(\d+)色の(?:Lv\.?(\d+))?/g;
     // 「「パルスモン」か特徴に「シーカーズ」を持つLv.4」のように、名称一致条件と
     // 特徴条件が「か」で混在するOR形。「/」で同様に混在するケースもある
     // (例:「ホークモン」/特徴に「TS」を持つLv.3、「特徴」の後の「に」が省略される
@@ -6133,6 +6139,17 @@
       });
       clauses.push(lvOk && traitOk && colorOk);
     }
+    while ((m = nameOrColorCountRe.exec(text))) {
+      matchedSpan += m[0].length;
+      const names = (m[1].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
+      const lvOk = !m[4] || (topCard.level != null && topCard.level >= parseInt(m[4], 10));
+      const nameOk = names.some(n => (topCard.name || '').includes(n));
+      const cardColors = topCard.color || [];
+      const en = COLOR_JA_TO_EN[m[2]];
+      const need = parseInt(m[3], 10);
+      const colorOk = !!en && cardColors.includes(en) && cardColors.length === need;
+      clauses.push(lvOk && (nameOk || colorOk));
+    }
     while ((m = materialHasRe.exec(text))) {
       if (!targetStack) continue; // 進化元の中身を確認する必要があるが参照できないため判定を諦める(未消費のまま)
       matchedSpan += m[0].length;
@@ -6205,6 +6222,19 @@
     // ここまでの「複合・特殊パターン」で既に消費した範囲を取り除いてから、汎用の
     // 名称/特徴/記述/Lv名パターンを判定する(同じ部分文字列に対して二重にマッチし、
     // 一方の条件だけを見て誤ってtrueと判定してしまうのを防ぐため)。
+    while ((m = mentionAndColorRe.exec(text))) {
+      matchedSpan += m[0].length;
+      const mentionText = m[1] || m[2];
+      const colorsJa = (m[3].match(/[青赤黄緑黒紫白]/g) || []);
+      const lvOk = !m[4] || (topCard.level != null && topCard.level >= parseInt(m[4], 10));
+      const mentionOk = (topCard.effect || '').includes(mentionText) || (topCard.inherited || '').includes(mentionText);
+      const cardColors = topCard.color || [];
+      const colorOk = colorsJa.some(cj => {
+        const en = COLOR_JA_TO_EN[cj];
+        return !!en && cardColors.includes(en);
+      });
+      clauses.push(lvOk && mentionOk && colorOk);
+    }
     const remainingText = text
       .replace(colorNameRe, '')
       .replace(traitCountRe, '')
@@ -6212,6 +6242,8 @@
       .replace(nameAndTraitRe, '')
       .replace(notTraitAndTraitRe, '')
       .replace(traitAndColorRe, '')
+      .replace(nameOrColorCountRe, '')
+      .replace(mentionAndColorRe, '')
       .replace(materialHasRe, '')
       .replace(battlePresenceRe, '')
       .replace(securityCountRe, '')
