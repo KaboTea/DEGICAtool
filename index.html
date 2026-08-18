@@ -1244,22 +1244,22 @@
   /* デスクトップでは、セキュリティの下に「孵化/移動ボタン」→「デジタマ+育成(横並び)」が
      来る、以前の見た目をCSS Gridで再現する(HTML構造自体はスマホ向けにフラットな兄弟
      要素に分解済みのため、Gridのgrid-template-areasで見た目だけを組み立て直す)。
-     デジタマと育成は、セキュリティの列(190px固定)とは別に、それぞれ内容に応じた
-     幅(auto)の専用列を持たせる。同じ列を共有すると、セキュリティ列の余った幅が
-     デジタマと育成の間の空白に見えてしまうため。 */
+     デジタマはセキュリティと同じ列(190px)に収め、育成との間に余白ができないよう
+     その列内で右寄せする(セキュリティ列の余った幅がそのまま右側=育成側の隙間に
+     見えてしまうのを防ぐため)。 */
   .mat-row {
     display: grid;
-    grid-template-columns: 190px auto auto 1fr auto;
+    grid-template-columns: 190px auto 1fr auto;
     grid-template-areas:
-      "security  .    .        battle  decktrash"
-      "actions   .    .        battle  decktrash"
-      ".         egg  raising  battle  decktrash";
+      "security  .        battle  decktrash"
+      "actions   .        battle  decktrash"
+      "egg       raising  battle  decktrash";
     align-items: start;
     row-gap: 8px;
     column-gap: 0;
   }
   .mat-side-col { grid-area: security; }
-  #selfEggCluster, #opponentEggCluster { grid-area: egg; }
+  #selfEggCluster, #opponentEggCluster { grid-area: egg; justify-content: flex-end; }
   #raisingPhaseActions { grid-area: actions; }
   /* デジタマのすぐ隣に育成エリアを置き(列間の余白を無くした分)、
      バトルエリアとの間にだけ余白を持たせて広く使う。 */
@@ -1736,7 +1736,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.29.30</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.29.31</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -3225,7 +3225,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.29.30`);
+    log(`DigiCA Tool build v0.29.31`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
