@@ -1063,9 +1063,29 @@
     border-radius: 8px;
     overflow: hidden;
   }
-  .hand-card[draggable="true"] { cursor: grab; touch-action: none; }
+  .hand-card[draggable="true"] {
+    cursor: grab;
+    touch-action: none;
+    /* 長押しでドラッグを開始する際、iOS標準の「画像を長押ししたときのメニュー/
+       プレビュー(Quick Look)」が同時に発動して見た目が崩れることがあるため無効化する。 */
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
   .hand-card[draggable="true"]:active { cursor: grabbing; }
-  .stack-tile[draggable="true"] { touch-action: none; }
+  .stack-tile[draggable="true"] {
+    touch-action: none;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  .hand-card[draggable="true"] img,
+  .stack-tile[draggable="true"] img,
+  .stack-tile[draggable="true"] .stack-fan img {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
   .hand-card .hc-mobile-btn {
     display: none;
     width: 100%;
@@ -1695,7 +1715,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.29.21</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.29.23</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -2394,12 +2414,20 @@
   document.getElementById('closeDetail').addEventListener('click', () => {
     cardDetailModal.classList.remove('open', 'peeking');
     resumeRevealSessionIfAny();
+    if (attackState && attackState.stepName === 'securityCheck') {
+      cancelAttackRevertToBeforeAttack();
+      return;
+    }
     resumeAttackStepIfAny();
   });
   cardDetailModal.addEventListener('click', (e) => {
     if (e.target === cardDetailModal) {
       cardDetailModal.classList.remove('open', 'peeking');
       resumeRevealSessionIfAny();
+      if (attackState && attackState.stepName === 'securityCheck') {
+        cancelAttackRevertToBeforeAttack();
+        return;
+      }
       resumeAttackStepIfAny();
     }
   });
@@ -3172,7 +3200,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.29.21`);
+    log(`DigiCA Tool build v0.29.23`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -3964,7 +3992,8 @@
             snapshotPracticeState();
             attackState = {
               attackerStack: stack, attackerOwner: self, defenderOwner, targetType: 'player', targetStack: null,
-              renkeiCount: 0, renkeiBonusDP: 0, sAttackModifier: effectiveSAttackBonus(stack),
+              renkeiCount: 0, renkeiBonusDP: 0, sAttackManualDelta: 0,
+              preAttackHistoryLength: practiceHistory.length - 1,
             };
             cardDetailModal.classList.remove('open');
             renderPracticeBoard();
@@ -5226,6 +5255,7 @@
         c.addEventListener('dragstart', (e) => {
           draggedHandCard = { index, number };
           e.dataTransfer.effectAllowed = 'move';
+          setEnlargedDragImage(e, c.querySelector('img'));
         });
         c.addEventListener('dragend', () => { draggedHandCard = null; });
       }
@@ -5279,6 +5309,21 @@
   // 手札→育成エリア/バトルエリアへドラッグして離すと「登場」と同じ処理を呼ぶ。
   // これらのエリアはrenderPlayerZonesでinnerHTMLだけが差し替わるため、
   // 要素自体は使い回されるここでの1回だけのリスナー登録で問題ない。
+  // スマホでの長押しドラッグ中、カードが小さいと指に隠れて見えなくなるため、
+  // ドラッグ中に指の下に浮くプレビュー画像を約3倍のサイズで表示する
+  // (標準のDataTransfer.setDragImageを使うため、PC/タッチ両対応のDragDropTouch
+  // ポリフィルでも効く)。
+  function setEnlargedDragImage(e, imgEl) {
+    if (!imgEl || !e.dataTransfer || !e.dataTransfer.setDragImage) return;
+    const scale = 3;
+    const w = (imgEl.offsetWidth || 44) * scale;
+    const h = (imgEl.offsetHeight || 62) * scale;
+    const ghost = imgEl.cloneNode(true);
+    ghost.style.cssText = `position:absolute; top:-9999px; left:-9999px; width:${w}px; height:${h}px; border-radius:8px; pointer-events:none;`;
+    document.body.appendChild(ghost);
+    e.dataTransfer.setDragImage(ghost, w / 2, h / 2);
+    setTimeout(() => ghost.remove(), 0);
+  }
   let draggedHandCard = null; // { index, number }
   function setupHandDropZone(el) {
     if (!el) return;
@@ -5363,6 +5408,7 @@
     tile.addEventListener('dragstart', (e) => {
       draggedBattleStack = stack;
       e.dataTransfer.effectAllowed = 'move';
+      setEnlargedDragImage(e, tile.querySelector('.stack-fan img'));
     });
     tile.addEventListener('dragend', () => { draggedBattleStack = null; });
   }
@@ -6612,13 +6658,16 @@
     zonePopupEl.classList.add('open');
     // 項目数によって実際の高さが大きく変わる(キーワード効果一覧など)ため、
     // 固定値でクランプせず、描画後の実測サイズを使って画面内に収める。
+    // タップ位置の近くに出すと、画面の端や他の要素に被って押せなくなることが
+    // あったため、位置は毎回「画面中央」に固定する(呼び出し元が渡すクリック座標は
+    // 使わない)。
     zonePopupEl.style.left = '8px';
     zonePopupEl.style.top = '8px';
     const rect = zonePopupEl.getBoundingClientRect();
     const w = rect.width || 260;
     const h = rect.height || 220;
-    const x = Math.min(e.clientX, window.innerWidth - w - 8);
-    const y = Math.min(e.clientY, window.innerHeight - h - 8);
+    const x = (window.innerWidth - w) / 2;
+    const y = (window.innerHeight - h) / 2;
     zonePopupEl.style.left = `${Math.max(8, x)}px`;
     zonePopupEl.style.top = `${Math.max(8, y)}px`;
   }
@@ -7329,7 +7378,8 @@
     stack.rested = true;
     attackState = {
       attackerStack: stack, attackerOwner, defenderOwner, targetType: null, targetStack: null,
-      renkeiCount: 0, renkeiBonusDP: 0, sAttackModifier: effectiveSAttackBonus(stack),
+      renkeiCount: 0, renkeiBonusDP: 0, sAttackManualDelta: 0,
+      preAttackHistoryLength: practiceHistory.length - 1,
     };
     cardDetailModal.classList.remove('open');
     renderPracticeBoard();
@@ -7428,8 +7478,15 @@
   // 「持っているか」の判定はせず、いつでも増減できる仕組みだけを提供する。実際の枚数は
   // セキュリティチェックが始まる直前(resolveAttack)にまとめて反映する。
   function sAttackActionLabel() {
-    const n = attackState.sAttackModifier || 0;
+    const n = currentSAttackBonus();
     return n !== 0 ? `🔢 セキュリティチェック枚数を変更(現在${n > 0 ? '+' : ''}${n}枚)` : '🔢 セキュリティチェック枚数を変更';
+  }
+  // アタック中に進化・アプ合体等でSアタックの自動判定値が変わることがあるため、
+  // attackState作成時点の値を固定して使うのではなく、その都度attackerStackから
+  // 再計算する(手動での増減=sAttackManualDeltaだけをattackStateに保持する)。
+  function currentSAttackBonus() {
+    if (!attackState || !attackState.attackerStack) return 0;
+    return effectiveSAttackBonus(attackState.attackerStack) + (attackState.sAttackManualDelta || 0);
   }
   function sAttackActionItems() {
     return [{ label: sAttackActionLabel(), onClick: () => showSAttackModifyPopup() }];
@@ -7450,10 +7507,10 @@
             if (isNaN(v) || v < 0) { showToast('数値が不正です', true); return; }
             closeZonePopup();
             snapshotPracticeState();
-            attackState.sAttackModifier = (attackState.sAttackModifier || 0) + sign * v;
+            attackState.sAttackManualDelta = (attackState.sAttackManualDelta || 0) + sign * v;
             renderPracticeBoard();
-            const n = attackState.sAttackModifier;
-            showToast(`セキュリティチェック枚数を${sign > 0 ? '+' : '-'}${v}しました(現在${n > 0 ? '+' : ''}${n}枚)`);
+            const n = currentSAttackBonus();
+            showToast(`セキュリティチェック枚数を${sign > 0 ? '+' : '-'}${v}しました(現在合計${n > 0 ? '+' : ''}${n}枚)`);
             resumeAttackStepIfAny();
           };
           container.querySelector('#sAttackPlus').addEventListener('click', (e) => { e.stopPropagation(); apply(1); });
@@ -7731,7 +7788,7 @@
       endAttack();
       return;
     }
-    attackState.securityChecksRemaining = Math.max(1, 1 + (attackState.renkeiCount || 0) + (attackState.sAttackModifier || 0));
+    attackState.securityChecksRemaining = Math.max(1, 1 + (attackState.renkeiCount || 0) + currentSAttackBonus());
     showToast(`🗡 ≪貫通≫発動: セキュリティを${attackState.securityChecksRemaining}枚チェックします`);
     doSecurityCheckForAttack();
   }
@@ -7789,7 +7846,7 @@
     // Sアタック・連携によるチェック枚数の増減は、実際にチェックが始まる直前に確定する。
     attackState.securityChecksRemaining = Math.max(
       0,
-      1 + (attackState.renkeiCount || 0) + (attackState.sAttackModifier || 0)
+      1 + (attackState.renkeiCount || 0) + currentSAttackBonus()
     );
     if (attackState.securityChecksRemaining === 0) {
       endAttack();
@@ -7806,7 +7863,26 @@
     ], true);
   }
 
+  // セキュリティチェック中に「閉じる」を押した場合、行き先(トラッシュ/手札/登場)を
+  // 選ばないまま中断すると中途半端な状態(アタックは進んでいるのにフェーズが進められない
+  // 等)になってしまうため、アタック宣言前のスナップショットまで丸ごと巻き戻す。
+  function cancelAttackRevertToBeforeAttack() {
+    const idx = attackState ? attackState.preAttackHistoryLength : null;
+    if (idx != null && idx >= 0 && idx < practiceHistory.length) {
+      practiceState = JSON.parse(practiceHistory[idx]);
+      practiceHistory.length = idx; // それ以降の履歴(このアタック中の操作分)は破棄
+      const undoBtn = document.getElementById('practiceUndoBtn');
+      if (undoBtn) undoBtn.disabled = practiceHistory.length === 0;
+    }
+    attackState = null;
+    lastAttackStepFn = null;
+    closeZonePopup();
+    renderPracticeBoard();
+    showToast('アタックを中断し、アタック前の状態に戻しました');
+  }
   function doSecurityCheckForAttack() {
+    lastAttackStepFn = doSecurityCheckForAttack;
+    if (attackState) attackState.stepName = 'securityCheck';
     const defOwner = attackState.defenderOwner;
     const remaining = attackState.securityChecksRemaining || 1;
     const top = cardEntryNum(defOwner.security[0]);
