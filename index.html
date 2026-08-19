@@ -1735,7 +1735,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.29.50</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.30.0</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -3254,7 +3254,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.29.50`);
+    log(`DigiCA Tool build v0.30.0`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -3490,7 +3490,7 @@
   function getEffectiveDP(stack) {
     const c = getStackTopCard(stack);
     const base = stack.actingAsDigimon ? (stack.assignedDP ?? 0) : (c ? (c.dp ?? 0) : 0);
-    return base + (stack.dpModifier || 0) + getTempDPModifierSum(stack) + getMaterialTurnDPBonus(stack) + getSelfEffectDPBonus(stack) + getFieldEffectDPBonus(stack);
+    return base + (stack.dpModifier || 0) + getTempDPModifierSum(stack) + getMaterialTurnDPBonus(stack) + getSelfEffectDPBonus(stack) + getMaterialConditionSelfDPBonus(stack) + getFieldEffectDPBonus(stack);
   }
   // 進化元(一番上の現在のカードを除く)が「【お互いのターン/自分のターン/相手のターン】
   // このデジモンをDP+N。」という独立行の記載を持つ場合、そのターン条件を満たしていれば
@@ -3544,6 +3544,68 @@
     const ownerIndex = practiceState.players.indexOf(owner.player);
     const isOwnersTurn = practiceState.turn.playerIndex === ownerIndex;
     return sumSelfTurnDPPattern(c.effect, isOwnersTurn);
+  }
+
+  // 進化元(素材)の名称/特徴を条件とする自己DP増減(独立行の定型パターンのみ対応)。
+  // 「【タイミング】このデジモンの進化元に、[条件]がある間、このデジモンのDPを±Nする。」
+  // という持続型の条件を判定する(進化元の中身は毎回のDP計算時に動的に再チェックする)。
+  // 条件テキストの解析はevaluateMaterialConditionTextに委譲し、名称一致(「A」か「B」)/
+  // 特徴一致(特徴に「X」を持つ(デジモン)?カード)/特徴+色テイマー(...か色のテイマーカード)
+  // の3パターンのみ対応。未知の言い回しはnullを返し、加算を行わない(安全側デフォルト)。
+  // 特徴判定はcard.type(通常の特徴欄)に加え、card.form(本来は進化段階欄だが「ハイブリッド体」
+  // 「アーマー体」等、効果テキスト上は「特徴」として参照されることがあるためDB実データで
+  // 確認済み)も対象に含める。(DB検証済み: BT4-016の1件)
+  const MATERIAL_COND_DP_PATTERN = /^【(お互いのターン|自分のターン|相手のターン)】このデジモンの進化元に、?(.+?)がある間、このデジモン(?:をDP|のDPを)([+\-＋－]\d+)(?:する)?。?$/;
+  function evaluateMaterialConditionText(stack, condText) {
+    if (!stack || !stack.cards || stack.cards.length <= 1) return false;
+    const materials = stack.cards.slice(0, stack.cards.length - 1)
+      .map(entry => cardIndexByNumber.get(cardEntryNum(entry)))
+      .filter(Boolean);
+    if (!materials.length) return false;
+    const COLOR_JA_TO_EN_LOCAL = { 青: 'blue', 赤: 'red', 黄: 'yellow', 緑: 'green', 黒: 'black', 紫: 'purple', 白: 'white' };
+    const getCardTraits = (card) => {
+      const traits = (card.type || '').split('/');
+      if (card.form) traits.push(...card.form.split('/'));
+      return traits;
+    };
+    let m = condText.match(/^特徴に「([^」]+)」を持つ(?:デジモンカード|カード)?(?:か([青赤黄緑黒紫白])の(?:テイマーカード|テイマー))?$/);
+    if (m) {
+      const trait = m[1];
+      const traitOk = materials.some(c => getCardTraits(c).some(t => t.includes(trait)));
+      if (!m[2]) return traitOk;
+      const colorEn = COLOR_JA_TO_EN_LOCAL[m[2]];
+      const tamerOk = materials.some(c => c.category === 'tamer' && (c.color || []).includes(colorEn));
+      return traitOk || tamerOk;
+    }
+    if (/^(?:「[^」]+」[か\/]?)+$/.test(condText)) {
+      const names = (condText.match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
+      if (names.length) return names.some(n => materials.some(c => c.name && c.name.includes(n)));
+    }
+    return null;
+  }
+  function getMaterialConditionSelfDPBonus(stack) {
+    if (!practiceState) return 0;
+    const c = getStackTopCard(stack);
+    if (!c || !c.effect) return 0;
+    const owner = findStackOwnerAndZone(stack);
+    if (!owner) return 0;
+    const ownerIndex = practiceState.players.indexOf(owner.player);
+    const isOwnersTurn = practiceState.turn.playerIndex === ownerIndex;
+    let sum = 0;
+    c.effect.split('\n').forEach(line => {
+      const m = MATERIAL_COND_DP_PATTERN.exec(line.trim());
+      if (!m) return;
+      const timing = m[1];
+      const applies = timing === 'お互いのターン' ||
+        (timing === '自分のターン' && isOwnersTurn) ||
+        (timing === '相手のターン' && !isOwnersTurn);
+      if (!applies) return;
+      const condResult = evaluateMaterialConditionText(stack, m[2]);
+      if (!condResult) return;
+      const numStr = m[3].replace('＋', '+').replace('－', '-');
+      sum += parseInt(numStr, 10);
+    });
+    return sum;
   }
 
   // ---------- フィールド効果(自分/相手の全デジモンへのDP増減) ----------
@@ -3813,6 +3875,7 @@
     setAdvanceAvailable(stack, hasAdvanceKeyword(stack) && memoryTowardOpponent() >= 1);
     checkAutoRevealTrigger(stack, '進化時');
     checkAutoSelfEvolveDPTrigger(stack, '進化時');
+    checkAutoMaterialConditionDPTrigger(stack, '進化時');
   }
   // ≪回避≫≪アーマー解除≫≪突進≫も、ブロッカー等と同様に「デフォルト自動判定+手動上書き」
   // の形に統一する。バッジ表示と、実際に選べる場面(消滅確認/アタック時ステップ)の両方を
@@ -7274,6 +7337,40 @@
         expireAtTurnCount: computeExpireAtTurnCount('thisTurn', practiceState.turn.playerIndex),
       });
       showToast(`「${card.name}」の${triggerLabel}効果: このターンの間DPを${amount > 0 ? '+' : ''}${amount}しました`);
+    });
+  }
+  // 「【進化時】このデジモンの進化元に、[条件]があるとき、[持続期間]、このデジモンのDPを
+  // ±Nする。」/「その後、このデジモンの進化元に[条件]があるとき、[持続期間]、このデジモン
+  // をDP±N。」のような、進化元の名称/特徴を条件とする一度きりのDP増減トリガー。同じ行に
+  // 他の文が(「その後、」の前に)含まれていてもよく、対象の文だけを「。」区切りで取り出して
+  // 判定する(その他の文は自動化の対象外のまま=手動)。条件評価はevaluateMaterialConditionText
+  // を共用(getMaterialConditionSelfDPBonusと同じ判定ロジック)。
+  // (DB検証済み: BT7-014/BT9-015の2件)
+  function checkAutoMaterialConditionDPTrigger(stack, triggerLabel) {
+    const card = getStackTopCard(stack);
+    if (!card || !card.effect || !practiceState) return;
+    const lineRe = /^【([^】]+)】([\s\S]*)$/;
+    const sentRe = /^(?:その後、)?このデジモンの進化元に、?(.+?)があるとき、(?:(このターンの間|次の相手のターン終了まで|相手のターン終了まで)、)?このデジモン(?:をDP|のDPを)([+\-＋－]\d+)(?:する)?$/;
+    card.effect.split('\n').forEach(line => {
+      const lm = lineRe.exec(line.trim());
+      if (!lm || lm[1] !== triggerLabel) return;
+      const sentences = lm[2].split('。').map(s => s.trim()).filter(Boolean);
+      sentences.forEach(sent => {
+        const sm = sentRe.exec(sent);
+        if (!sm) return;
+        if (!evaluateMaterialConditionText(stack, sm[1])) return;
+        const owner = findStackOwnerAndZone(stack);
+        const ownerIndex = owner ? practiceState.players.indexOf(owner.player) : practiceState.turn.playerIndex;
+        const duration = (sm[2] === '次の相手のターン終了まで' || sm[2] === '相手のターン終了まで') ? 'untilOpponentTurnEnd' : 'thisTurn';
+        const numStr = sm[3].replace('＋', '+').replace('－', '-');
+        const amount = parseInt(numStr, 10);
+        if (!stack.tempDPModifiers) stack.tempDPModifiers = [];
+        stack.tempDPModifiers.push({
+          amount,
+          expireAtTurnCount: computeExpireAtTurnCount(duration, ownerIndex),
+        });
+        showToast(`「${card.name}」の${triggerLabel}効果: 進化元条件を満たしたためDPを${amount > 0 ? '+' : ''}${amount}しました`);
+      });
     });
   }
   function revealTopAndSort(x) {
