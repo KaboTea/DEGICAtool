@@ -1735,7 +1735,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.29.46</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.29.47</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -3224,7 +3224,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.29.46`);
+    log(`DigiCA Tool build v0.29.47`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -6366,14 +6366,19 @@
         // 「名称に「グレイモン」を含むLv.5/特徴に「アドベンチャー」/「ヒーロー」を持つLv.5」
         // のように「/」で複数条件が並記されているカードがあるため、それぞれを改行して
         // 見やすくする(意味的な再構成はせず、印字通りの区切りをそのまま行分けするだけ)。
-        const subHtml = r.sub ? r.sub.split('/').map(part => escapeHtml(part.trim())).join('<br>') : '';
+        // 特殊条件のルートは、基本条件(「基本条件: Lv4 / 緑」)と表示を揃えるため、
+        // 冗長な「条件進化: コストN」という文言を出さず、条件文自体をメインの
+        // 白文字として表示する。
+        const mainText = r.sub
+          ? r.sub.split('/').map(part => escapeHtml(part.trim())).join('<br>')
+          : escapeHtml(r.label);
         // 「自分のセキュリティ1枚ごとに、コストN」のような可変コストのルートは、
         // 表示されているコストが単価であって実際の支払額ではないため、押せないように
         // した上で注記を出す(実際のコストは下の手動入力で計算して入力してもらう)。
         const scalingHtml = r.scalingNote
           ? `<span class="eri-text" style="color:var(--danger);">⚠ ${escapeHtml(r.scalingNote)}(可変コストのため、下の手動入力で計算して入力してください)</span>`
           : '';
-        btn.innerHTML = `<span class="eri-cost">コスト${r.cost}</span>${escapeHtml(r.label)}${subHtml ? `<span class="eri-text">${subHtml}</span>` : ''}${scalingHtml}`;
+        btn.innerHTML = `<span class="eri-cost">コスト${r.cost}</span>${mainText}${scalingHtml}`;
         if (r.scalingNote) {
           btn.disabled = true;
           btn.style.opacity = '0.55';
