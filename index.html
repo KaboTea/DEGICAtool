@@ -1735,7 +1735,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.29.41</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.29.43</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -3224,7 +3224,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.29.41`);
+    log(`DigiCA Tool build v0.29.43`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -5589,7 +5589,11 @@
 
     if (Array.isArray(handCard.evo) && topCard) {
       handCard.evo.forEach(req => {
-        const levelOk = topCard.level == null || req.level == null || topCard.level >= req.level;
+        // デジモンカードは「以上」「以下」の場合は必ずそう明記される(実際にDBを確認
+        // すると、進化条件のLv指定で「以上」が付くのは790件中2件のみで、その2件は
+        // どちらも特殊条件文としてテキストに明記されている)。基本条件のLvは
+        // 明記がない=完全一致が正しい。
+        const levelOk = topCard.level == null || req.level == null || topCard.level === req.level;
         const colorOk = !req.color || req.color.length === 0 || (topCard.color || []).some(c => req.color.includes(c));
         if (!levelOk || !colorOk) return; // structurally impossible against this target
         const cost = req.cost ?? 0;
@@ -5597,7 +5601,7 @@
         const key = `S${cost}-${req.level}-${colorLabel}`;
         if (seen.has(key)) return;
         seen.add(key);
-        routes.push({ cost, label: `基本条件: Lv${req.level ?? '?'}以上 / ${colorLabel}`, sub: null });
+        routes.push({ cost, label: `基本条件: Lv${req.level ?? '?'} / ${colorLabel}`, sub: null });
       });
     }
 
@@ -6002,6 +6006,16 @@
       if (card.form && card.form.includes('アプモン')) traits.push('アプモン');
       return traits;
     };
+    // デジモンカードは「以上」「以下」を意図する場合、必ずテキストにそう明記される
+    // (DB全体で確認済み: 進化条件のLv指定で「以上」が付くのは790件中2件のみで、
+    // その2件もどちらも明記されている)。そのため、条件文に「以上」の記載がなければ
+    // Lv.Nは完全一致、記載があれば以上として判定する。
+    const lvCheck = (card, lvNum, matchedWholeText) => {
+      if (!lvNum) return true;
+      if (card.level == null) return false;
+      const isAtLeast = matchedWholeText && matchedWholeText.includes('以上');
+      return isAtLeast ? card.level >= lvNum : card.level === lvNum;
+    };
     // 盤面全体(バトルエリア/育成エリア/セキュリティ/トラッシュ等)を参照する条件向けの
     // ヘルパー。「自分」は今操作しているプレイヤー(practiceState.viewingIndex)とする。
     const getSelfPlayer = () => (typeof practiceState !== 'undefined' && practiceState ? practiceState.players[practiceState.viewingIndex] : null);
@@ -6013,30 +6027,30 @@
       }
       return list;
     };
-    const nameRe = /名称に?((?:「[^」]+」[\/か]?)+)を含む(?:Lv\.?(\d+))?/g;
-    const traitRe = /特徴に?((?:「[^」]+」[\/か]?)+)(?:を持つ|を含む)(?:Lv\.?(\d+))?/g;
+    const nameRe = /名称に?((?:「[^」]+」[\/か]?)+)を含む(?:Lv\.?(\d+)(?:以上)?)?/g;
+    const traitRe = /特徴に?((?:「[^」]+」[\/か]?)+)(?:を持つ|を含む)(?:Lv\.?(\d+)(?:以上)?)?/g;
     const matRe = /進化元(?:枚数)?が(\d+)枚以上/g;
     // 「「オメガモン」の記述があるLv.3」のように、名称/特徴ではなく「カード自身の
     // 効果テキストに特定の文字列が含まれているか」を見る条件。キーワード効果を指す
     // 場合は「」ではなく≪≫で書かれることもある(例:≪セーブ≫の記述があるLv.2)。
-    const mentionRe = /(?:「([^」]+)」|≪([^≫]+)≫)の記述がある(?:Lv\.?(\d+))?/g;
+    const mentionRe = /(?:「([^」]+)」|≪([^≫]+)≫)の記述がある(?:Lv\.?(\d+)(?:以上)?)?/g;
     // 「≪セーブ≫の記述がある赤か黒か紫のLv.4」のように、「記述がある」に複数色の
     // 指定が続く形。
-    const mentionAndColorRe = /(?:「([^」]+)」|≪([^≫]+)≫)の記述がある((?:[青赤黄緑黒紫白]か?)+)の(?:Lv\.?(\d+))?/g;
+    const mentionAndColorRe = /(?:「([^」]+)」|≪([^≫]+)≫)の記述がある((?:[青赤黄緑黒紫白]か?)+)の(?:Lv\.?(\d+)(?:以上)?)?/g;
     // 「Lv.2の「アルゴモン」」のように、レベル+名前が逆順で書かれている形。
     const lvNameRe = /Lv\.?(\d+)の「([^」]+)」/g;
     // 「名称に「アグモン」を含み特徴に「恐竜型」を持つLv.3」のように、名称一致と
     // 特徴一致が「含み」で肯定的に(否定ではなく)連結されるもの。
-    const nameAndTraitRe = /名称に?((?:「[^」]+」\/?)+)を含み、?特徴に?((?:「[^」]+」\/?)+)(?:を持つ|を含む)(?:Lv\.?(\d+))?/g;
+    const nameAndTraitRe = /名称に?((?:「[^」]+」\/?)+)を含み、?特徴に?((?:「[^」]+」\/?)+)(?:を持つ|を含む)(?:Lv\.?(\d+)(?:以上)?)?/g;
     // 「特徴に「X抗体」を持たず、「三銃士」を持つLv.6」のように、否定の後に
     // 「特徴に」が省略された形で別の特徴条件が続くもの(両方とも特徴条件のAND)。
-    const notTraitAndTraitRe = /特徴に?((?:「[^」]+」\/?)+)を持たず、?((?:「[^」]+」\/?)+)を持つ(?:Lv\.?(\d+))?/g;
+    const notTraitAndTraitRe = /特徴に?((?:「[^」]+」\/?)+)を持たず、?((?:「[^」]+」\/?)+)を持つ(?:Lv\.?(\d+)(?:以上)?)?/g;
     // 「特徴に「パペット型」を持つ黄/紫のLv.4」のように、特徴+複数色+レベルが
     // 組み合わさったもの(色はそのカード自身が持つ色のいずれかに一致すればよい)。
-    const traitAndColorRe = /特徴に?((?:「[^」]+」\/?)+)(?:を持つ|を含む)((?:[青赤黄緑黒紫白]\/?)+)の(?:Lv\.?(\d+))?/g;
+    const traitAndColorRe = /特徴に?((?:「[^」]+」\/?)+)(?:を持つ|を含む)((?:[青赤黄緑黒紫白]\/?)+)の(?:Lv\.?(\d+)(?:以上)?)?/g;
     // 「名称に「ガルゴモン」を含むか緑を含む2色のLv.4」のように、名称一致 OR
     // (特定の色を含むN色構成)、という条件。
-    const nameOrColorCountRe = /名称に?((?:「[^」]+」\/?)+)を含むか([青赤黄緑黒紫白])を含む(\d+)色の(?:Lv\.?(\d+))?/g;
+    const nameOrColorCountRe = /名称に?((?:「[^」]+」\/?)+)を含むか([青赤黄緑黒紫白])を含む(\d+)色の(?:Lv\.?(\d+)(?:以上)?)?/g;
     // 「「パルスモン」か特徴に「シーカーズ」を持つLv.4」のように、名称一致条件と
     // 特徴条件が「か」で混在するOR形。「/」で同様に混在するケースもある
     // (例:「ホークモン」/特徴に「TS」を持つLv.3、「特徴」の後の「に」が省略される
@@ -6047,12 +6061,12 @@
     // 「自分のセキュリティがN枚以下の間、「X」」
     const securityCountRe = /自分のセキュリティが(\d+)枚以下の間、((?:「[^」]+」\/?)+)/g;
     // 「自分のトラッシュがN枚以上の間、名称に「X」を含むLv.M」
-    const trashCountRe = /自分のトラッシュが(\d+)枚以上の間、名称に?((?:「[^」]+」\/?)+)を含む(?:Lv\.?(\d+))?/g;
+    const trashCountRe = /自分のトラッシュが(\d+)枚以上の間、名称に?((?:「[^」]+」\/?)+)を含む(?:Lv\.?(\d+)(?:以上)?)?/g;
     // 「DP10000以上の相手のデジモンがいる間、「X」」
     const oppDPThresholdRe = /DP(\d+)以上の相手のデジモンがいる間、((?:「[^」]+」\/?)+)/g;
     // 「特徴に「X」を持つ自分のテイマーがN体以上いる間、「Y」」
     const ownTamerTraitCountRe = /特徴に((?:「[^」]+」\/?)+)を持つ自分のテイマーが(\d+)体以上いる間、((?:「[^」]+」\/?)+)/g;
-    const nameOrTraitRe = /「([^」]+)」(?:か|\/)特徴に?((?:「[^」]+」\/?)+)を持つ(?:Lv\.?(\d+))?/g;
+    const nameOrTraitRe = /「([^」]+)」(?:か|\/)特徴に?((?:「[^」]+」\/?)+)を持つ(?:Lv\.?(\d+)(?:以上)?)?/g;
     // 「3色の「マグナガルルモン」」「紫の「ケルビモン」」のように、同名で色数/色違いの
     // 印刷違いがあるカードのうち、特定の色構成のものだけを指定する条件。
     const colorNameRe = /(?:(\d+)色(以外)?|([青赤黄緑黒紫白])色?)の「([^」]+)」/g;
@@ -6062,7 +6076,7 @@
     const traitCountRe = /特徴に((?:「[^」]+」\/?)+)を持つカードが下に(\d+)枚(?:以上)?ある((?:「[^」]+」\/?)+)/g;
     // 「名称に「もんざえモン」を含み、特徴に「X抗体」を持たないLv.5」のように、
     // 名称一致に加えて「特徴を持たない」という否定条件が付くもの。
-    const nameAndNotTraitRe = /名称に?((?:「[^」]+」\/?)+)を含み、?特徴に?((?:「[^」]+」\/?)+)を持たない(?:Lv\.?(\d+))?/g;
+    const nameAndNotTraitRe = /名称に?((?:「[^」]+」\/?)+)を含み、?特徴に?((?:「[^」]+」\/?)+)を持たない(?:Lv\.?(\d+)(?:以上)?)?/g;
     // 「進化元に「ヒポグリフォモン」を持つ「ダルクモン」」「「シェイドモン」が下にある
     // 「天野ネネ」」のように、進化元の中に特定の1枚が実在するかを見る条件。
     const materialHasRe = /(?:進化元に「([^」]+)」(?:を持つ|がある)|「([^」]+)」が下にある)((?:「[^」]+」\/?)+)/g;
@@ -6103,7 +6117,7 @@
       matchedSpan += m[0].length;
       const names = (m[1].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
       const traits = (m[2].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
-      const lvOk = !m[3] || (topCard.level != null && topCard.level >= parseInt(m[3], 10));
+      const lvOk = lvCheck(topCard, m[3] ? parseInt(m[3], 10) : null, m[0]);
       const nameOk = names.some(n => (topCard.name || '').includes(n));
       const traitOk = traits.some(t => getCardTraits(topCard).some(ct => ct.includes(t)));
       clauses.push(lvOk && nameOk && !traitOk);
@@ -6112,7 +6126,7 @@
       matchedSpan += m[0].length;
       const names = (m[1].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
       const traits = (m[2].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
-      const lvOk = !m[3] || (topCard.level != null && topCard.level >= parseInt(m[3], 10));
+      const lvOk = lvCheck(topCard, m[3] ? parseInt(m[3], 10) : null, m[0]);
       const nameOk = names.some(n => (topCard.name || '').includes(n));
       const traitOk = traits.some(t => getCardTraits(topCard).some(ct => ct.includes(t)));
       clauses.push(lvOk && nameOk && traitOk);
@@ -6121,7 +6135,7 @@
       matchedSpan += m[0].length;
       const notTraits = (m[1].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
       const traits = (m[2].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
-      const lvOk = !m[3] || (topCard.level != null && topCard.level >= parseInt(m[3], 10));
+      const lvOk = lvCheck(topCard, m[3] ? parseInt(m[3], 10) : null, m[0]);
       const notTraitOk = !notTraits.some(t => getCardTraits(topCard).some(ct => ct.includes(t)));
       const traitOk = traits.some(t => getCardTraits(topCard).some(ct => ct.includes(t)));
       clauses.push(lvOk && notTraitOk && traitOk);
@@ -6130,7 +6144,7 @@
       matchedSpan += m[0].length;
       const traits = (m[1].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
       const colorsJa = m[2].split('/').filter(Boolean);
-      const lvOk = !m[3] || (topCard.level != null && topCard.level >= parseInt(m[3], 10));
+      const lvOk = lvCheck(topCard, m[3] ? parseInt(m[3], 10) : null, m[0]);
       const traitOk = traits.some(t => getCardTraits(topCard).some(ct => ct.includes(t)));
       const cardColors = topCard.color || [];
       const colorOk = colorsJa.some(cj => {
@@ -6142,7 +6156,7 @@
     while ((m = nameOrColorCountRe.exec(text))) {
       matchedSpan += m[0].length;
       const names = (m[1].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
-      const lvOk = !m[4] || (topCard.level != null && topCard.level >= parseInt(m[4], 10));
+      const lvOk = lvCheck(topCard, m[4] ? parseInt(m[4], 10) : null, m[0]);
       const nameOk = names.some(n => (topCard.name || '').includes(n));
       const cardColors = topCard.color || [];
       const en = COLOR_JA_TO_EN[m[2]];
@@ -6185,7 +6199,7 @@
       matchedSpan += m[0].length;
       const min = parseInt(m[1], 10);
       const names = (m[2].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
-      const lvOk = !m[3] || (topCard.level != null && topCard.level >= parseInt(m[3], 10));
+      const lvOk = lvCheck(topCard, m[3] ? parseInt(m[3], 10) : null, m[0]);
       const nameOk = names.some(n => (topCard.name || '').includes(n));
       const self = getSelfPlayer();
       const countOk = !!self && self.trash.length >= min;
@@ -6215,7 +6229,7 @@
       matchedSpan += m[0].length;
       const nameOk = topCard.name === m[1];
       const traits = (m[2].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
-      const lvOk = !m[3] || (topCard.level != null && topCard.level >= parseInt(m[3], 10));
+      const lvOk = lvCheck(topCard, m[3] ? parseInt(m[3], 10) : null, m[0]);
       const traitOk = lvOk && traits.some(t => getCardTraits(topCard).some(ct => ct.includes(t)));
       clauses.push(nameOk || traitOk);
     }
@@ -6226,7 +6240,7 @@
       matchedSpan += m[0].length;
       const mentionText = m[1] || m[2];
       const colorsJa = (m[3].match(/[青赤黄緑黒紫白]/g) || []);
-      const lvOk = !m[4] || (topCard.level != null && topCard.level >= parseInt(m[4], 10));
+      const lvOk = lvCheck(topCard, m[4] ? parseInt(m[4], 10) : null, m[0]);
       const mentionOk = (topCard.effect || '').includes(mentionText) || (topCard.inherited || '').includes(mentionText);
       const cardColors = topCard.color || [];
       const colorOk = colorsJa.some(cj => {
@@ -6254,26 +6268,26 @@
     while ((m = mentionRe.exec(remainingText))) {
       matchedSpan += m[0].length;
       const mentionText = m[1] || m[2];
-      const lvOk = !m[3] || (topCard.level != null && topCard.level >= parseInt(m[3], 10));
+      const lvOk = lvCheck(topCard, m[3] ? parseInt(m[3], 10) : null, m[0]);
       const mentionOk = (topCard.effect || '').includes(mentionText) || (topCard.inherited || '').includes(mentionText);
       clauses.push(lvOk && mentionOk);
     }
     while ((m = lvNameRe.exec(remainingText))) {
       matchedSpan += m[0].length;
-      const lvOk = topCard.level != null && topCard.level >= parseInt(m[1], 10);
+      const lvOk = lvCheck(topCard, parseInt(m[1], 10), m[0]);
       clauses.push(lvOk && topCard.name === m[2]);
     }
     while ((m = nameRe.exec(remainingText))) {
       matchedSpan += m[0].length;
       const names = (m[1].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
-      const lvOk = !m[2] || (topCard.level != null && topCard.level >= parseInt(m[2], 10));
+      const lvOk = lvCheck(topCard, m[2] ? parseInt(m[2], 10) : null, m[0]);
       const nameOk = names.some(n => (topCard.name || '').includes(n));
       clauses.push(lvOk && nameOk);
     }
     while ((m = traitRe.exec(remainingText))) {
       matchedSpan += m[0].length;
       const traits = (m[1].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
-      const lvOk = !m[2] || (topCard.level != null && topCard.level >= parseInt(m[2], 10));
+      const lvOk = lvCheck(topCard, m[2] ? parseInt(m[2], 10) : null, m[0]);
       const traitOk = traits.some(t => getCardTraits(topCard).some(ct => ct.includes(t)));
       clauses.push(lvOk && traitOk);
     }
@@ -6325,12 +6339,18 @@
         });
         evolveRouteList.appendChild(btn);
       };
+      // 抽出・判定が原理的に難しい特殊なカード(手札のこのカードを〜として扱う、
+      // 進化条件を無視できる効果の記述、抽出時に他の文章と混ざりやすい形式等)は、
+      // 誤って隠れて見落とすことのないよう、常に無条件で選択肢に表示する
+      // (自動判定を試みない)。
+      const NEVER_FILTER_CARDS = new Set(['BT24-101', 'BT12-013', 'BT12-012', 'RB1-009', 'P-152']);
+      const skipAutoFilter = card && NEVER_FILTER_CARDS.has(card.number);
       // 特殊条件文(名称/特徴/進化元枚数)を、可能な範囲で自動判定する。判定できて
       // 「満たさない」と分かったものだけ一旦隠し、手動で表示し直せるようにする
       // (未知の言い回しは判定を諦めて常に表示する=既存の挙動のまま)。
       const hiddenRoutes = [];
       routes.forEach(r => {
-        const result = r.sub ? evaluateSpecialCondition(r.sub, topCardForMatching, targetStackForMatching) : null;
+        const result = skipAutoFilter ? null : (r.sub ? evaluateSpecialCondition(r.sub, topCardForMatching, targetStackForMatching) : null);
         if (result === false) hiddenRoutes.push(r);
         else renderRoute(r);
       });
