@@ -1735,7 +1735,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.29.49</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.29.50</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -3254,7 +3254,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.29.49`);
+    log(`DigiCA Tool build v0.29.50`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -3490,7 +3490,7 @@
   function getEffectiveDP(stack) {
     const c = getStackTopCard(stack);
     const base = stack.actingAsDigimon ? (stack.assignedDP ?? 0) : (c ? (c.dp ?? 0) : 0);
-    return base + (stack.dpModifier || 0) + getTempDPModifierSum(stack) + getMaterialTurnDPBonus(stack) + getFieldEffectDPBonus(stack);
+    return base + (stack.dpModifier || 0) + getTempDPModifierSum(stack) + getMaterialTurnDPBonus(stack) + getSelfEffectDPBonus(stack) + getFieldEffectDPBonus(stack);
   }
   // 進化元(一番上の現在のカードを除く)が「【お互いのターン/自分のターン/相手のターン】
   // このデジモンをDP+N。」という独立行の記載を持つ場合、そのターン条件を満たしていれば
@@ -3503,24 +3503,47 @@
     const ownerIndex = practiceState.players.indexOf(owner.player);
     const isOwnersTurn = practiceState.turn.playerIndex === ownerIndex;
     const materials = stack.cards.slice(0, stack.cards.length - 1);
-    const pat = /^【(お互いのターン|自分のターン|相手のターン)】このデジモンをDP([+\-＋－]\d+)。?$/;
     let sum = 0;
     materials.forEach(entry => {
       const card = cardIndexByNumber.get(cardEntryNum(entry));
       const text = (card && card.inherited) || '';
-      text.split('\n').forEach(line => {
-        const m = pat.exec(line.trim());
-        if (!m) return;
-        const timing = m[1];
-        const applies = timing === 'お互いのターン' ||
-          (timing === '自分のターン' && isOwnersTurn) ||
-          (timing === '相手のターン' && !isOwnersTurn);
-        if (!applies) return;
-        const numStr = m[2].replace('＋', '+').replace('－', '-');
-        sum += parseInt(numStr, 10);
-      });
+      sum += sumSelfTurnDPPattern(text, isOwnersTurn);
     });
     return sum;
+  }
+  // SELF_TURN_DP_PATTERN: 「【お互いのターン/自分のターン/相手のターン】このデジモンを
+  // DP+N。」(独立行・定型形式)と「【同タイミング】このデジモンのDPを+Nする。」(自然文形式、
+  // 主にカード自身の効果欄で使われる)の両方を1つの正規表現でカバーする。カード自身の効果
+  // (getSelfEffectDPBonus)・進化元のinherited(getMaterialTurnDPBonus)の両方で共用する。
+  const SELF_TURN_DP_PATTERN = /^【(お互いのターン|自分のターン|相手のターン)】このデジモン(?:をDP|のDPを)([+\-＋－]\d+)(?:する)?。?$/;
+  function sumSelfTurnDPPattern(text, isOwnersTurn) {
+    let sum = 0;
+    (text || '').split('\n').forEach(line => {
+      const m = SELF_TURN_DP_PATTERN.exec(line.trim());
+      if (!m) return;
+      const timing = m[1];
+      const applies = timing === 'お互いのターン' ||
+        (timing === '自分のターン' && isOwnersTurn) ||
+        (timing === '相手のターン' && !isOwnersTurn);
+      if (!applies) return;
+      const numStr = m[2].replace('＋', '+').replace('－', '-');
+      sum += parseInt(numStr, 10);
+    });
+    return sum;
+  }
+  // カード自身の効果欄(inheritedではなくeffect)に同じ定型/自然文パターンが書かれている
+  // 場合も、材料と同じ考え方で自動加算する(条件は「タイミングが来ている間」のみで、
+  // 他の盤面条件・コスト支払い等が絡まない単純なケースに限定。DB検証済み: BT10-014/
+  // BT9-055/EX2-011(独立行形式)、BT3-074/BT4-013/BT4-018/P-057(自然文形式)の7件)。
+  function getSelfEffectDPBonus(stack) {
+    if (!practiceState) return 0;
+    const c = getStackTopCard(stack);
+    if (!c || !c.effect) return 0;
+    const owner = findStackOwnerAndZone(stack);
+    if (!owner) return 0;
+    const ownerIndex = practiceState.players.indexOf(owner.player);
+    const isOwnersTurn = practiceState.turn.playerIndex === ownerIndex;
+    return sumSelfTurnDPPattern(c.effect, isOwnersTurn);
   }
 
   // ---------- フィールド効果(自分/相手の全デジモンへのDP増減) ----------
@@ -3789,6 +3812,7 @@
     // メモリー状況で判定を確定させ、以後は変化しない(メモリーが後から変わっても不可)。
     setAdvanceAvailable(stack, hasAdvanceKeyword(stack) && memoryTowardOpponent() >= 1);
     checkAutoRevealTrigger(stack, '進化時');
+    checkAutoSelfEvolveDPTrigger(stack, '進化時');
   }
   // ≪回避≫≪アーマー解除≫≪突進≫も、ブロッカー等と同様に「デフォルト自動判定+手動上書き」
   // の形に統一する。バッジ表示と、実際に選べる場面(消滅確認/アタック時ステップ)の両方を
@@ -7230,6 +7254,27 @@
         return;
       }
     }
+  }
+  // 「【進化時】このターンの間、このデジモンのDPを+N/-Nする。」のような、進化した瞬間に
+  // 一度だけ発動し、そのターンの間だけ持続するDP増減。既存のtempDPModifiers(手動DP増減の
+  // 期限付き版と同じ仕組み)にそのまま積む。条件が絡まない単純なケースに限定
+  // (DB検証済み: BT7-052/ST9-13の2件)。
+  function checkAutoSelfEvolveDPTrigger(stack, triggerLabel) {
+    const card = getStackTopCard(stack);
+    if (!card || !card.effect || !practiceState) return;
+    const pat = /^【([^】]+)】このターンの間、このデジモンのDPを([+\-＋－]\d+)する。?$/;
+    card.effect.split('\n').forEach(line => {
+      const m = pat.exec(line.trim());
+      if (!m || m[1] !== triggerLabel) return;
+      const numStr = m[2].replace('＋', '+').replace('－', '-');
+      const amount = parseInt(numStr, 10);
+      if (!stack.tempDPModifiers) stack.tempDPModifiers = [];
+      stack.tempDPModifiers.push({
+        amount,
+        expireAtTurnCount: computeExpireAtTurnCount('thisTurn', practiceState.turn.playerIndex),
+      });
+      showToast(`「${card.name}」の${triggerLabel}効果: このターンの間DPを${amount > 0 ? '+' : ''}${amount}しました`);
+    });
   }
   function revealTopAndSort(x) {
     const self = practiceState.players[practiceState.viewingIndex];
