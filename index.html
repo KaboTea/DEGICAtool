@@ -1735,7 +1735,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.29.43</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.29.46</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -3224,7 +3224,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.29.43`);
+    log(`DigiCA Tool build v0.29.46`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -5614,7 +5614,10 @@
       // 「/」は、条件の途中(コストが1回だけ末尾に来る場合)ならOR条件の並記、
       // 「条件:コストN」のまとまりが「/」で複数並ぶ場合は独立したルートの並記、という
       // 2通りの意味で使われる。「/」で区切った各断片が全てコストを持つかどうかで判別する。
-      const stdRe = /【進化】((?:(?!【[^【】]+】)[\s\S])*?コスト\d+(?:\/(?:(?!【[^【】]+】)[^\n])*?コスト\d+)*)/g;
+      // 「登場コストN以下の」のように、進化コストとは別に「材料自身の登場/使用コスト」
+      // への言及が条件文中に出てくることがあるため、そちらの「コストN」を進化コストの
+      // 終端と誤認しないよう、直前に「登場」「使用」が無い「コストN」だけを終端とする。
+      const stdRe = /【進化】((?:(?!【[^【】]+】)[\s\S])*?(?<!登場)(?<!使用)コスト\d+(?:\/(?:(?!【[^【】]+】)[^\n])*?(?<!登場)(?<!使用)コスト\d+)*)/g;
       let m;
       while ((m = stdRe.exec(handCard.effect))) {
         const wholeBlock = m[1];
@@ -5629,9 +5632,14 @@
           // DB上の入力ミスで「」の閉じ側が半角の"]"になっているケースがあるため
           // (例:「特徴に「CS]を持つLv.3」)、正規化しておく。
           conditionText = conditionText.replace(/\]/g, '」');
-          // 「自分のセキュリティ1枚ごとに、」のような可変コスト等の説明文が条件の中に
-          // 混入することがあるため(コスト軽減の一種で進化条件そのものではない)、
-          // 「自分の〜ごとに」の節をまるごと取り除く。
+          // 「自分のセキュリティ1枚ごとに、」のような可変コストの説明文が条件の中に
+          // 混入することがあるため、条件文からは取り除きつつ、表示用に別途保持しておく
+          // (コストが固定値ではなく計算が必要なことを、ボタンの無効化+注記で伝える)。
+          let scalingNote = null;
+          const gotoniMatch = conditionText.match(/自分の[^、:：]*ごとに、?/);
+          if (gotoniMatch) {
+            scalingNote = `${gotoniMatch[0].replace(/、$/, '')}、コスト${cost}`;
+          }
           conditionText = conditionText.replace(/自分の[^、:：]*ごとに、?/g, '');
           // 「「X」からN」の直後に余計な文字列が続く場合、無関係な後続の文章まで
           // 誤って一緒に拾ってしまった抽出ミスの可能性が高いため、このルート自体を
@@ -5648,7 +5656,7 @@
           const key = `T${cost}-${conditionText}`;
           if (seen.has(key)) return;
           seen.add(key);
-          routes.push({ cost, label: `条件進化: コスト${cost}`, sub: conditionText });
+          routes.push({ cost, label: `条件進化: コスト${cost}`, sub: conditionText, scalingNote });
         };
         if (eachHasOwnCost) {
           segments.forEach(addRoute);
@@ -6051,6 +6059,12 @@
     // 「名称に「ガルゴモン」を含むか緑を含む2色のLv.4」のように、名称一致 OR
     // (特定の色を含むN色構成)、という条件。
     const nameOrColorCountRe = /名称に?((?:「[^」]+」\/?)+)を含むか([青赤黄緑黒紫白])を含む(\d+)色の(?:Lv\.?(\d+)(?:以上)?)?/g;
+    // 「登場コスト4以下の「シャウトモン」/「ドルルモン」」のように、材料自身の
+    // 登場コストへの閾値+名称。
+    const entryCostAndNameRe = /登場コスト(\d+)(以下|以上)の((?:「[^」]+」\/?)+)/g;
+    // 「特徴に「昆虫型」を持つ登場コスト13以下のLv.6」のように、特徴+材料自身の
+    // 登場コストへの閾値+レベル。
+    const traitAndEntryCostRe = /特徴に?((?:「[^」]+」\/?)+)を持つ登場コスト(\d+)(以下|以上)の(?:Lv\.?(\d+)(?:以上)?)?/g;
     // 「「パルスモン」か特徴に「シーカーズ」を持つLv.4」のように、名称一致条件と
     // 特徴条件が「か」で混在するOR形。「/」で同様に混在するケースもある
     // (例:「ホークモン」/特徴に「TS」を持つLv.3、「特徴」の後の「に」が省略される
@@ -6164,6 +6178,25 @@
       const colorOk = !!en && cardColors.includes(en) && cardColors.length === need;
       clauses.push(lvOk && (nameOk || colorOk));
     }
+    while ((m = entryCostAndNameRe.exec(text))) {
+      matchedSpan += m[0].length;
+      const threshold = parseInt(m[1], 10);
+      const isAtLeast = m[2] === '以上';
+      const names = (m[3].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
+      const nameOk = names.some(n => (topCard.name || '').includes(n));
+      const entryCostOk = topCard.play_cost != null && (isAtLeast ? topCard.play_cost >= threshold : topCard.play_cost <= threshold);
+      clauses.push(nameOk && entryCostOk);
+    }
+    while ((m = traitAndEntryCostRe.exec(text))) {
+      matchedSpan += m[0].length;
+      const traits = (m[1].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
+      const threshold = parseInt(m[2], 10);
+      const isAtLeast = m[3] === '以上';
+      const lvOk = lvCheck(topCard, m[4] ? parseInt(m[4], 10) : null, m[0]);
+      const traitOk = traits.some(t => getCardTraits(topCard).some(ct => ct.includes(t)));
+      const entryCostOk = topCard.play_cost != null && (isAtLeast ? topCard.play_cost >= threshold : topCard.play_cost <= threshold);
+      clauses.push(lvOk && traitOk && entryCostOk);
+    }
     while ((m = materialHasRe.exec(text))) {
       if (!targetStack) continue; // 進化元の中身を確認する必要があるが参照できないため判定を諦める(未消費のまま)
       matchedSpan += m[0].length;
@@ -6257,6 +6290,8 @@
       .replace(notTraitAndTraitRe, '')
       .replace(traitAndColorRe, '')
       .replace(nameOrColorCountRe, '')
+      .replace(entryCostAndNameRe, '')
+      .replace(traitAndEntryCostRe, '')
       .replace(mentionAndColorRe, '')
       .replace(materialHasRe, '')
       .replace(battlePresenceRe, '')
@@ -6332,18 +6367,30 @@
         // のように「/」で複数条件が並記されているカードがあるため、それぞれを改行して
         // 見やすくする(意味的な再構成はせず、印字通りの区切りをそのまま行分けするだけ)。
         const subHtml = r.sub ? r.sub.split('/').map(part => escapeHtml(part.trim())).join('<br>') : '';
-        btn.innerHTML = `<span class="eri-cost">コスト${r.cost}</span>${escapeHtml(r.label)}${subHtml ? `<span class="eri-text">${subHtml}</span>` : ''}`;
-        btn.addEventListener('click', () => {
-          evolveRouteModal.classList.remove('open');
-          if (pendingEvolveResolve) pendingEvolveResolve(r.cost);
-        });
+        // 「自分のセキュリティ1枚ごとに、コストN」のような可変コストのルートは、
+        // 表示されているコストが単価であって実際の支払額ではないため、押せないように
+        // した上で注記を出す(実際のコストは下の手動入力で計算して入力してもらう)。
+        const scalingHtml = r.scalingNote
+          ? `<span class="eri-text" style="color:var(--danger);">⚠ ${escapeHtml(r.scalingNote)}(可変コストのため、下の手動入力で計算して入力してください)</span>`
+          : '';
+        btn.innerHTML = `<span class="eri-cost">コスト${r.cost}</span>${escapeHtml(r.label)}${subHtml ? `<span class="eri-text">${subHtml}</span>` : ''}${scalingHtml}`;
+        if (r.scalingNote) {
+          btn.disabled = true;
+          btn.style.opacity = '0.55';
+          btn.style.cursor = 'not-allowed';
+        } else {
+          btn.addEventListener('click', () => {
+            evolveRouteModal.classList.remove('open');
+            if (pendingEvolveResolve) pendingEvolveResolve(r.cost);
+          });
+        }
         evolveRouteList.appendChild(btn);
       };
       // 抽出・判定が原理的に難しい特殊なカード(手札のこのカードを〜として扱う、
       // 進化条件を無視できる効果の記述、抽出時に他の文章と混ざりやすい形式等)は、
       // 誤って隠れて見落とすことのないよう、常に無条件で選択肢に表示する
       // (自動判定を試みない)。
-      const NEVER_FILTER_CARDS = new Set(['BT24-101', 'BT12-013', 'BT12-012', 'RB1-009', 'P-152']);
+      const NEVER_FILTER_CARDS = new Set(['BT12-013', 'BT12-012']);
       const skipAutoFilter = card && NEVER_FILTER_CARDS.has(card.number);
       // 特殊条件文(名称/特徴/進化元枚数)を、可能な範囲で自動判定する。判定できて
       // 「満たさない」と分かったものだけ一旦隠し、手動で表示し直せるようにする
