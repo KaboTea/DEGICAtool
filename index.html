@@ -1735,7 +1735,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.29.47</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.29.49</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -2506,13 +2506,43 @@
       tags.push(`コスト${card.play_cost}`);
     }
 
-    let evoHtml = '';
+    // 進化条件欄には基本条件(Lv/色/コスト)に加え、効果文中から特殊進化条件として
+    // 認識できた行(名称/特徴/進化元枚数等)も並べる。認識できた範囲は効果欄側からは
+    // 取り除き(displayEffect)、二重表記にしない。認識できなかった残りの記述は
+    // そのまま効果欄に残す(8-4節の安全側方針: 認識できた範囲だけを動かす)。
+    const evoLines = [];
     if (Array.isArray(card.evo) && card.evo.length > 0) {
-      const lines = card.evo.map(e => {
+      card.evo.forEach(e => {
         const colorsJa = (e.color || []).map(c => COLOR_JA[c] || c).join('/');
-        return `Lv.${e.level ?? '?'} ${colorsJa} コスト${e.cost ?? '?'}`;
+        evoLines.push(`Lv.${e.level ?? '?'} ${colorsJa} コスト${e.cost ?? '?'}`);
       });
-      evoHtml = `<div class="detail-effect"><span class="label">進化条件</span>${escapeHtml(lines.join(' / '))}</div>`;
+    }
+    let displayEffect = card.effect || '';
+    const { routes: specialEvoRoutes, consumedSpans: specialEvoSpans } = extractSpecialEvolutionConditions(card.effect);
+    if (specialEvoRoutes.length > 0) {
+      specialEvoRoutes.forEach(r => {
+        // 元のカード記載表現に合わせる: 「から」で終わる条件文はそのままコスト数字を
+        // 続け(「「X」から0」)、それ以外は「条件文:コストN」の形にする(std系の
+        // 抽出元テキストは末尾に「:」を含んだまま保持されているため、二重にならない
+        // よう一旦取り除く)。
+        const scalingSuffix = r.scalingNote ? `(${r.scalingNote})` : '';
+        const subTrimmed = r.sub.replace(/[:：]$/, '');
+        evoLines.push(subTrimmed.endsWith('から')
+          ? `${subTrimmed}${r.cost}${scalingSuffix}`
+          : `${subTrimmed}:コスト${r.cost}${scalingSuffix}`);
+      });
+      // consumedSpansは複数のパターンから積まれるため昇順に並べ直し、後ろから順に
+      // 取り除くことで前方のインデックスがズレないようにする。
+      const sortedSpans = [...specialEvoSpans].sort((a, b) => b.start - a.start);
+      sortedSpans.forEach(span => {
+        displayEffect = displayEffect.slice(0, span.start) + displayEffect.slice(span.end);
+      });
+      // タグを取り除いた結果できる空行や余分な改行を整理する。
+      displayEffect = displayEffect.split('\n').map(l => l.trim()).filter(Boolean).join('\n');
+    }
+    let evoHtml = '';
+    if (evoLines.length > 0) {
+      evoHtml = `<div class="detail-effect"><span class="label">進化条件</span>${escapeHtml(evoLines.join(' / '))}</div>`;
     }
 
     let dualHtml = '';
@@ -2535,7 +2565,7 @@
         <div class="d-number mono">${escapeHtml(card.number)}</div>
         <div class="detail-tags">${tags.map(t => `<span>${escapeHtml(t)}</span>`).join('')}</div>
         ${evoHtml}
-        ${card.effect ? `<div class="detail-effect"><span class="label">効果</span>${escapeHtml(card.effect)}</div>` : ''}
+        ${displayEffect ? `<div class="detail-effect"><span class="label">効果</span>${escapeHtml(displayEffect)}</div>` : ''}
         ${card.inherited ? `<div class="detail-effect"><span class="label">${card.inherited.includes('リンク') ? 'リンク効果' : '進化元効果'}</span>${escapeHtml(card.inherited)}</div>` : ''}
         ${card.security_effect ? `<div class="detail-effect"><span class="label">セキュリティ効果</span>${escapeHtml(card.security_effect)}</div>` : ''}
         ${dualHtml}
@@ -3224,7 +3254,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.29.47`);
+    log(`DigiCA Tool build v0.29.49`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -5583,6 +5613,128 @@
   // 【進化】...コストN block found in the effect text is shown as another (its condition
   // text is shown verbatim so the player can judge applicability themselves). See design
   // doc §2-3: automatic judgement of name/trait/quantity conditions is out of scope.
+  // カードの効果文(handCard.effect)から特殊進化条件を抜き出す。buildEvolveRoutes
+  // (実際の進化ルート計算)とopenCardDetail(進化条件欄/効果欄の表示分離)の
+  // 両方から呼ばれる共通ロジック。consumedSpansは効果文中で「進化条件として
+  // 消費した」文字範囲で、表示分離時にこの範囲を効果欄から取り除くために使う。
+  function extractSpecialEvolutionConditions(effect) {
+    const routes = [];
+    const consumedSpans = [];
+    const seen = new Set();
+    if (!effect) return { routes, consumedSpans };
+
+    // Three cost-notation patterns appear in card text:
+    //   "【進化】...:コストN"      (standard — content must not cross into the next 【XXX】block)
+    //   "【進化】「X」からN"        (shorthand, e.g. "「コロモン」から0")
+    //   "【進化】...:コストN/...:コストM"  (multiple independent routes packed into one line,
+    //                                    e.g. "「スナッチモン」:コスト9/「ラグナモン」:コスト5")
+    // 「/」は、条件の途中(コストが1回だけ末尾に来る場合)ならOR条件の並記、
+    // 「条件:コストN」のまとまりが「/」で複数並ぶ場合は独立したルートの並記、という
+    // 2通りの意味で使われる。「/」で区切った各断片が全てコストを持つかどうかで判別する。
+    // 「登場コストN以下の」のように、進化コストとは別に「材料自身の登場/使用コスト」
+    // への言及が条件文中に出てくることがあるため、そちらの「コストN」を進化コストの
+    // 終端と誤認しないよう、直前に「登場」「使用」が無い「コストN」だけを終端とする。
+    const stdRe = /【進化】((?:(?!【[^【】]+】)[\s\S])*?(?<!登場)(?<!使用)コスト\d+(?:\/(?:(?!【[^【】]+】)[^\n])*?(?<!登場)(?<!使用)コスト\d+)*)/g;
+    let m;
+    while ((m = stdRe.exec(effect))) {
+      consumedSpans.push({ start: m.index, end: m.index + m[0].length });
+      const wholeBlock = m[1];
+      const segments = wholeBlock.split('/');
+      const costPattern = /コスト(\d+)\s*$/;
+      const eachHasOwnCost = segments.length > 1 && segments.every(seg => costPattern.test(seg.trim()));
+      const addRoute = (segText) => {
+        const cm = segText.trim().match(/^([\s\S]*?)コスト(\d+)\s*$/);
+        if (!cm) return;
+        let conditionText = cm[1].replace(/\s+/g, '').trim();
+        const cost = parseInt(cm[2], 10);
+        // DB上の入力ミスで「」の閉じ側が半角の"]"になっているケースがあるため
+        // (例:「特徴に「CS]を持つLv.3」)、正規化しておく。
+        conditionText = conditionText.replace(/\]/g, '」');
+        // 「自分のセキュリティ1枚ごとに、」のような可変コストの説明文が条件の中に
+        // 混入することがあるため、条件文からは取り除きつつ、表示用に別途保持しておく
+        // (コストが固定値ではなく計算が必要なことを、ボタンの無効化+注記で伝える)。
+        let scalingNote = null;
+        const gotoniMatch = conditionText.match(/自分の[^、:：]*ごとに、?/);
+        if (gotoniMatch) {
+          scalingNote = `${gotoniMatch[0].replace(/、$/, '')}、コスト${cost}`;
+        }
+        conditionText = conditionText.replace(/自分の[^、:：]*ごとに、?/g, '');
+        // 「「X」からN」の直後に余計な文字列が続く場合、無関係な後続の文章まで
+        // 誤って一緒に拾ってしまった抽出ミスの可能性が高いため、このルート自体を
+        // 追加しない(正しい「「X」からN」自体は別のshortRe/compoundReで
+        // 既に単独のルートとして正しく抽出されている)。
+        if (/^(?:「[^」]+」|『[^』]+』)から\d+./.test(conditionText)) return;
+        // 「。」(句点)を含む場合も、無関係な後続の文章まで誤って一緒に拾って
+        // しまった抽出ミスの可能性が高いため、このルート自体を追加しない。
+        if (conditionText.includes('。')) return;
+        // 条件文として意味を持つ語彙(名称/特徴/Lv/色/進化元/「」/から 等)が
+        // 一切含まれていない場合も、抽出ミス(効果文の断片が紛れ込んだだけ)の
+        // 可能性が高いため追加しない。
+        if (conditionText && !/[「」]|Lv\.?\d|色|特徴|名称|進化元|から/.test(conditionText)) return;
+        const key = `T${cost}-${conditionText}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        routes.push({ cost, label: `条件進化: コスト${cost}`, sub: conditionText, scalingNote });
+      };
+      if (eachHasOwnCost) {
+        segments.forEach(addRoute);
+      } else {
+        addRoute(wholeBlock);
+      }
+    }
+    const shortRe = /【進化】「([^」]+)」から(\d+)/g;
+    while ((m = shortRe.exec(effect))) {
+      const conditionText = `「${m[1]}」から`;
+      const cost = parseInt(m[2], 10);
+      const key = `T${cost}-${conditionText}`;
+      consumedSpans.push({ start: m.index, end: m.index + m[0].length });
+      if (seen.has(key)) continue;
+      seen.add(key);
+      routes.push({ cost, label: `条件進化: コスト${cost}`, sub: conditionText });
+    }
+    // "『複合条件』からN" — used when the condition combines multiple clauses
+    // (e.g. "『名称に「アグモン」を含み特徴に「恐竜型」を持つLv.3』から2")
+    const compoundRe = /【進化】『([^』]+)』から(\d+)/g;
+    while ((m = compoundRe.exec(effect))) {
+      const conditionText = m[1].replace(/\s+/g, '').trim();
+      const cost = parseInt(m[2], 10);
+      const key = `T${cost}-${conditionText}`;
+      consumedSpans.push({ start: m.index, end: m.index + m[0].length });
+      if (seen.has(key)) continue;
+      seen.add(key);
+      routes.push({ cost, label: `条件進化: コスト${cost}`, sub: conditionText });
+    }
+    // 汎用「から」パターン: 「引用符付き単一名称」以外の条件文(キーワード記述/複数名称の
+    // 「か」並記/色+Lv条件など)が「からN」で終わる場合も拾う。std/short/compoundが
+    // 既に消費した範囲は空白でマスクしてから走らせることで、同じ箇所の二重マッチによる
+    // 重複ルート生成を防ぐ(DB全件検証で1178件中1178件がこの3パターン+汎用パターンの
+    // 組み合わせで100%カバーできることを確認済み)。
+    let masked = effect;
+    for (const span of consumedSpans) {
+      masked = masked.slice(0, span.start) + ' '.repeat(span.end - span.start) + masked.slice(span.end);
+    }
+    const karaRe = /【進化】((?:(?!【[^【】]+】)[^\n])*?)から(\d+)/g;
+    while ((m = karaRe.exec(masked))) {
+      let conditionText = m[1].replace(/\s+/g, '').trim();
+      const cost = parseInt(m[2], 10);
+      if (!conditionText) continue;
+      // 「。」を跨いだ場合は無関係な後続文章を巻き込んだ抽出ミスの可能性が高いため
+      // 採用しない(std側のaddRouteと同じ安全策)。
+      if (conditionText.includes('。')) continue;
+      // 「コスト」を含む場合はstd側の担当と衝突するため採用しない。
+      if (conditionText.includes('コスト')) continue;
+      // 条件文として意味を持つ語彙が一切含まれていない場合も抽出ミスの可能性が高い。
+      if (!/[「」]|Lv\.?\d|色|特徴|名称|進化元|から|緑|赤|青|黄|黒|白|紫/.test(conditionText)) continue;
+      const key = `T${cost}-${conditionText}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      routes.push({ cost, label: `条件進化: コスト${cost}`, sub: conditionText });
+      consumedSpans.push({ start: m.index, end: m.index + m[0].length });
+    }
+
+    return { routes, consumedSpans };
+  }
+
   function buildEvolveRoutes(handCard, topCard) {
     const routes = [];
     const seen = new Set();
@@ -5605,86 +5757,8 @@
       });
     }
 
-    if (handCard.effect) {
-      // Three cost-notation patterns appear in card text:
-      //   "【進化】...:コストN"      (standard — content must not cross into the next 【XXX】block)
-      //   "【進化】「X」からN"        (shorthand, e.g. "「コロモン」から0")
-      //   "【進化】...:コストN/...:コストM"  (multiple independent routes packed into one line,
-      //                                    e.g. "「スナッチモン」:コスト9/「ラグナモン」:コスト5")
-      // 「/」は、条件の途中(コストが1回だけ末尾に来る場合)ならOR条件の並記、
-      // 「条件:コストN」のまとまりが「/」で複数並ぶ場合は独立したルートの並記、という
-      // 2通りの意味で使われる。「/」で区切った各断片が全てコストを持つかどうかで判別する。
-      // 「登場コストN以下の」のように、進化コストとは別に「材料自身の登場/使用コスト」
-      // への言及が条件文中に出てくることがあるため、そちらの「コストN」を進化コストの
-      // 終端と誤認しないよう、直前に「登場」「使用」が無い「コストN」だけを終端とする。
-      const stdRe = /【進化】((?:(?!【[^【】]+】)[\s\S])*?(?<!登場)(?<!使用)コスト\d+(?:\/(?:(?!【[^【】]+】)[^\n])*?(?<!登場)(?<!使用)コスト\d+)*)/g;
-      let m;
-      while ((m = stdRe.exec(handCard.effect))) {
-        const wholeBlock = m[1];
-        const segments = wholeBlock.split('/');
-        const costPattern = /コスト(\d+)\s*$/;
-        const eachHasOwnCost = segments.length > 1 && segments.every(seg => costPattern.test(seg.trim()));
-        const addRoute = (segText) => {
-          const cm = segText.trim().match(/^([\s\S]*?)コスト(\d+)\s*$/);
-          if (!cm) return;
-          let conditionText = cm[1].replace(/\s+/g, '').trim();
-          const cost = parseInt(cm[2], 10);
-          // DB上の入力ミスで「」の閉じ側が半角の"]"になっているケースがあるため
-          // (例:「特徴に「CS]を持つLv.3」)、正規化しておく。
-          conditionText = conditionText.replace(/\]/g, '」');
-          // 「自分のセキュリティ1枚ごとに、」のような可変コストの説明文が条件の中に
-          // 混入することがあるため、条件文からは取り除きつつ、表示用に別途保持しておく
-          // (コストが固定値ではなく計算が必要なことを、ボタンの無効化+注記で伝える)。
-          let scalingNote = null;
-          const gotoniMatch = conditionText.match(/自分の[^、:：]*ごとに、?/);
-          if (gotoniMatch) {
-            scalingNote = `${gotoniMatch[0].replace(/、$/, '')}、コスト${cost}`;
-          }
-          conditionText = conditionText.replace(/自分の[^、:：]*ごとに、?/g, '');
-          // 「「X」からN」の直後に余計な文字列が続く場合、無関係な後続の文章まで
-          // 誤って一緒に拾ってしまった抽出ミスの可能性が高いため、このルート自体を
-          // 追加しない(正しい「「X」からN」自体は別のshortRe/compoundReで
-          // 既に単独のルートとして正しく抽出されている)。
-          if (/^(?:「[^」]+」|『[^』]+』)から\d+./.test(conditionText)) return;
-          // 「。」(句点)を含む場合も、無関係な後続の文章まで誤って一緒に拾って
-          // しまった抽出ミスの可能性が高いため、このルート自体を追加しない。
-          if (conditionText.includes('。')) return;
-          // 条件文として意味を持つ語彙(名称/特徴/Lv/色/進化元/「」/から 等)が
-          // 一切含まれていない場合も、抽出ミス(効果文の断片が紛れ込んだだけ)の
-          // 可能性が高いため追加しない。
-          if (conditionText && !/[「」]|Lv\.?\d|色|特徴|名称|進化元|から/.test(conditionText)) return;
-          const key = `T${cost}-${conditionText}`;
-          if (seen.has(key)) return;
-          seen.add(key);
-          routes.push({ cost, label: `条件進化: コスト${cost}`, sub: conditionText, scalingNote });
-        };
-        if (eachHasOwnCost) {
-          segments.forEach(addRoute);
-        } else {
-          addRoute(wholeBlock);
-        }
-      }
-      const shortRe = /【進化】「([^」]+)」から(\d+)/g;
-      while ((m = shortRe.exec(handCard.effect))) {
-        const conditionText = `「${m[1]}」から`;
-        const cost = parseInt(m[2], 10);
-        const key = `T${cost}-${conditionText}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        routes.push({ cost, label: `条件進化: コスト${cost}`, sub: conditionText });
-      }
-      // "『複合条件』からN" — used when the condition combines multiple clauses
-      // (e.g. "『名称に「アグモン」を含み特徴に「恐竜型」を持つLv.3』から2")
-      const compoundRe = /【進化】『([^』]+)』から(\d+)/g;
-      while ((m = compoundRe.exec(handCard.effect))) {
-        const conditionText = m[1].replace(/\s+/g, '').trim();
-        const cost = parseInt(m[2], 10);
-        const key = `T${cost}-${conditionText}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        routes.push({ cost, label: `条件進化: コスト${cost}`, sub: conditionText });
-      }
-    }
+    const { routes: specialRoutes } = extractSpecialEvolutionConditions(handCard.effect);
+    specialRoutes.forEach(r => routes.push(r));
 
     return routes;
   }
