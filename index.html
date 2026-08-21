@@ -1735,7 +1735,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.30.0</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.30.2</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -3254,7 +3254,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.30.0`);
+    log(`DigiCA Tool build v0.30.2`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -7373,6 +7373,115 @@
       });
     });
   }
+  // ---------- Type A3: コスト支払いトリガー系の自己DP増減(半自動・手動発動ボタン) ----------
+  // 「【進化時/アタック時】(色の自分のテイマーがいるなら、)?[コスト]することで、[持続期間]、
+  // このデジモンのDPを±Nする。」という、コスト(手札破棄/デッキ破棄)を支払うことで発動する
+  // 任意効果。A1/A2と異なりプレイヤーの選択・同意が必要(何を破棄するか選ぶ/発動するか
+  // どうか自体が任意)なため、完全自動判定ではなく、≪トレーニング≫等の起動型効果と同じ
+  // 設計で、カード操作パネルにボタンを出して手動で発動してもらう形にする。
+  // (DB検証済み: BT15-075/BT6-078/BT9-077/P-011の4件)
+  const COST_TRIGGER_DP_RE = /^(?:([青赤黄緑黒紫白])の自分のテイマーがいるなら、)?(?:自分の手札を(\d+)枚|自分の手札から、特徴に((?:「[^」]+」[か\/]?)+)を持つカード(\d+)枚を|自分のデッキの上から(\d+)枚)破棄することで、(ターン終了まで|このターンの間|次の相手のターン終了まで|相手のターン終了まで)、このデジモン(?:をDP|のDPを)([+\-＋－]\d+)(?:する)?$/;
+  function getCardTraitsForCostTrigger(card) {
+    const traits = (card.type || '').split('/');
+    if (card.form) traits.push(...card.form.split('/'));
+    return traits;
+  }
+  const COLOR_JA_TO_EN_A3 = { 青: 'blue', 赤: 'red', 黄: 'yellow', 緑: 'green', 黒: 'black', 紫: 'purple', 白: 'white' };
+  function hasOwnTamerOfColorA3(player, colorEn) {
+    if (!player) return false;
+    return [...player.battle, ...(player.raising ? [player.raising] : [])]
+      .some(s => { const c = getStackTopCard(s); return c && c.category === 'tamer' && (c.color || []).includes(colorEn); });
+  }
+  function getCostTriggerDPOptions(stack) {
+    const card = getStackTopCard(stack);
+    if (!card || !card.effect) return [];
+    const owner = findStackOwnerAndZone(stack);
+    const player = owner ? owner.player : null;
+    const options = [];
+    card.effect.split('\n').forEach(line => {
+      const lm = /^((?:【[^】]+】)+)([\s\S]*)$/.exec(line.trim());
+      if (!lm) return;
+      const labels = (lm[1].match(/【([^】]+)】/g) || []).map(s => s.slice(1, -1));
+      if (!labels.includes('進化時') && !labels.includes('アタック時')) return;
+      lm[2].split('。').map(s => s.trim()).filter(Boolean).forEach(sent => {
+        const m = COST_TRIGGER_DP_RE.exec(sent);
+        if (!m) return;
+        const [, colorJa, handAnyCount, traitListText, handTraitCount, deckMillCount, durationPhrase, signedAmount] = m;
+        // 前提条件(色のテイマーがいるなら等)を満たさない場合は、ボタン自体を出さない
+        // (押した後に拒否トーストを出すのではなく、条件を満たすときだけ選択肢に現れる形にする)。
+        if (colorJa && !hasOwnTamerOfColorA3(player, COLOR_JA_TO_EN_A3[colorJa])) return;
+        const numStr = signedAmount.replace('＋', '+').replace('－', '-');
+        const amount = parseInt(numStr, 10);
+        let costType, costLabel;
+        const traits = traitListText ? (traitListText.match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1)) : null;
+        if (handAnyCount) { costType = 'handAny'; costLabel = `手札を${handAnyCount}枚破棄`; }
+        else if (traitListText) { costType = 'handTrait'; costLabel = `手札から特徴「${traits.join('/')}」のカードを${handTraitCount}枚破棄`; }
+        else { costType = 'deckMill'; costLabel = `デッキの上から${deckMillCount}枚破棄`; }
+        options.push({
+          labels, colorJa, costType, traits,
+          count: parseInt(handAnyCount || handTraitCount || deckMillCount, 10),
+          durationPhrase, amount,
+          buttonLabel: `⚡ ${costLabel}でDP${amount > 0 ? '+' : ''}${amount}(${durationPhrase})`,
+        });
+      });
+    });
+    return options;
+  }
+  function activateCostTriggerDP(stack, opt) {
+    const owner = findStackOwnerAndZone(stack);
+    if (!owner || !practiceState) return;
+    const player = owner.player;
+    if (opt.colorJa && !hasOwnTamerOfColorA3(player, COLOR_JA_TO_EN_A3[opt.colorJa])) {
+      showToast(`${opt.colorJa}の自分のテイマーがいないため発動できません`, true); return;
+    }
+    const ownerIndex = practiceState.players.indexOf(player);
+    const duration = (opt.durationPhrase === '次の相手のターン終了まで' || opt.durationPhrase === '相手のターン終了まで') ? 'untilOpponentTurnEnd' : 'thisTurn';
+    const applyBonus = () => {
+      if (!stack.tempDPModifiers) stack.tempDPModifiers = [];
+      stack.tempDPModifiers.push({ amount: opt.amount, expireAtTurnCount: computeExpireAtTurnCount(duration, ownerIndex) });
+      const c = getStackTopCard(stack);
+      showToast(`「${c.name}」の効果: コストを支払い、DPを${opt.amount > 0 ? '+' : ''}${opt.amount}しました`);
+      renderPracticeBoard();
+      resumeAttackStepIfAny();
+    };
+    if (opt.costType === 'deckMill') {
+      if (player.library.length < opt.count) { showToast('デッキの残り枚数が足りません', true); return; }
+      const c = getStackTopCard(stack);
+      openZonePopup(centerPoint(), `「${c.name}」: デッキの上から${opt.count}枚破棄して、${opt.durationPhrase}DPを${opt.amount > 0 ? '+' : ''}${opt.amount}しますか？`, [
+        {
+          label: '実行する',
+          onClick: () => {
+            snapshotPracticeState();
+            for (let i = 0; i < opt.count; i++) {
+              const num = player.library.shift();
+              player.trash.push(num);
+              checkOverflow(num, player);
+            }
+            applyBonus();
+          },
+        },
+        { label: 'キャンセル', onClick: () => {} },
+      ], true);
+      return;
+    }
+    const eligible = player.hand
+      .map(num => ({ num, card: cardIndexByNumber.get(num) }))
+      .filter(e => e.card && (opt.costType !== 'handTrait' || opt.traits.some(t => getCardTraitsForCostTrigger(e.card).some(ct => ct.includes(t)))));
+    if (eligible.length === 0) { showToast('破棄できる手札がありません', true); return; }
+    const actions = eligible.map(e => ({
+      label: e.card.name,
+      onClick: () => {
+        snapshotPracticeState();
+        const idx = player.hand.indexOf(e.num);
+        if (idx >= 0) player.hand.splice(idx, 1);
+        player.trash.push(e.num);
+        checkOverflow(e.num, player);
+        applyBonus();
+      },
+    }));
+    actions.push({ label: 'キャンセル', onClick: () => {} });
+    openZonePopup(centerPoint(), `破棄するカードを選んでください(${opt.count}枚)`, actions, true);
+  }
   function revealTopAndSort(x) {
     const self = practiceState.players[practiceState.viewingIndex];
     if (self.library.length === 0) { showToast('デッキがありません', true); return; }
@@ -8925,6 +9034,13 @@
         practiceState.viewingIndex === practiceState.turn.playerIndex && practiceState.turn.phase === 'main' &&
         !stack.rested && !hasLock(stack, 'noRest') && hasTrainingKeyword(stack)) {
       mk('🎓 トレーニング(レストしてデッキ上から1枚を進化元へ)', () => activateTraining(stack));
+    }
+    // コスト支払いトリガー系の自己DP増減(Type A3)。任意発動のため、対象効果を持つ
+    // カードにのみボタンを表示する(≪トレーニング≫と同じ、起動型効果の設計)。
+    if (isTurnPlayersOwnBattleStack) {
+      getCostTriggerDPOptions(stack).forEach(opt => {
+        mk(opt.buttonLabel, () => activateCostTriggerDP(stack, opt));
+      });
     }
     if (stack.burstEvolved) {
       mk('🔥 バースト進化を解除(一番上を破棄)', () => discardBurstTop(stack));
