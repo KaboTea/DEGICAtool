@@ -1602,6 +1602,790 @@
     transform: translateX(-50%) translateY(0);
   }
   /* ========================================================================
+     対戦アリーナ風デザイン(プレイ画面のみ)。
+     他タブの見た目に影響しないよう、すべて #practiceBoardPanel 配下にスコープする。
+     自分側=青系(--self)、相手側=赤系(--opp)の陣営カラーで盤面を上下に分け、
+     中央にフェイズ/メモリーのHUDを置く。演出用のオーバーレイ(#arenaFxLayer)は
+     body直下の固定レイヤーで、盤面の再描画とは独立して動く。
+     レイアウト(幅・並び順)を変える指定はスマホ用の上書きをstyleタグ末尾の
+     アリーナ用@mediaブロックにも必ず書くこと(既存の@mediaより詳細度が高いため)。
+     ======================================================================== */
+  #practiceBoardPanel {
+    --self: #3b82f6;
+    --self-rgb: 59,130,246;
+    --self-light: #8db8ff;
+    --opp: #f43f5e;
+    --opp-rgb: 244,63,94;
+    --opp-light: #ff8fa1;
+    --gold: #fbbf24;
+    --gold-rgb: 251,191,36;
+    --arena-line: rgba(255,255,255,0.08);
+    position: relative;
+    background:
+      radial-gradient(120% 45% at 50% 0%, rgba(var(--opp-rgb),0.16) 0%, transparent 60%),
+      radial-gradient(120% 45% at 50% 100%, rgba(var(--self-rgb),0.18) 0%, transparent 60%),
+      repeating-linear-gradient(0deg, rgba(255,255,255,0.022) 0 1px, transparent 1px 34px),
+      repeating-linear-gradient(90deg, rgba(255,255,255,0.022) 0 1px, transparent 1px 34px),
+      linear-gradient(180deg, #0c0a10 0%, #07080d 50%, #070a12 100%);
+    border: 1px solid #1c1f2c;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.04);
+  }
+  #practiceBoardPanel button.btn {
+    background: linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0.02));
+    border: 1px solid rgba(255,255,255,0.12);
+    color: #dfe3ee;
+    border-radius: 7px;
+    transition: border-color .15s ease, box-shadow .15s ease, transform .1s ease, background .15s ease;
+  }
+  #practiceBoardPanel button.btn:hover:not(:disabled) {
+    border-color: rgba(var(--self-rgb),0.7);
+    box-shadow: 0 0 0 1px rgba(var(--self-rgb),0.25), 0 0 14px rgba(var(--self-rgb),0.25);
+  }
+  #practiceBoardPanel button.btn:active:not(:disabled) { transform: translateY(1px); }
+  #practiceBoardPanel button.btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  /* ---- 上部の情報バー ---- */
+  #practiceBoardPanel .arena-topbar {
+    border-bottom: 1px solid var(--arena-line);
+    padding-bottom: 12px;
+    margin-bottom: 14px;
+    gap: 10px;
+  }
+  .arena-turn-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    color: #fff;
+    padding: 5px 14px 5px 12px;
+    background: linear-gradient(90deg, rgba(var(--gold-rgb),0.95), rgba(var(--gold-rgb),0.6));
+    color: #1a1204;
+    clip-path: polygon(0 0, 100% 0, calc(100% - 9px) 100%, 0 100%);
+  }
+  #practiceBoardPanel #practiceHeaderLabel { color: #9aa0b4 !important; letter-spacing: 0.02em; }
+  #practiceBoardPanel .arena-topbar .arena-topbar-spacer { flex: 1; }
+  #arenaFxToggle { font-size: 12px !important; padding: 6px 12px !important; }
+
+  /* ---- 陣営ごとのマット ---- */
+  #practiceBoardPanel .mat-block {
+    position: relative;
+    border-radius: 14px;
+    padding: 14px;
+    margin-bottom: 8px;
+    background-color: rgba(10,12,20,0.55);
+    backdrop-filter: blur(2px);
+  }
+  #practiceBoardPanel .mat-block.mat-opp {
+    --side: var(--opp);
+    --side-rgb: var(--opp-rgb);
+    --side-light: var(--opp-light);
+    --cb: var(--opp-rgb);
+    border: 1px solid rgba(var(--opp-rgb),0.28);
+    background-image: linear-gradient(180deg, rgba(var(--opp-rgb),0.13) 0%, rgba(var(--opp-rgb),0.02) 70%);
+    box-shadow: inset 0 2px 0 rgba(var(--opp-rgb),0.55), 0 0 30px rgba(var(--opp-rgb),0.08);
+  }
+  #practiceBoardPanel .mat-block.mat-self {
+    --side: var(--self);
+    --side-rgb: var(--self-rgb);
+    --side-light: var(--self-light);
+    --cb: var(--self-rgb);
+    border: 1px solid rgba(var(--self-rgb),0.3);
+    background-image: linear-gradient(0deg, rgba(var(--self-rgb),0.14) 0%, rgba(var(--self-rgb),0.02) 70%);
+    box-shadow: inset 0 -2px 0 rgba(var(--self-rgb),0.6), 0 0 30px rgba(var(--self-rgb),0.08);
+  }
+  /* 手番側のマットは枠がゆっくり脈動して「今どちらの番か」が一目で分かるようにする */
+  #practiceBoardPanel .mat-block.is-turn {
+    animation: arenaTurnGlow 2.6s ease-in-out infinite;
+  }
+  @keyframes arenaTurnGlow {
+    0%, 100% { box-shadow: inset 0 0 0 1px rgba(var(--side-rgb),0.35), 0 0 18px rgba(var(--side-rgb),0.12); }
+    50% { box-shadow: inset 0 0 0 1px rgba(var(--side-rgb),0.7), 0 0 34px rgba(var(--side-rgb),0.3); }
+  }
+
+  /* プレイヤー名のネームプレート(斜めカットの帯) */
+  #practiceBoardPanel .arena-plate {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: -14px -14px 12px;
+    padding: 0;
+    font-size: 13px;
+    color: #fff;
+  }
+  #practiceBoardPanel .mat-self .arena-plate { margin: 14px -14px 10px; }
+  #practiceBoardPanel .arena-plate .ap-tag {
+    font-family: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.18em;
+    padding: 6px 22px 6px 14px;
+    background: linear-gradient(90deg, var(--side), rgba(var(--side-rgb),0.55));
+    clip-path: polygon(0 0, 100% 0, calc(100% - 14px) 100%, 0 100%);
+    border-radius: 13px 0 0 0;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+  }
+  #practiceBoardPanel .mat-self .arena-plate .ap-tag { border-radius: 0; }
+  #practiceBoardPanel .arena-plate .ap-name {
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  #practiceBoardPanel .arena-plate .ap-sub { font-size: 11px; color: rgba(255,255,255,0.5); }
+  #practiceBoardPanel .arena-plate .ap-turn {
+    display: none;
+    margin-left: auto;
+    margin-right: 14px;
+    font-family: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.2em;
+    color: var(--side-light);
+    border: 1px solid rgba(var(--side-rgb),0.6);
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: rgba(var(--side-rgb),0.15);
+    animation: arenaBlink 1.4s ease-in-out infinite;
+  }
+  #practiceBoardPanel .mat-block.is-turn .arena-plate .ap-turn { display: inline-block; }
+  @keyframes arenaBlink { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+
+  /* ---- ゾーン(バトルエリア/育成エリア)のHUD風フレーム ---- */
+  #practiceBoardPanel .sub-area {
+    position: relative;
+    border: 1px solid rgba(var(--side-rgb),0.16);
+    border-radius: 10px;
+    background: rgba(0,0,0,0.22);
+  }
+  #practiceBoardPanel .sub-area::before {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    border-radius: 10px;
+    pointer-events: none;
+    --c: rgba(var(--side-rgb),0.85);
+    background:
+      linear-gradient(var(--c), var(--c)) top left / 16px 2px no-repeat,
+      linear-gradient(var(--c), var(--c)) top left / 2px 16px no-repeat,
+      linear-gradient(var(--c), var(--c)) top right / 16px 2px no-repeat,
+      linear-gradient(var(--c), var(--c)) top right / 2px 16px no-repeat,
+      linear-gradient(var(--c), var(--c)) bottom left / 16px 2px no-repeat,
+      linear-gradient(var(--c), var(--c)) bottom left / 2px 16px no-repeat,
+      linear-gradient(var(--c), var(--c)) bottom right / 16px 2px no-repeat,
+      linear-gradient(var(--c), var(--c)) bottom right / 2px 16px no-repeat;
+  }
+  #practiceBoardPanel .battle-sub-area {
+    background:
+      radial-gradient(70% 90% at 50% 50%, rgba(var(--side-rgb),0.10) 0%, transparent 70%),
+      rgba(0,0,0,0.25);
+  }
+  #practiceBoardPanel .sub-area .sa-label {
+    display: inline-block;
+    font-family: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    color: var(--side-light);
+    text-shadow: 0 0 8px rgba(var(--side-rgb),0.6);
+  }
+  #practiceBoardPanel .empty-state { color: rgba(255,255,255,0.28); }
+  #practiceBoardPanel .mat-label { color: rgba(255,255,255,0.55); }
+
+  /* ---- カード(スタック) ---- */
+  #practiceBoardPanel .stack-tile { transition: transform .18s ease, filter .18s ease; }
+  #practiceBoardPanel .stack-layer {
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 7px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.6);
+    transition: transform .32s cubic-bezier(.2,.9,.3,1.2), filter .3s ease, box-shadow .2s ease;
+  }
+  #practiceBoardPanel .mat-block .stack-fan .stack-layer:last-child {
+    border-color: rgba(var(--side-rgb),0.9);
+    box-shadow: 0 0 0 1px rgba(var(--side-rgb),0.5), 0 6px 16px rgba(0,0,0,0.65), 0 0 18px rgba(var(--side-rgb),0.35);
+  }
+  #practiceBoardPanel .mat-block .stack-tile.rested .stack-fan .stack-layer:last-child {
+    border-color: rgba(255,255,255,0.2);
+    box-shadow: 0 6px 16px rgba(0,0,0,0.65);
+  }
+  @media (hover: hover) {
+    #practiceBoardPanel .mat-block .stack-tile:not(.rested):hover { transform: translateY(-5px); }
+    #practiceBoardPanel .mat-block .stack-tile:hover .stack-fan .stack-layer:last-child {
+      box-shadow: 0 0 0 1px rgba(var(--side-rgb),0.9), 0 10px 22px rgba(0,0,0,0.7), 0 0 26px rgba(var(--side-rgb),0.65);
+    }
+  }
+  #practiceBoardPanel .stack-tile .st-count {
+    background: rgba(5,7,12,0.85);
+    color: var(--side-light, var(--accent));
+    border: 1px solid rgba(var(--side-rgb, 79,216,196),0.5);
+    font-weight: 700;
+  }
+  #practiceBoardPanel .stack-tile.target-pick .stack-layer:last-child {
+    border-color: var(--gold) !important;
+    box-shadow: 0 0 0 2px rgba(0,0,0,0.6), 0 0 0 4px var(--gold), 0 0 22px rgba(var(--gold-rgb),0.7) !important;
+    animation: arenaTargetPulse 1.1s ease-in-out infinite;
+  }
+  @keyframes arenaTargetPulse { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(1.25); } }
+
+  /* DPプレート: 対戦ゲーム風のステータス表示。バトルエリアのデジモンは常に表示し、
+     効果で増減しているときは色と矢印で分かるようにする。 */
+  #practiceBoardPanel .st-dp {
+    background: linear-gradient(180deg, #1b2030, #0b0e16);
+    color: #fff;
+    border: none;
+    font-size: 17px;
+    font-weight: 800;
+    padding: 3px 14px;
+    clip-path: polygon(9px 0, calc(100% - 9px) 0, 100% 50%, calc(100% - 9px) 100%, 9px 100%, 0 50%);
+    box-shadow: inset 0 0 0 1px rgba(var(--side-rgb),0.9);
+    text-shadow: 0 0 8px rgba(var(--side-rgb),0.8);
+    letter-spacing: 0.02em;
+  }
+  #practiceBoardPanel .st-dp::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    clip-path: inherit;
+    background: linear-gradient(90deg, rgba(var(--side-rgb),0.55), rgba(var(--side-rgb),0.15) 40%, rgba(var(--side-rgb),0.15) 60%, rgba(var(--side-rgb),0.55));
+    z-index: -1;
+  }
+  #practiceBoardPanel .st-dp small { font-size: 0.55em; opacity: 0.75; margin-right: 2px; letter-spacing: 0.06em; }
+  #practiceBoardPanel .st-dp.buff { color: #b6ffcf; text-shadow: 0 0 10px rgba(52,211,153,0.9); }
+  #practiceBoardPanel .st-dp.debuff { color: #ffb3c4; text-shadow: 0 0 10px rgba(244,63,94,0.95); }
+  #practiceBoardPanel .st-dp .dp-arrow { font-size: 0.6em; margin-left: 3px; vertical-align: 2px; }
+
+  #practiceBoardPanel .kw-pill {
+    background: rgba(8,10,18,0.9);
+    border: 1px solid rgba(var(--side-rgb, 79,216,196),0.45);
+  }
+  #practiceBoardPanel .tile-quickadd {
+    background: rgba(8,10,18,0.85) !important;
+    border: 1px solid rgba(var(--side-rgb, 79,216,196),0.6) !important;
+    color: var(--side-light, #fff) !important;
+  }
+
+  /* ---- 山札・セキュリティ等(裏向きの山)を陣営カラーに染める ---- */
+  #practiceBoardPanel .card-back {
+    border-color: rgba(var(--cb, 79,216,196),0.6);
+    background:
+      repeating-linear-gradient(45deg, rgba(var(--cb, 79,216,196),0.07) 0px, rgba(var(--cb, 79,216,196),0.07) 1px, transparent 1px, transparent 9px),
+      radial-gradient(circle at 50% 38%, rgba(var(--cb, 79,216,196),0.38) 0%, transparent 58%),
+      linear-gradient(160deg, rgba(var(--cb, 79,216,196),0.28), #07090f 78%);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.6), 0 0 14px rgba(var(--cb, 79,216,196),0.18);
+  }
+  #practiceBoardPanel .card-back::before { border-color: rgba(var(--cb, 79,216,196),0.35); }
+  #practiceBoardPanel .card-back::after {
+    background: linear-gradient(155deg, rgba(var(--cb, 79,216,196),0.35), rgba(var(--cb, 79,216,196),0.05));
+    border-color: rgba(var(--cb, 79,216,196),0.6);
+  }
+  #practiceBoardPanel .card-back .cb-corner { border-color: rgba(var(--cb, 79,216,196),0.7); }
+  #practiceBoardPanel .card-back .cb-count {
+    color: #fff;
+    background: rgba(5,7,12,0.82);
+    border: 1px solid rgba(var(--cb, 79,216,196),0.7);
+    text-shadow: 0 0 6px rgba(var(--cb, 79,216,196),0.9);
+  }
+  #practiceBoardPanel .mat-pile .mp-label {
+    font-family: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+    color: rgba(255,255,255,0.5);
+    letter-spacing: 0.04em;
+  }
+
+  /* ---- 中央HUD(フェイズ・メモリー) ---- */
+  #practiceBoardPanel .arena-hud {
+    position: relative;
+    margin: 6px 0 8px;
+    padding: 10px 12px 4px;
+    border-radius: 12px;
+    background:
+      linear-gradient(90deg, rgba(var(--self-rgb),0.16), rgba(10,12,20,0.6) 30%, rgba(10,12,20,0.6) 70%, rgba(var(--opp-rgb),0.16));
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+  #practiceBoardPanel .arena-hud::before {
+    /* 中央の「VS」ライン */
+    content: '';
+    position: absolute;
+    left: 0; right: 0; top: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--self), rgba(255,255,255,0.7) 50%, var(--opp));
+    border-radius: 12px 12px 0 0;
+    opacity: 0.85;
+  }
+  #practiceBoardPanel .arena-phasebar {
+    justify-content: center;
+    margin-bottom: 4px;
+    padding-bottom: 0;
+    border-bottom: none;
+    gap: 10px;
+  }
+  #practiceBoardPanel .arena-phase-core {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 190px;
+  }
+  #practiceBoardPanel #phaseLabel {
+    font-family: 'Hiragino Sans', 'Noto Sans JP', system-ui, sans-serif !important;
+    font-size: 22px !important;
+    font-weight: 900 !important;
+    font-style: italic;
+    letter-spacing: 0.06em;
+    min-width: 0 !important;
+    color: #fff !important;
+    background: linear-gradient(180deg, #ffffff 30%, #9cc2ff 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    filter: drop-shadow(0 0 10px rgba(var(--self-rgb),0.55));
+    line-height: 1.2;
+  }
+  #practiceBoardPanel #phaseLabel.opp-turn {
+    background: linear-gradient(180deg, #ffffff 30%, #ffb0bd 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    filter: drop-shadow(0 0 10px rgba(var(--opp-rgb),0.55));
+  }
+  #practiceBoardPanel .phase-pips {
+    display: flex;
+    gap: 4px;
+    margin-top: 4px;
+  }
+  #practiceBoardPanel .phase-pip {
+    font-family: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    color: rgba(255,255,255,0.35);
+    padding: 2px 7px;
+    border: 1px solid rgba(255,255,255,0.1);
+    transform: skewX(-14deg);
+    background: rgba(255,255,255,0.03);
+  }
+  #practiceBoardPanel .phase-pip.done { color: rgba(255,255,255,0.55); border-color: rgba(var(--self-rgb),0.35); background: rgba(var(--self-rgb),0.12); }
+  #practiceBoardPanel .phase-pip.current {
+    color: #fff;
+    border-color: var(--self-light);
+    background: linear-gradient(90deg, var(--self), #60a5fa);
+    box-shadow: 0 0 12px rgba(var(--self-rgb),0.8);
+  }
+  #practiceBoardPanel .phase-pips.opp-turn .phase-pip.done { border-color: rgba(var(--opp-rgb),0.35); background: rgba(var(--opp-rgb),0.12); }
+  #practiceBoardPanel .phase-pips.opp-turn .phase-pip.current {
+    border-color: var(--opp-light);
+    background: linear-gradient(90deg, var(--opp), #fb7185);
+    box-shadow: 0 0 12px rgba(var(--opp-rgb),0.8);
+  }
+  #practiceBoardPanel #practiceNextPhaseBtn {
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    padding: 10px 26px 10px 22px;
+    border: none;
+    border-radius: 0;
+    color: #fff;
+    background: linear-gradient(90deg, #2563eb, #38bdf8);
+    clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 50%, calc(100% - 12px) 100%, 0 100%, 8px 50%);
+    text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+  }
+  #practiceBoardPanel #practiceNextPhaseBtn:not(:disabled) { animation: arenaNextPulse 2s ease-in-out infinite; }
+  #practiceBoardPanel #practiceNextPhaseBtn:hover:not(:disabled) { filter: brightness(1.2); box-shadow: none; }
+  @keyframes arenaNextPulse { 0%, 100% { filter: brightness(1) drop-shadow(0 0 0 rgba(56,189,248,0)); } 50% { filter: brightness(1.15) drop-shadow(0 0 10px rgba(56,189,248,0.8)); } }
+  #practiceBoardPanel #practicePassBtn { font-weight: 700; }
+
+  #practiceBoardPanel .turn-memory-row { gap: 10px; }
+  #practiceBoardPanel #turnIndicatorLabel { color: rgba(255,255,255,0.6) !important; }
+  #practiceBoardPanel .memory-line { gap: 2px; padding: 8px 0 10px; }
+  #practiceBoardPanel .memory-line .ml-slot {
+    width: 24px;
+    height: 24px;
+    border-radius: 0;
+    border: none;
+    transform: skewX(-14deg);
+    color: rgba(255,255,255,0.55);
+    font-weight: 700;
+    transition: transform .2s ease, background .2s ease, box-shadow .2s ease;
+  }
+  #practiceBoardPanel .memory-line .ml-slot.side-self { background: linear-gradient(180deg, rgba(var(--self-rgb),0.32), rgba(var(--self-rgb),0.12)); }
+  #practiceBoardPanel .memory-line .ml-slot.side-opp { background: linear-gradient(180deg, rgba(var(--opp-rgb),0.32), rgba(var(--opp-rgb),0.12)); }
+  #practiceBoardPanel .memory-line .ml-slot.zero {
+    background: linear-gradient(180deg, rgba(var(--gold-rgb),0.45), rgba(var(--gold-rgb),0.15));
+    color: #fff;
+  }
+  #practiceBoardPanel .memory-line .ml-slot:hover { filter: brightness(1.4); }
+  #practiceBoardPanel .memory-line .ml-slot.current {
+    color: #0b0f1a;
+    transform: skewX(-14deg) scale(1.28);
+    z-index: 1;
+    background: #fff;
+    margin: 0 3px;
+    box-shadow: 0 0 0 2px rgba(255,255,255,0.9), 0 0 16px rgba(255,255,255,0.75);
+  }
+  #practiceBoardPanel .memory-line .ml-slot.current.side-self { box-shadow: 0 0 0 2px var(--self-light), 0 0 18px rgba(var(--self-rgb),1); }
+  #practiceBoardPanel .memory-line .ml-slot.current.side-opp { box-shadow: 0 0 0 2px var(--opp-light), 0 0 18px rgba(var(--opp-rgb),1); }
+  #practiceBoardPanel .memory-line .ml-slot.current.zero { box-shadow: 0 0 0 2px var(--gold), 0 0 18px rgba(var(--gold-rgb),1); }
+
+  /* ---- 手札(ドック) ---- */
+  #practiceBoardPanel .hand-row {
+    padding: 12px;
+    border-radius: 12px;
+    background: linear-gradient(180deg, rgba(var(--self-rgb),0.06), rgba(0,0,0,0.35));
+    border: 1px solid rgba(var(--self-rgb),0.18);
+    min-height: 40px;
+  }
+  #practiceBoardPanel .hand-card {
+    background: linear-gradient(180deg, #151a28, #0b0e16);
+    border: 1px solid rgba(var(--self-rgb),0.3);
+    border-radius: 9px;
+    box-shadow: 0 6px 14px rgba(0,0,0,0.5);
+    transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+  }
+  @media (hover: hover) {
+    #practiceBoardPanel .hand-card:hover {
+      transform: translateY(-8px);
+      border-color: rgba(var(--self-rgb),0.9);
+      box-shadow: 0 14px 24px rgba(0,0,0,0.6), 0 0 22px rgba(var(--self-rgb),0.45);
+    }
+  }
+  #practiceBoardPanel .hand-card .hc-name { color: #e7ebf5; font-weight: 600; }
+  #practiceBoardPanel .hand-card .hc-actions button {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.12);
+    color: #c9cfdd;
+    border-radius: 5px;
+  }
+  #practiceBoardPanel .hand-card .hc-actions button:hover { border-color: var(--self); color: #fff; background: rgba(var(--self-rgb),0.2); }
+  #practiceBoardPanel .hand-card .hc-mobile-btn { background: rgba(255,255,255,0.03); border-top-color: rgba(var(--self-rgb),0.25); color: var(--self-light); }
+  #practiceBoardPanel #utilityActions button.btn { font-size: 12px; padding: 7px 12px; }
+
+  #practiceBoardPanel .evolve-mode-banner {
+    background: linear-gradient(90deg, rgba(var(--gold-rgb),0.95), rgba(var(--gold-rgb),0.75));
+    color: #1a1204;
+    clip-path: polygon(0 0, 100% 0, calc(100% - 10px) 100%, 0 100%);
+    border-radius: 0;
+    box-shadow: 0 0 24px rgba(var(--gold-rgb),0.4);
+  }
+
+  /* ---- 自ターンでない側(上段の相手側)の縮小表示 ----
+     盤面全体をzoomで縮めることで、進化元のずらし表示・DPプレート・バッジ等の
+     位置関係を崩さずにまとめて小さくする。ゾーン名ラベルは省略する。 */
+  #practiceBoardPanel .mat-block.is-compact { padding-bottom: 8px; }
+  #practiceBoardPanel .mat-block.is-compact .arena-plate { margin-bottom: 4px; }
+  #practiceBoardPanel .mat-block.is-compact .mat-row {
+    zoom: 0.62;
+    /* 縦に積んでいたセキュリティ/デジタマ/育成/デッキ/トラッシュを1行に並べ、高さを詰める */
+    grid-template-columns: auto auto auto 1fr auto;
+    grid-template-areas: "security egg raising battle decktrash";
+    column-gap: 10px;
+  }
+  #practiceBoardPanel .mat-block.is-compact .mat-side-col { flex-direction: row; }
+  #practiceBoardPanel .mat-block.is-compact .mat-side-col-right { flex-direction: row; align-items: flex-start; padding-top: 0; }
+  #practiceBoardPanel .mat-block.is-compact .battle-groups-wrap { flex-direction: row; flex-wrap: wrap; justify-content: flex-start; column-gap: 24px; }
+  #practiceBoardPanel .mat-block.is-compact .battle-top-group:empty,
+  #practiceBoardPanel .mat-block.is-compact .battle-bottom-group:empty { display: none; }
+  #practiceBoardPanel .mat-block.is-compact .battle-sub-area { min-height: 0; }
+  #practiceBoardPanel .mat-block.is-compact .raising-sub-area { min-height: 0; }
+  #practiceBoardPanel .mat-block.is-compact .sub-area .sa-label { display: none; }
+  #practiceBoardPanel .mat-block.is-compact .battle-top-group,
+  #practiceBoardPanel .mat-block.is-compact .battle-bottom-group { padding-top: 36px; }
+  #practiceBoardPanel .mat-block.is-compact .mat-pile .mp-label { font-size: 15px; }
+  #practiceBoardPanel .mat-block.is-compact .empty-state { padding: 6px 0 !important; font-size: 16px; }
+  #practiceBoardPanel .arena-compact-toggle {
+    margin-left: auto;
+    margin-right: 10px;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--side-light);
+    background: rgba(var(--side-rgb),0.12);
+    border: 1px solid rgba(var(--side-rgb),0.5);
+    border-radius: 999px;
+    padding: 3px 10px;
+    cursor: pointer;
+  }
+  #practiceBoardPanel .arena-compact-toggle:hover { background: rgba(var(--side-rgb),0.25); color: #fff; }
+
+  /* ========================================================================
+     演出(FX)。演出OFF時はbodyに .arena-fx-off が付き、これらは一切再生されない。
+     ======================================================================== */
+  #arenaFxLayer {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 90;
+    overflow: hidden;
+  }
+  #arenaFxLayer > * { position: absolute; pointer-events: none; }
+  #arenaFxLayer svg.fx-beam-svg { left: 0; top: 0; width: 100%; height: 100%; overflow: visible; }
+
+  /* フェイズ/ターン切替のバナー */
+  .fx-banner {
+    left: 0; right: 0;
+    top: 38%;
+    height: 86px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    color: #fff;
+    animation: fxBannerBand 1.25s cubic-bezier(.2,.8,.2,1) forwards;
+    background: linear-gradient(90deg, transparent, rgba(var(--b-rgb),0.85) 18%, rgba(var(--b-rgb),0.85) 82%, transparent);
+    box-shadow: 0 0 40px rgba(var(--b-rgb),0.5);
+  }
+  .fx-banner::before, .fx-banner::after {
+    content: '';
+    position: absolute;
+    left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, #fff 30%, #fff 70%, transparent);
+    opacity: 0.85;
+  }
+  .fx-banner::before { top: 0; }
+  .fx-banner::after { bottom: 0; }
+  .fx-banner .fxb-main {
+    font-family: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+    font-size: 34px;
+    font-weight: 900;
+    font-style: italic;
+    letter-spacing: 0.16em;
+    text-shadow: 0 2px 0 rgba(0,0,0,0.35), 0 0 18px rgba(255,255,255,0.6);
+    animation: fxBannerText 1.25s cubic-bezier(.2,.8,.2,1) forwards;
+    white-space: nowrap;
+  }
+  .fx-banner .fxb-sub {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    opacity: 0.9;
+    animation: fxBannerText 1.25s cubic-bezier(.2,.8,.2,1) forwards;
+    white-space: nowrap;
+  }
+  .fx-banner.big { height: 120px; }
+  .fx-banner.big .fxb-main { font-size: 46px; }
+  @keyframes fxBannerBand {
+    0% { transform: scaleY(0); opacity: 0; }
+    14% { transform: scaleY(1); opacity: 1; }
+    80% { transform: scaleY(1); opacity: 1; }
+    100% { transform: scaleY(0); opacity: 0; }
+  }
+  @keyframes fxBannerText {
+    0% { transform: translateX(-60px); opacity: 0; }
+    18% { transform: translateX(0); opacity: 1; }
+    78% { transform: translateX(10px); opacity: 1; }
+    100% { transform: translateX(80px); opacity: 0; }
+  }
+
+  /* 登場: 上から叩きつけるように着地+衝撃波 */
+  .fx-enter { animation: fxEnter .55s cubic-bezier(.2,.9,.3,1.25) both; }
+  @keyframes fxEnter {
+    0% { transform: translateY(-46px) scale(1.35); opacity: 0; filter: brightness(2.2); }
+    55% { transform: translateY(4px) scale(0.96); opacity: 1; filter: brightness(1.5); }
+    100% { transform: translateY(0) scale(1); opacity: 1; filter: brightness(1); }
+  }
+  .fx-ring {
+    border-radius: 50%;
+    border: 3px solid rgba(var(--b-rgb),1);
+    box-shadow: 0 0 18px rgba(var(--b-rgb),0.9), inset 0 0 12px rgba(var(--b-rgb),0.7);
+    animation: fxRing .6s ease-out forwards;
+  }
+  @keyframes fxRing {
+    0% { transform: scale(0.3); opacity: 1; }
+    100% { transform: scale(1.9); opacity: 0; }
+  }
+
+  /* 進化: 光の柱+白フラッシュ */
+  .fx-evolve { animation: fxEvolve .75s ease-out both; }
+  @keyframes fxEvolve {
+    0% { filter: brightness(3) saturate(0.4); transform: scale(1.14); }
+    40% { filter: brightness(1.8); transform: scale(0.97); }
+    100% { filter: brightness(1); transform: scale(1); }
+  }
+  .fx-pillar {
+    background: linear-gradient(180deg, transparent, rgba(255,255,255,0.95) 45%, rgba(var(--b-rgb),0.9) 70%, transparent);
+    filter: blur(1px);
+    mix-blend-mode: screen;
+    animation: fxPillar .8s ease-out forwards;
+    transform-origin: 50% 100%;
+  }
+  @keyframes fxPillar {
+    0% { transform: scaleX(0.2) scaleY(0); opacity: 0; }
+    25% { transform: scaleX(1) scaleY(1); opacity: 1; }
+    100% { transform: scaleX(0.1) scaleY(1.1); opacity: 0; }
+  }
+  .fx-spark {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 0 10px rgba(var(--b-rgb),1);
+    animation: fxSpark .8s ease-out forwards;
+  }
+  @keyframes fxSpark {
+    0% { transform: translate(0, 0) scale(1); opacity: 1; }
+    100% { transform: translate(var(--dx), var(--dy)) scale(0.2); opacity: 0; }
+  }
+
+  /* DP増減のフロート表示 */
+  .fx-float {
+    font-family: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+    font-size: 22px;
+    font-weight: 900;
+    white-space: nowrap;
+    transform: translateX(-50%);
+    animation: fxFloat 1.3s cubic-bezier(.2,.8,.3,1) forwards;
+    -webkit-text-stroke: 1px rgba(0,0,0,0.6);
+  }
+  .fx-float.up { color: #6ee7b7; text-shadow: 0 0 12px rgba(52,211,153,0.9); }
+  .fx-float.down { color: #fda4af; text-shadow: 0 0 12px rgba(244,63,94,0.95); }
+  .fx-float.neutral { color: #fff; text-shadow: 0 0 12px rgba(255,255,255,0.8); font-size: 16px; }
+  @keyframes fxFloat {
+    0% { transform: translate(-50%, 10px) scale(0.6); opacity: 0; }
+    18% { transform: translate(-50%, -6px) scale(1.25); opacity: 1; }
+    35% { transform: translate(-50%, -10px) scale(1); opacity: 1; }
+    100% { transform: translate(-50%, -48px) scale(1); opacity: 0; }
+  }
+  .fx-dp-pop { animation: fxDpPop .5s ease-out both; }
+  @keyframes fxDpPop { 0% { transform: translateX(-50%) scale(1); } 30% { transform: translateX(-50%) scale(1.22); filter: brightness(1.8); } 100% { transform: translateX(-50%) scale(1); } }
+
+  /* 消滅: 赤く光って砕け散る残像 */
+  .fx-ghost {
+    border-radius: 7px;
+    overflow: visible;
+    animation: fxShatter .7s ease-in forwards;
+  }
+  .fx-ghost img, .fx-ghost .card-back { width: 100%; height: 100%; object-fit: cover; border-radius: 7px; display: block; }
+  .fx-ghost.leave { animation: fxLeave .5s ease-in forwards; }
+  @keyframes fxShatter {
+    0% { transform: translate(0,0) scale(1); filter: brightness(1); opacity: 1; }
+    12% { transform: translate(-4px,0) scale(1.04); filter: brightness(2) sepia(1) hue-rotate(-50deg) saturate(5); }
+    24% { transform: translate(4px,0) scale(1.04); }
+    36% { transform: translate(-3px,0) scale(1.02); filter: brightness(1.6) sepia(1) hue-rotate(-50deg) saturate(5); opacity: 1; }
+    100% { transform: translate(0,10px) scale(0.55) rotate(-6deg); filter: brightness(3) blur(6px); opacity: 0; }
+  }
+  @keyframes fxLeave {
+    0% { transform: translateY(0); opacity: 1; filter: brightness(1); }
+    100% { transform: translateY(-26px) scale(0.85); opacity: 0; filter: brightness(1.8); }
+  }
+  .fx-shard {
+    width: 9px; height: 9px;
+    background: linear-gradient(135deg, #fff, rgba(var(--b-rgb),1));
+    clip-path: polygon(50% 0, 100% 60%, 30% 100%, 0 40%);
+    animation: fxShard .75s cubic-bezier(.1,.7,.3,1) forwards;
+  }
+  @keyframes fxShard {
+    0% { transform: translate(0,0) rotate(0); opacity: 1; }
+    100% { transform: translate(var(--dx), var(--dy)) rotate(var(--rot)); opacity: 0; }
+  }
+  .fx-crack-text {
+    font-family: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+    font-weight: 900;
+    font-style: italic;
+    font-size: 15px;
+    letter-spacing: 0.12em;
+    color: #fff;
+    transform: translateX(-50%);
+    text-shadow: 0 0 10px rgba(244,63,94,1), 0 2px 0 rgba(0,0,0,0.5);
+    animation: fxFloat 1s ease-out forwards;
+    white-space: nowrap;
+  }
+
+  /* 山札・セキュリティの増減 */
+  .fx-pile-hit { animation: fxPileHit .55s ease-out; }
+  @keyframes fxPileHit {
+    0%, 100% { transform: translateX(0); filter: none; }
+    15% { transform: translateX(-5px) rotate(-3deg); filter: brightness(2) sepia(1) hue-rotate(-50deg) saturate(6); }
+    35% { transform: translateX(5px) rotate(3deg); }
+    55% { transform: translateX(-3px); }
+    75% { transform: translateX(2px); }
+  }
+  .fx-pile-gain { animation: fxPileGain .6s ease-out; }
+  @keyframes fxPileGain {
+    0% { transform: scale(1); filter: none; }
+    35% { transform: scale(1.12); filter: brightness(1.8) drop-shadow(0 0 12px rgba(110,231,183,0.9)); }
+    100% { transform: scale(1); filter: none; }
+  }
+  .fx-pile-tick { animation: fxPileTick .35s ease-out; }
+  @keyframes fxPileTick { 0% { transform: scale(1); } 40% { transform: scale(1.08); filter: brightness(1.5); } 100% { transform: scale(1); } }
+
+  /* 盤面の視点切替(ターン交代時など) */
+  #practiceBoardPanel .mat-block.fx-view-in-top { animation: fxViewInTop .45s cubic-bezier(.2,.8,.2,1) both; }
+  #practiceBoardPanel .mat-block.fx-view-in-bottom { animation: fxViewInBottom .45s cubic-bezier(.2,.8,.2,1) both; }
+  @keyframes fxViewInTop { 0% { transform: translateY(-18px); opacity: 0.2; } 100% { transform: none; opacity: 1; } }
+  @keyframes fxViewInBottom { 0% { transform: translateY(18px); opacity: 0.2; } 100% { transform: none; opacity: 1; } }
+
+  /* メモリー変化 */
+  .fx-mem-pop { animation: fxMemPop .5s cubic-bezier(.2,.9,.3,1.4) both; }
+  @keyframes fxMemPop { 0% { transform: skewX(-14deg) scale(0.6); } 60% { transform: skewX(-14deg) scale(1.55); } 100% { transform: skewX(-14deg) scale(1.28); } }
+
+  /* アタック: アタック中デジモンのオーラ/対象のロックオン/斬撃テキスト */
+  #practiceBoardPanel .stack-tile.fx-attacker .stack-fan .stack-layer:last-child {
+    border-color: #fff !important;
+    animation: fxAttackerAura .7s ease-in-out infinite;
+  }
+  @keyframes fxAttackerAura {
+    0%, 100% { box-shadow: 0 0 0 2px rgba(255,255,255,0.9), 0 0 18px 4px rgba(var(--gold-rgb),0.8); }
+    50% { box-shadow: 0 0 0 2px rgba(255,255,255,0.9), 0 0 32px 10px rgba(var(--gold-rgb),1); }
+  }
+  #practiceBoardPanel .fx-target .stack-fan .stack-layer:last-child,
+  #practiceBoardPanel .mat-pile.fx-target .card-back {
+    animation: fxTargetLock .6s ease-in-out infinite;
+  }
+  @keyframes fxTargetLock {
+    0%, 100% { box-shadow: 0 0 0 2px rgba(244,63,94,0.9), 0 0 16px 2px rgba(244,63,94,0.7); }
+    50% { box-shadow: 0 0 0 3px #fff, 0 0 30px 8px rgba(244,63,94,1); }
+  }
+  .fx-beam-path {
+    fill: none;
+    stroke: url(#fxBeamGrad);
+    stroke-width: 4;
+    stroke-linecap: round;
+    stroke-dasharray: 14 10;
+    animation: fxBeamDash .5s linear infinite;
+    filter: drop-shadow(0 0 6px rgba(251,191,36,0.9));
+  }
+  @keyframes fxBeamDash { to { stroke-dashoffset: -24; } }
+  .fx-reticle {
+    fill: none;
+    stroke: #fff;
+    stroke-width: 2;
+    filter: drop-shadow(0 0 6px rgba(244,63,94,1));
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: fxReticle 1.2s linear infinite;
+  }
+  @keyframes fxReticle { to { transform: rotate(360deg); } }
+  .fx-slash {
+    font-family: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+    font-size: 30px;
+    font-weight: 900;
+    font-style: italic;
+    letter-spacing: 0.14em;
+    color: #fff;
+    white-space: nowrap;
+    transform: translate(-50%, -50%);
+    text-shadow: 0 0 14px rgba(var(--gold-rgb),1), 0 3px 0 rgba(0,0,0,0.5);
+    animation: fxSlash 1s cubic-bezier(.2,.9,.3,1.3) forwards;
+  }
+  .fx-slash::after {
+    content: '';
+    position: absolute;
+    left: -20%; right: -20%; top: 50%;
+    height: 3px;
+    background: linear-gradient(90deg, transparent, #fff, transparent);
+    transform: rotate(-12deg);
+    animation: fxSlashLine .45s ease-out forwards;
+  }
+  @keyframes fxSlash {
+    0% { transform: translate(-50%, -50%) scale(2.2) rotate(-8deg); opacity: 0; }
+    20% { transform: translate(-50%, -50%) scale(1) rotate(-8deg); opacity: 1; }
+    75% { transform: translate(-50%, -50%) scale(1.05) rotate(-8deg); opacity: 1; }
+    100% { transform: translate(-50%, -70%) scale(1.1) rotate(-8deg); opacity: 0; }
+  }
+  @keyframes fxSlashLine { 0% { transform: rotate(-12deg) scaleX(0); } 100% { transform: rotate(-12deg) scaleX(1); } }
+
+  body.arena-fx-off #arenaFxLayer { display: none; }
+  body.arena-fx-off #practiceBoardPanel .mat-block.is-turn,
+  body.arena-fx-off #practiceBoardPanel #practiceNextPhaseBtn,
+  body.arena-fx-off #practiceBoardPanel .arena-plate .ap-turn { animation: none; }
+
+  /* ========================================================================
      スマホ幅向けの上書きスタイル。CSSは同じ詳細度なら「後に書かれた方が勝つ」
      ため、対象セレクタの通常ルールがこのファイルのどこにあっても確実に
      上書きできるよう、このブロックをstyleタグの一番最後に置く。
@@ -1716,6 +2500,51 @@
     overflow: hidden;
     touch-action: none;
   }
+  /* ========================================================================
+     対戦アリーナ風デザインのスマホ幅向け上書き。アリーナ用の指定は
+     #practiceBoardPanel でスコープしていて既存の@mediaより詳細度が高いため、
+     アリーナ側で変えたサイズ等はここで改めてスマホ用に上書きする。
+     (既存ルールと同じく、styleタグの一番最後に置くこと)
+     ======================================================================== */
+  @media (max-width: 768px) {
+    #practiceBoardPanel.panel { padding: 12px 10px; }
+    #practiceBoardPanel .mat-block { padding: 10px; border-radius: 12px; }
+    #practiceBoardPanel .arena-plate { margin: -10px -10px 10px; font-size: 12px; gap: 8px; }
+    #practiceBoardPanel .mat-self .arena-plate { margin: 10px -10px 8px; }
+    #practiceBoardPanel .arena-plate .ap-tag { font-size: 10px; padding: 5px 18px 5px 10px; border-radius: 11px 0 0 0; }
+    #practiceBoardPanel .mat-self .arena-plate .ap-tag { border-radius: 0; }
+    #practiceBoardPanel .arena-plate .ap-turn { margin-right: 10px; font-size: 9px; padding: 2px 8px; }
+
+    #practiceBoardPanel .arena-hud { padding: 8px 8px 2px; }
+    #practiceBoardPanel .arena-phasebar { gap: 6px; }
+    #practiceBoardPanel .arena-phase-core { order: -1; flex: 1 1 100%; min-width: 0; margin-bottom: 4px; }
+    #practiceBoardPanel #phaseLabel { font-size: 19px !important; }
+    #practiceBoardPanel .phase-pip { font-size: 8px; padding: 2px 5px; }
+    #practiceBoardPanel .arena-phasebar button.btn { font-size: 12px; padding: 7px 10px; }
+    #practiceBoardPanel #practiceNextPhaseBtn { padding: 9px 20px 9px 16px; }
+    #practiceBoardPanel .memory-line .ml-slot { width: 22px; height: 22px; font-size: 10px; }
+    #practiceBoardPanel .raising-sub-area .sa-label { display: none; }
+    #practiceBoardPanel .mat-block.is-compact .mat-row { zoom: 0.7; gap: 6px 10px; }
+    /* スマホ: セキュリティ・デジタマ・育成・デッキ・トラッシュを1段目にまとめ、2段目をバトルエリアにする */
+    #practiceBoardPanel .mat-block.is-compact #opponentEggCluster,
+    #practiceBoardPanel .mat-block.is-compact .raising-sub-area { order: 1; }
+    #practiceBoardPanel .mat-block.is-compact .battle-groups-wrap { flex-direction: column; }
+    #practiceBoardPanel .mat-block.is-compact .battle-sub-area { min-height: 0; }
+    #practiceBoardPanel .mat-block.is-compact .mat-pile .mp-label { font-size: 11px; }
+    #practiceBoardPanel .arena-compact-toggle { margin-right: 8px; font-size: 10px; padding: 2px 8px; }
+
+    #practiceBoardPanel .st-dp { font-size: 11px; padding: 1px 9px; top: -19px; clip-path: polygon(6px 0, calc(100% - 6px) 0, 100% 50%, calc(100% - 6px) 100%, 6px 100%, 0 50%); }
+    #practiceBoardPanel .hand-row { padding: 8px; gap: 4px; }
+    #practiceBoardPanel .arena-topbar { gap: 8px; }
+
+    .fx-banner { height: 66px; }
+    .fx-banner .fxb-main { font-size: 24px; letter-spacing: 0.1em; }
+    .fx-banner .fxb-sub { font-size: 11px; }
+    .fx-banner.big { height: 90px; }
+    .fx-banner.big .fxb-main { font-size: 32px; }
+    .fx-float { font-size: 17px; }
+    .fx-slash { font-size: 22px; }
+  }
 </style>
 <!-- タッチ端末でもHTML5ドラッグ&ドロップがそのまま動くようにするポリフィル。
      長押し(press-hold)でドラッグ開始するモードで有効化する。 -->
@@ -1735,7 +2564,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.30.2</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.31.1</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -1877,8 +2706,11 @@
     </div>
 
     <div class="panel" id="practiceBoardPanel" style="display:none;">
-      <div class="practice-topbar">
+      <div class="practice-topbar arena-topbar">
+        <span class="arena-turn-chip" id="arenaTurnChip">TURN 1</span>
         <span class="mono" id="practiceHeaderLabel" style="font-size:12px;color:var(--text-dim);"></span>
+        <span class="arena-topbar-spacer"></span>
+        <button class="btn" id="arenaFxToggle" title="登場・進化・消滅・フェイズ切替などの演出を切り替えます">✨ 演出 ON</button>
         <button class="btn" id="practiceEndGameBtn">練習を終了</button>
       </div>
 
@@ -1888,8 +2720,8 @@
       </div>
 
       <!-- 相手側(奥) -->
-      <div class="mat-block">
-        <div class="mat-label">相手(<span id="opponentNameLabel"></span>)</div>
+      <div class="mat-block mat-opp" id="oppMatBlock">
+        <div class="mat-label arena-plate"><span class="ap-tag">OPPONENT</span><span class="ap-name" id="opponentNameLabel"></span><span class="ap-turn">TURN</span><button type="button" class="arena-compact-toggle" id="oppCompactToggle"></button></div>
         <div class="mat-row">
           <div class="mat-side-col">
             <div class="mat-cluster" id="opponentHandCluster"></div>
@@ -1902,24 +2734,29 @@
         </div>
       </div>
 
-      <!-- フェーズ操作(視点切替・パス・次のフェーズへ)をメモリーの直上にまとめる -->
-      <div class="practice-topbar" style="justify-content:center;margin-bottom:6px;padding-bottom:0;border-bottom:none;">
-        <button class="btn" id="practiceSwitchViewBtn">🔄 視点切り替え</button>
-        <button class="btn" id="fieldEffectsBtn">🌐 フィールド効果</button>
-        <span class="mono" id="phaseLabel" style="font-size:18px;font-weight:700;color:var(--accent);min-width:140px;text-align:center;"></span>
-        <button class="btn" id="practicePassBtn">パス</button>
-        <button class="btn primary" id="practiceNextPhaseBtn">次のフェーズへ</button>
-      </div>
+      <!-- 中央HUD: フェーズ操作(視点切替・パス・次のフェーズへ)とメモリーゲージ -->
+      <div class="arena-hud">
+        <div class="practice-topbar arena-phasebar">
+          <button class="btn" id="practiceSwitchViewBtn">🔄 視点切り替え</button>
+          <button class="btn" id="fieldEffectsBtn">🌐 フィールド効果</button>
+          <div class="arena-phase-core">
+            <span class="mono" id="phaseLabel" style="font-size:18px;font-weight:700;color:var(--accent);min-width:140px;text-align:center;"></span>
+            <div class="phase-pips" id="phasePips"></div>
+          </div>
+          <button class="btn" id="practicePassBtn">パス</button>
+          <button class="btn primary" id="practiceNextPhaseBtn">次のフェーズへ</button>
+        </div>
 
-      <!-- メモリーゲージ: 左にターン表示、右に1手戻す -->
-      <div class="turn-memory-row" style="display:flex;align-items:center;gap:10px;">
-        <span class="mono" id="turnIndicatorLabel" style="font-size:12px;color:var(--text-dim);white-space:nowrap;"></span>
-        <div class="memory-line" id="memoryLine" style="flex:1;"></div>
-        <button class="btn" id="practiceUndoBtn" disabled style="white-space:nowrap;">⟲ 1手戻す</button>
+        <!-- メモリーゲージ: 左にターン表示、右に1手戻す -->
+        <div class="turn-memory-row" style="display:flex;align-items:center;gap:10px;">
+          <span class="mono" id="turnIndicatorLabel" style="font-size:12px;color:var(--text-dim);white-space:nowrap;"></span>
+          <div class="memory-line" id="memoryLine" style="flex:1;"></div>
+          <button class="btn" id="practiceUndoBtn" disabled style="white-space:nowrap;">⟲ 1手戻す</button>
+        </div>
       </div>
 
       <!-- 自分側(手前) -->
-      <div class="mat-block">
+      <div class="mat-block mat-self" id="selfMatBlock">
         <div class="mat-row">
           <div class="mat-side-col">
             <div class="mat-cluster" id="selfSideCluster"></div>
@@ -1930,7 +2767,7 @@
           <div class="sub-area battle-sub-area"><div class="sa-label">バトルエリア</div><div id="selfBattleArea" class="battle-groups-wrap"></div></div>
           <div class="mat-side-col-right" id="selfDeckTrashCluster"></div>
         </div>
-        <div class="mat-label" style="margin-top:14px;">自分(<span id="selfNameLabel"></span>) の手札</div>
+        <div class="mat-label arena-plate"><span class="ap-tag">YOU</span><span class="ap-name" id="selfNameLabel"></span><span class="ap-sub">手札</span><span class="ap-turn">YOUR TURN</span></div>
         <div class="hand-row" id="selfHandRow"></div>
 
         <div class="mat-label" style="margin-top:16px;">効果による操作(いつでも使用可)</div>
@@ -3254,7 +4091,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.30.2`);
+    log(`DigiCA Tool build v0.31.1`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -3490,7 +4327,7 @@
   function getEffectiveDP(stack) {
     const c = getStackTopCard(stack);
     const base = stack.actingAsDigimon ? (stack.assignedDP ?? 0) : (c ? (c.dp ?? 0) : 0);
-    return base + (stack.dpModifier || 0) + getTempDPModifierSum(stack) + getMaterialTurnDPBonus(stack) + getSelfEffectDPBonus(stack) + getMaterialConditionSelfDPBonus(stack) + getFieldEffectDPBonus(stack);
+    return base + (stack.dpModifier || 0) + getTempDPModifierSum(stack) + getMaterialTurnDPBonus(stack) + getSelfEffectDPBonus(stack) + getMaterialConditionSelfDPBonus(stack) + getMaterialConditionInheritedDPBonus(stack) + getAllOwnBroadcastDPBonus(stack) + getFieldEffectDPBonus(stack);
   }
   // 進化元(一番上の現在のカードを除く)が「【お互いのターン/自分のターン/相手のターン】
   // このデジモンをDP+N。」という独立行の記載を持つ場合、そのターン条件を満たしていれば
@@ -3581,6 +4418,12 @@
       const names = (condText.match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
       if (names.length) return names.some(n => materials.some(c => c.name && c.name.includes(n)));
     }
+    // 「赤以外のカード」のように、特定の色を持たないカードの存在を見る条件(Phase2で追加)。
+    const notColorM = condText.match(/^([青赤黄緑黒紫白])以外のカード$/);
+    if (notColorM) {
+      const colorEn = COLOR_JA_TO_EN_LOCAL[notColorM[1]];
+      return materials.some(c => !(c.color || []).includes(colorEn));
+    }
     return null;
   }
   function getMaterialConditionSelfDPBonus(stack) {
@@ -3604,6 +4447,104 @@
       if (!condResult) return;
       const numStr = m[3].replace('＋', '+').replace('－', '-');
       sum += parseInt(numStr, 10);
+    });
+    return sum;
+  }
+  // Phase2: 進化元(素材)自身のinherited欄に「このデジモンの進化元に[条件]がある間、
+  // このデジモンのDPを±Nする。」という記載がある場合の自動DP増減(Type A2のinherited版)。
+  // 条件評価はスタック全体の進化元(トップを除く)を対象にする=evaluateMaterialConditionText
+  // と同じ意味(getMaterialConditionSelfDPBonusと判定ロジックを共用)。
+  // (DB検証済み: BT10-001の1件。全619件のinherited欄をSELF_TURN_DP_PATTERN/一回限り型/
+  // Type A3の各パターンでも監査済みで、この1件以外に未対応のギャップはなかった)
+  function getMaterialConditionInheritedDPBonus(stack) {
+    if (!practiceState || !stack.cards || stack.cards.length <= 1) return 0;
+    const owner = findStackOwnerAndZone(stack);
+    if (!owner) return 0;
+    const ownerIndex = practiceState.players.indexOf(owner.player);
+    const isOwnersTurn = practiceState.turn.playerIndex === ownerIndex;
+    const materials = stack.cards.slice(0, stack.cards.length - 1);
+    let sum = 0;
+    materials.forEach(entry => {
+      const card = cardIndexByNumber.get(cardEntryNum(entry));
+      const text = (card && card.inherited) || '';
+      text.split('\n').forEach(line => {
+        const m = MATERIAL_COND_DP_PATTERN.exec(line.trim());
+        if (!m) return;
+        const timing = m[1];
+        const applies = timing === 'お互いのターン' ||
+          (timing === '自分のターン' && isOwnersTurn) ||
+          (timing === '相手のターン' && !isOwnersTurn);
+        if (!applies) return;
+        const condResult = evaluateMaterialConditionText(stack, m[2]);
+        if (!condResult) return;
+        const numStr = m[3].replace('＋', '+').replace('－', '-');
+        sum += parseInt(numStr, 10);
+      });
+    });
+    return sum;
+  }
+  // ---------- 「自分のデジモン全て」への持続的な条件付きDP増減(対象選択不要な放送型) ----------
+  // 「【タイミング】(このデジモンが(レスト/アクティブ)状態の間、)?(特徴/名称/色/キーワード条件)?
+  // (他の)?自分のデジモン全てをDP±Nする。」という、対象を選ばず自分の場のデジモン全体(または
+  // 条件に合うもの)に一律でDPを乗せる持続効果。A1/A2が「自分自身」だけを見ていたのに対し、
+  // これは自分の場の各スタックの効果テキストを走査し、条件に一致する「対象側」スタックそれぞれ
+  // に加算する点が異なる(対象選択のUIは不要=誰が対象かは条件だけで機械的に決まる)。
+  // (DB検証済み: BT11-078/BT11-091/BT16-050/BT18-045/BT2-089/BT4-066/BT22-084/BT23-090/
+  // BT24-102/BT6-084/EX2-034/ST1-12の12件。同種で「相手のデジモン全て」を対象にするものや、
+  // コスト支払い・セキュリティ限定カード等の発展形は今回のスコープ外)
+  const ALL_OWN_BROADCAST_DP_RE = /^【(お互いのターン|自分のターン|相手のターン)】(?:このデジモンが(レスト状態|アクティブ状態)の間、)?(?:特徴に((?:「[^」]+」[か\/]?)+)を(?:持つ|含む)|名称に((?:「[^」]+」[か\/]?)+)を含む(?:か特徴に((?:「[^」]+」[か\/]?)+)を持つ)?|([青赤黄緑黒紫白])の|≪([^≫]+)≫を持つ)?(他の)?自分のデジモン全て(?:は)?(?:を|の)DP(?:を)?([+\-＋－]\d+)(?:する)?。?$/;
+  function getAllOwnBroadcastDPBonus(stack) {
+    if (!practiceState || !isDigimonLikeStack(stack)) return 0;
+    const owner = findStackOwnerAndZone(stack);
+    if (!owner || owner.zone !== 'battle') return 0;
+    const ownerIndex = practiceState.players.indexOf(owner.player);
+    const isOwnersTurn = practiceState.turn.playerIndex === ownerIndex;
+    const targetCard = getStackTopCard(stack);
+    if (!targetCard) return 0;
+    const COLOR_JA_TO_EN_BC = { 青: 'blue', 赤: 'red', 黄: 'yellow', 緑: 'green', 黒: 'black', 紫: 'purple', 白: 'white' };
+    const getTraitsBC = (card) => { const t = (card.type || '').split('/'); if (card.form) t.push(...card.form.split('/')); return t; };
+    const keywordChecker = (keyword) => {
+      if (keyword === 'ブロッカー') return hasBlockerKeyword;
+      if (keyword === '道連れ') return hasCompanionKeyword;
+      return (s) => hasInnateOrLinkedKeyword(s, keyword);
+    };
+    let sum = 0;
+    owner.player.battle.forEach(sourceStack => {
+      const sourceCard = getStackTopCard(sourceStack);
+      if (!sourceCard || !sourceCard.effect) return;
+      sourceCard.effect.split('\n').forEach(line => {
+        const m = ALL_OWN_BROADCAST_DP_RE.exec(line.trim());
+        if (!m) return;
+        const [, timing, sourceState, traitList, nameList, nameOrTraitList, colorJa, keyword, excludeSelf, signedAmount] = m;
+        const timingOk = timing === 'お互いのターン' || (timing === '自分のターン' && isOwnersTurn) || (timing === '相手のターン' && !isOwnersTurn);
+        if (!timingOk) return;
+        if (excludeSelf && sourceStack === stack) return;
+        if (sourceState) {
+          const isRested = !!sourceStack.rested;
+          if (sourceState === 'レスト状態' && !isRested) return;
+          if (sourceState === 'アクティブ状態' && isRested) return;
+        }
+        if (traitList) {
+          const traits = (traitList.match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
+          if (!traits.some(t => getTraitsBC(targetCard).some(ct => ct.includes(t)))) return;
+        } else if (nameList) {
+          const names = (nameList.match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
+          const nameOk = names.some(n => targetCard.name && targetCard.name.includes(n));
+          let traitOk = false;
+          if (nameOrTraitList) {
+            const traits2 = (nameOrTraitList.match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
+            traitOk = traits2.some(t => getTraitsBC(targetCard).some(ct => ct.includes(t)));
+          }
+          if (!nameOk && !traitOk) return;
+        } else if (colorJa) {
+          const colorEn = COLOR_JA_TO_EN_BC[colorJa];
+          if (!(targetCard.color || []).includes(colorEn)) return;
+        } else if (keyword) {
+          if (!keywordChecker(keyword)(stack)) return;
+        }
+        const numStr = signedAmount.replace('＋', '+').replace('－', '-');
+        sum += parseInt(numStr, 10);
+      });
     });
     return sum;
   }
@@ -3876,6 +4817,7 @@
     checkAutoRevealTrigger(stack, '進化時');
     checkAutoSelfEvolveDPTrigger(stack, '進化時');
     checkAutoMaterialConditionDPTrigger(stack, '進化時');
+    checkAutoOppBroadcastDPTrigger(stack, '進化時');
   }
   // ≪回避≫≪アーマー解除≫≪突進≫も、ブロッカー等と同様に「デフォルト自動判定+手動上書き」
   // の形に統一する。バッジ表示と、実際に選べる場面(消滅確認/アタック時ステップ)の両方を
@@ -4818,6 +5760,7 @@
     practiceMulliganArea.innerHTML = '';
     practiceSetupPanel.style.display = 'none';
     practiceBoardPanel.style.display = '';
+    arenaGameStartPending = true;
     renderPracticeBoard();
   }
 
@@ -4871,6 +5814,7 @@
     const OFFSET_STEP = 24;
     const maxOffset = (layers.length - 1) * OFFSET_STEP;
     el.className = 'stack-tile' + (stack.rested ? ' rested' : '') + (isEvolveTarget ? ' target-pick' : '') + (stack.burstEvolved ? ' burst-evolved' : '');
+    el.dataset.fxid = getFxId(stack); // 演出(FX)用に、再描画をまたいで同じスタックを特定するID
     el.style.padding = fanUp ? `${maxOffset}px 0 0 0` : `0 0 ${maxOffset}px 0`;
     if (stack.links && stack.links.length > 0) {
       el.style.marginRight = '35px'; // リンクの横差し表示が隣のデジモンと重ならないよう余白を確保
@@ -4911,7 +5855,7 @@
       <div class="stack-fan">${layerHtml}</div>
       ${linkHtml}
       ${stack.cards.length > 1 ? `<span class="st-count mono">${stack.cards.length}</span>` : ''}
-      ${(stack.actingAsDigimon || (((stack.dpModifier || 0) !== 0 || getTempDPModifierSum(stack) !== 0 || getMaterialTurnDPBonus(stack) !== 0 || getFieldEffectDPBonus(stack) !== 0) && isDigimonLikeStack(stack))) ? `<span class="st-dp">DP${getEffectiveDP(stack)}</span>` : ''}
+      ${buildDPPlateHtml(stack, topCard)}
       ${badgesHtml}
       ${!isEvolveTarget ? `<button type="button" class="tile-quickadd" title="レスト/アクティブ切替" style="opacity:0.55;">⟳</button>` : ''}
     `;
@@ -4955,6 +5899,23 @@
       el.addEventListener('click', (e) => { e.stopPropagation(); onClick(e); });
     }
     return el;
+  }
+
+  // DPプレート。バトルエリアのデジモンは常に表示し(対戦アリーナ風UI)、育成エリア等では
+  // 従来どおり「効果でDPが変わっているときだけ」表示する。印刷DPとの差で増減を判定するため、
+  // どの自動DP計算(フィールド効果・進化元・放送型など)による増減でも同じように色が付く。
+  function buildDPPlateHtml(stack, topCard) {
+    if (!isDigimonLikeStack(stack)) return '';
+    const eff = getEffectiveDP(stack);
+    const printed = stack.actingAsDigimon ? null : (topCard && topCard.dp != null ? topCard.dp : null);
+    const delta = printed == null ? 0 : eff - printed;
+    const owner = findStackOwnerAndZone(stack);
+    const inBattle = !!owner && owner.zone === 'battle';
+    const isDigimonCard = !!topCard && topCard.category === 'digimon';
+    if (!(stack.actingAsDigimon || delta !== 0 || (inBattle && isDigimonCard))) return '';
+    const cls = delta > 0 ? ' buff' : (delta < 0 ? ' debuff' : '');
+    const arrow = delta > 0 ? '<span class="dp-arrow">▲</span>' : (delta < 0 ? '<span class="dp-arrow">▼</span>' : '');
+    return `<span class="st-dp${cls}" title="${printed != null ? `印刷DP${printed} / 増減${delta >= 0 ? '+' : ''}${delta}` : ''}"><small>DP</small>${eff}${arrow}</span>`;
   }
 
   function findStackOwnerAndZone(stack) {
@@ -5204,28 +6165,30 @@
   }
 
   function renderPlayerZones(player, { handClusterEl, eggClusterEl, sideClusterEl, deckTrashClusterEl, raisingAreaEl, battleAreaEl, isSelf, allowEvolveTarget }) {
+    const fxPi = practiceState.players.indexOf(player);
+    const tagPile = (el, kind) => { el.dataset.fxpile = `${fxPi}:${kind}`; return el; };
     // Hand: opponent's hand shows as a face-down pile (count only).
     // Self's hand is rendered separately below the mat (selfHandRow), so handClusterEl may be null.
     if (handClusterEl) {
       handClusterEl.innerHTML = '';
-      if (!isSelf) handClusterEl.appendChild(buildFaceDownPile('手札', player.hand.length));
+      if (!isSelf) handClusterEl.appendChild(tagPile(buildFaceDownPile('手札', player.hand.length), 'hand'));
     }
 
     // Digi-egg deck: always face-down
     eggClusterEl.innerHTML = '';
-    eggClusterEl.appendChild(buildFaceDownPile('デジタマ', player.eggLibrary.length));
+    eggClusterEl.appendChild(tagPile(buildFaceDownPile('デジタマ', player.eggLibrary.length), 'egg'));
 
     // Side cluster: security(face-down)のみ。デッキ/トラッシュは実物のプレイマットに
     // 合わせてバトルエリアの右側(deckTrashClusterEl)に表示する。
     sideClusterEl.innerHTML = '';
-    sideClusterEl.appendChild(buildFaceDownPile(
+    sideClusterEl.appendChild(tagPile(buildFaceDownPile(
       'セキュリティ', player.security.length, isSelf ? (e) => openSecurityPopup(e) : (e) => openOpponentSecurityDiscardPopup(e, player),
       player.security.filter(entry => cardEntryFaceUp(entry)).map(entry => cardEntryNum(entry))
-    ));
+    ), 'security'));
 
     // デッキ(上)・トラッシュ(下)。バトルエリアの右側の縦カラムに表示する。
     deckTrashClusterEl.innerHTML = '';
-    deckTrashClusterEl.appendChild(buildFaceDownPile('デッキ', player.library.length, isSelf ? (e) => openDeckPopup(e) : null));
+    deckTrashClusterEl.appendChild(tagPile(buildFaceDownPile('デッキ', player.library.length, isSelf ? (e) => openDeckPopup(e) : null), 'library'));
     const trashPile = buildFaceUpPile('トラッシュ', player.trash, isSelf
       ? () => openTrashListView()
       : () => {
@@ -5235,7 +6198,7 @@
           }
         });
     if (isSelf) setupTrashDropZone(trashPile);
-    deckTrashClusterEl.appendChild(trashPile);
+    deckTrashClusterEl.appendChild(tagPile(trashPile, 'trash'));
 
     // Raising area (0 or 1 stack)
     raisingAreaEl.innerHTML = '';
@@ -5305,7 +6268,7 @@
       rowEl.className = 'ml-row';
       rowValues.forEach(v => {
         const slot = document.createElement('div');
-        slot.className = 'ml-slot mono' + (v === 0 ? ' zero' : '') + (v === memoryFromSelfView ? ' current' : '');
+        slot.className = 'ml-slot mono' + (v === 0 ? ' zero' : (v < 0 ? ' side-self' : ' side-opp')) + (v === memoryFromSelfView ? ' current' : '');
         slot.textContent = v === 0 ? '0' : Math.abs(v);
         slot.title = `メモリーを${v >= 0 ? '+' : ''}${v}にする`;
         slot.addEventListener('click', () => {
@@ -5316,6 +6279,370 @@
         rowEl.appendChild(slot);
       });
       line.appendChild(rowEl);
+    });
+  }
+
+  // ---------- 対戦アリーナ風UI: HUD表示と演出(FX) ----------
+  // 演出は盤面ロジックには一切手を入れず、renderPracticeBoardの最後に「前回の描画時点の
+  // 盤面」と「今回の盤面」を比較して、差分(登場・進化・DP増減・消滅・山の増減・フェイズ/
+  // ターン切替・アタック開始)に応じたアニメーションをbody直下の固定レイヤーに重ねて再生する。
+  // 1手戻す等でpracticeStateが丸ごと差し替わったときは比較の基準をリセットするだけで、
+  // 演出は再生しない(全カードが「新しく登場した」ように見えてしまうため)。
+  const PHASE_PIP_LABELS = [['active', 'ACTIVE'], ['draw', 'DRAW'], ['raising', 'BREED'], ['main', 'MAIN'], ['end', 'END']];
+  const PHASE_FX_LABELS = { active: 'ACTIVE PHASE', draw: 'DRAW PHASE', raising: 'BREEDING PHASE', main: 'MAIN PHASE', end: 'END PHASE' };
+  const FX_SELF_RGB = '59,130,246';
+  const FX_OPP_RGB = '244,63,94';
+  const FX_GOLD_RGB = '251,191,36';
+  let arenaGameStartPending = false;
+  let arenaFxEnabled = (() => {
+    try {
+      const v = localStorage.getItem('digica_arena_fx');
+      if (v === '1' || v === '0') return v === '1';
+    } catch (e) {}
+    try { return !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (e) { return true; }
+  })();
+  function applyArenaFxToggleUi() {
+    document.body.classList.toggle('arena-fx-off', !arenaFxEnabled);
+    const btn = document.getElementById('arenaFxToggle');
+    if (btn) btn.textContent = arenaFxEnabled ? '✨ 演出 ON' : '演出 OFF';
+  }
+  applyArenaFxToggleUi();
+  document.getElementById('arenaFxToggle').addEventListener('click', () => {
+    arenaFxEnabled = !arenaFxEnabled;
+    try { localStorage.setItem('digica_arena_fx', arenaFxEnabled ? '1' : '0'); } catch (e) {}
+    applyArenaFxToggleUi();
+    if (!arenaFxEnabled) clearArenaFxLayer();
+  });
+
+  // スタックは再描画のたびにDOM要素が作り直されるため、スタックのオブジェクト自体に
+  // 演出用IDを紐づけて「同じスタック」を追跡する(WeakMapなので盤面データには何も書き込まない)。
+  const fxIdMap = new WeakMap();
+  let fxIdSeq = 0;
+  function getFxId(stack) {
+    if (!stack || typeof stack !== 'object') return '';
+    let id = fxIdMap.get(stack);
+    if (!id) { id = 'fx' + (++fxIdSeq); fxIdMap.set(stack, id); }
+    return id;
+  }
+
+  // 相手側(自ターンでない方)の縮小表示を、ユーザーが一時的に解除しているかどうか
+  let arenaOppExpanded = (() => { try { return localStorage.getItem('digica_arena_opp_expanded') === '1'; } catch (e) { return false; } })();
+  document.getElementById('oppCompactToggle').addEventListener('click', (e) => {
+    e.stopPropagation();
+    arenaOppExpanded = !arenaOppExpanded;
+    try { localStorage.setItem('digica_arena_opp_expanded', arenaOppExpanded ? '1' : '0'); } catch (err) {}
+    renderPracticeBoard();
+  });
+  function renderArenaHud(selfTurn) {
+    const t = practiceState.turn;
+    const chip = document.getElementById('arenaTurnChip');
+    if (chip) chip.textContent = `TURN ${t.count}`;
+    const pips = document.getElementById('phasePips');
+    if (pips) {
+      const curIdx = PHASE_ORDER.indexOf(t.phase);
+      pips.className = 'phase-pips' + (selfTurn ? '' : ' opp-turn');
+      pips.innerHTML = PHASE_PIP_LABELS.map(([, label], i) =>
+        `<span class="phase-pip${i < curIdx ? ' done' : ''}${i === curIdx ? ' current' : ''}">${label}</span>`).join('');
+    }
+    document.getElementById('phaseLabel').classList.toggle('opp-turn', !selfTurn);
+    document.getElementById('selfMatBlock').classList.toggle('is-turn', selfTurn);
+    document.getElementById('oppMatBlock').classList.toggle('is-turn', !selfTurn);
+    // 自分のターン中は、相手側(上段)を縮小表示にして盤面をコンパクトにする。
+    // 相手のターン中に視点を切り替えた場合など、上段が手番側のときは常に通常表示。
+    const oppBlock = document.getElementById('oppMatBlock');
+    oppBlock.classList.toggle('is-compact', selfTurn && !arenaOppExpanded);
+    const compactBtn = document.getElementById('oppCompactToggle');
+    compactBtn.style.display = selfTurn ? '' : 'none';
+    compactBtn.textContent = arenaOppExpanded ? '− 縮小' : '＋ 拡大';
+    compactBtn.title = arenaOppExpanded ? '相手側を縮小表示に戻す' : '相手側を通常サイズで表示する';
+  }
+
+  function getArenaFxLayer() {
+    let layer = document.getElementById('arenaFxLayer');
+    if (!layer) {
+      layer = document.createElement('div');
+      layer.id = 'arenaFxLayer';
+      layer.setAttribute('aria-hidden', 'true');
+      document.body.appendChild(layer);
+    }
+    return layer;
+  }
+  function clearArenaFxLayer() {
+    const layer = document.getElementById('arenaFxLayer');
+    if (layer) layer.innerHTML = '';
+    fxTileAnims.clear();
+    practiceBoardPanel.querySelectorAll('.fx-attacker, .fx-target').forEach(el => el.classList.remove('fx-attacker', 'fx-target'));
+  }
+  function fxSpawn(cls, style, html, lifeMs, rgb) {
+    const el = document.createElement('div');
+    el.className = cls;
+    if (style) Object.keys(style).forEach(k => {
+      if (k.startsWith('--')) el.style.setProperty(k, style[k]);
+      else el.style[k] = style[k];
+    });
+    if (rgb) el.style.setProperty('--b-rgb', rgb);
+    if (html) el.innerHTML = html;
+    getArenaFxLayer().appendChild(el);
+    setTimeout(() => el.remove(), lifeMs || 1200);
+    return el;
+  }
+  function restartAnim(el, cls) {
+    el.classList.remove(cls);
+    void el.offsetWidth;
+    el.classList.add(cls);
+  }
+  // タイル自体に付けるアニメーション。直後にもう一度再描画されても途中から再開できるよう、
+  // 開始時刻を覚えておき、新しく作られた要素にマイナスのanimation-delayで付け直す。
+  const fxTileAnims = new Map(); // key -> { id, cls, sel, start, dur }
+  function fxAnimateTile(id, cls, dur, sel) {
+    fxTileAnims.set(`${id}|${cls}`, { id, cls, sel: sel || '', start: performance.now(), dur });
+  }
+  function reapplyTileAnims(panel) {
+    const now = performance.now();
+    fxTileAnims.forEach((a, key) => {
+      const elapsed = now - a.start;
+      if (elapsed >= a.dur) { fxTileAnims.delete(key); return; }
+      const tile = panel.querySelector(`[data-fxid="${a.id}"]`);
+      const el = tile && (a.sel ? tile.querySelector(a.sel) : tile);
+      if (!el || el.classList.contains(a.cls)) return;
+      el.style.animationDelay = `-${Math.round(elapsed)}ms`;
+      el.classList.add(a.cls);
+    });
+  }
+  // 記録済みの位置(ページ座標)を、今のスクロール位置でのビューポート座標に直す
+  function fxViewRect(r) {
+    return { x: r.x - window.scrollX, y: r.y - window.scrollY, w: r.w, h: r.h };
+  }
+
+  function fxBanner(main, sub, rgb, big) {
+    getArenaFxLayer().querySelectorAll('.fx-banner').forEach(el => el.remove());
+    fxSpawn('fx-banner' + (big ? ' big' : ''), null,
+      `<div class="fxb-main">${escapeHtml(main)}</div>${sub ? `<div class="fxb-sub">${escapeHtml(sub)}</div>` : ''}`, 1300, rgb);
+  }
+  function fxBurst(cls, cx, cy, count, rgb, spread, life) {
+    for (let i = 0; i < count; i++) {
+      const ang = (Math.PI * 2 * i) / count + Math.random() * 0.5;
+      const dist = spread * (0.55 + Math.random() * 0.6);
+      fxSpawn(cls, {
+        left: `${cx - 4}px`, top: `${cy - 4}px`,
+        '--dx': `${Math.cos(ang) * dist}px`, '--dy': `${Math.sin(ang) * dist - spread * 0.25}px`,
+        '--rot': `${Math.round((Math.random() - 0.5) * 720)}deg`,
+        animationDelay: `${Math.round(Math.random() * 60)}ms`,
+      }, '', life, rgb);
+    }
+  }
+  function fxEnterAt(id, cur, rgb) {
+    fxAnimateTile(id, 'fx-enter', 560);
+    if (!cur.rect) return;
+    const r = fxViewRect(cur.rect);
+    const size = Math.max(r.w, r.h) * 1.15;
+    fxSpawn('fx-ring', { left: `${r.x + r.w / 2 - size / 2}px`, top: `${r.y + r.h / 2 - size / 2}px`, width: `${size}px`, height: `${size}px`, animationDelay: '220ms', opacity: '0' }, '', 900, rgb);
+  }
+  function fxEvolveAt(id, cur, rgb) {
+    fxAnimateTile(id, 'fx-evolve', 760);
+    if (!cur.rect) return;
+    const r = fxViewRect(cur.rect);
+    const pw = r.w * 0.9;
+    const ph = r.h * 2.3;
+    fxSpawn('fx-pillar', { left: `${r.x + r.w / 2 - pw / 2}px`, top: `${r.y + r.h - ph}px`, width: `${pw}px`, height: `${ph}px` }, '', 900, rgb);
+    fxBurst('fx-spark', r.x + r.w / 2, r.y + r.h / 2, 12, rgb, r.w * 0.9, 900);
+    fxSpawn('fx-float neutral', { left: `${r.x + r.w / 2}px`, top: `${r.y - 44}px` }, 'EVOLUTION', 1300);
+  }
+  function fxFloatAt(r, text, mood) {
+    fxSpawn(`fx-float ${mood}`, { left: `${r.x + r.w / 2}px`, top: `${r.y - 48}px` }, escapeHtml(text), 1350);
+  }
+  function fxGhost(old, destroyed, rgb) {
+    const r = fxViewRect(old.rect);
+    const inner = old.topFaceDown || !old.top
+      ? '<div class="card-back"></div>'
+      : `<img src="${escapeHtml(miniCardImg(old.top))}" alt="" style="${old.rested ? 'transform:rotate(90deg) scale(0.82);' : ''}">`;
+    fxSpawn('fx-ghost' + (destroyed ? '' : ' leave'), { left: `${r.x}px`, top: `${r.y}px`, width: `${r.w}px`, height: `${r.h}px` }, inner, 900, rgb);
+    if (destroyed) {
+      fxBurst('fx-shard', r.x + r.w / 2, r.y + r.h / 2, 14, rgb, r.w * 1.1, 900);
+      fxSpawn('fx-crack-text', { left: `${r.x + r.w / 2}px`, top: `${r.y - 10}px` }, 'DELETE', 1100);
+    }
+  }
+
+  // ---- アタック中の演出(アタック中デジモンのオーラ+対象へのビーム) ----
+  // アタックの対象選択などはポップアップ内で進み、盤面の再描画を伴わないことが多いため、
+  // アタック中だけrequestAnimationFrameで追従させる(スクロールしても線がずれない)。
+  let attackFxRaf = 0;
+  function ensureAttackFxLoop() {
+    if (attackFxRaf || !attackState) return;
+    const tick = () => {
+      if (!attackState || !practiceState || !arenaFxEnabled || practiceBoardPanel.style.display === 'none') {
+        clearAttackFx();
+        attackFxRaf = 0;
+        return;
+      }
+      drawAttackFx();
+      attackFxRaf = requestAnimationFrame(tick);
+    };
+    attackFxRaf = requestAnimationFrame(tick);
+  }
+  function clearAttackFx() {
+    const svg = document.getElementById('fxBeamSvg');
+    if (svg) svg.remove();
+    practiceBoardPanel.querySelectorAll('.fx-attacker, .fx-target').forEach(el => el.classList.remove('fx-attacker', 'fx-target'));
+  }
+  function drawAttackFx() {
+    const panel = practiceBoardPanel;
+    const atkEl = panel.querySelector(`[data-fxid="${getFxId(attackState.attackerStack)}"]`);
+    let tgtEl = null;
+    if (attackState.targetType === 'digimon' && attackState.targetStack) {
+      tgtEl = panel.querySelector(`[data-fxid="${getFxId(attackState.targetStack)}"]`);
+    } else if (attackState.targetType === 'player') {
+      const di = practiceState.players.indexOf(attackState.defenderOwner);
+      tgtEl = panel.querySelector(`[data-fxpile="${di}:security"]`);
+    }
+    panel.querySelectorAll('.fx-attacker').forEach(el => { if (el !== atkEl) el.classList.remove('fx-attacker'); });
+    panel.querySelectorAll('.fx-target').forEach(el => { if (el !== tgtEl) el.classList.remove('fx-target'); });
+    if (atkEl && !atkEl.classList.contains('fx-attacker')) atkEl.classList.add('fx-attacker');
+    if (tgtEl && !tgtEl.classList.contains('fx-target')) tgtEl.classList.add('fx-target');
+    let svg = document.getElementById('fxBeamSvg');
+    if (!atkEl || !tgtEl) { if (svg) svg.style.display = 'none'; return; }
+    if (!svg) {
+      svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.id = 'fxBeamSvg';
+      svg.setAttribute('class', 'fx-beam-svg');
+      svg.innerHTML = `
+        <defs><linearGradient id="fxBeamGrad" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fbbf24"/><stop offset="1" stop-color="#f43f5e"/></linearGradient></defs>
+        <path class="fx-beam-path"></path>
+        <circle class="fx-reticle" r="10" stroke-dasharray="10 6"></circle>`;
+      getArenaFxLayer().appendChild(svg);
+    }
+    svg.style.display = '';
+    const a = (atkEl.querySelector('.stack-fan') || atkEl).getBoundingClientRect();
+    const b = (tgtEl.querySelector('.stack-fan') || tgtEl.querySelector('.card-back') || tgtEl).getBoundingClientRect();
+    const ax = a.left + a.width / 2, ay = a.top + a.height / 2;
+    const bx = b.left + b.width / 2, by = b.top + b.height / 2;
+    const mx = (ax + bx) / 2 + (by - ay) * 0.18, my = (ay + by) / 2 - Math.abs(bx - ax) * 0.12 - 30;
+    svg.querySelector('.fx-beam-path').setAttribute('d', `M ${ax} ${ay} Q ${mx} ${my} ${bx} ${by}`);
+    const grad = svg.querySelector('#fxBeamGrad');
+    grad.setAttribute('x1', ax); grad.setAttribute('y1', ay); grad.setAttribute('x2', bx); grad.setAttribute('y2', by);
+    const ret = svg.querySelector('.fx-reticle');
+    ret.setAttribute('cx', bx); ret.setAttribute('cy', by);
+    ret.setAttribute('r', Math.max(b.width, b.height) * 0.62);
+  }
+
+  let fxPrev = null;
+  function collectArenaSnapshot(panel) {
+    const sx = window.scrollX, sy = window.scrollY;
+    const stacks = new Map();
+    practiceState.players.forEach((p, pi) => {
+      const list = [];
+      if (p.raising) list.push([p.raising, 'raising']);
+      p.battle.forEach(s => list.push([s, 'battle']));
+      list.forEach(([s, zone]) => {
+        if (!s.cards || s.cards.length === 0) return;
+        const id = getFxId(s);
+        const el = panel.querySelector(`[data-fxid="${id}"]`);
+        let rect = null;
+        if (el) {
+          const r = (el.querySelector('.stack-fan') || el).getBoundingClientRect();
+          if (r.width > 0) rect = { x: r.left + sx, y: r.top + sy, w: r.width, h: r.height };
+        }
+        const topEntry = s.cards[s.cards.length - 1];
+        stacks.set(id, {
+          pi, zone, rect,
+          top: cardEntryNum(topEntry), topFaceDown: cardEntryFaceDown(topEntry), len: s.cards.length,
+          dp: isDigimonLikeStack(s) ? getEffectiveDP(s) : null, rested: !!s.rested,
+        });
+      });
+    });
+    const piles = {};
+    practiceState.players.forEach((p, pi) => {
+      piles[`${pi}:security`] = p.security.length;
+      piles[`${pi}:library`] = p.library.length;
+      piles[`${pi}:trash`] = p.trash.length;
+      piles[`${pi}:hand`] = p.hand.length;
+      piles[`${pi}:egg`] = p.eggLibrary.length;
+    });
+    return {
+      stateRef: practiceState, viewingIndex: practiceState.viewingIndex,
+      phase: practiceState.turn.phase, turnCount: practiceState.turn.count, turnPlayer: practiceState.turn.playerIndex,
+      memory: practiceState.memory, attackActive: !!attackState, stacks, piles,
+    };
+  }
+
+  function arenaFxAfterRender() {
+    const panel = practiceBoardPanel;
+    if (!practiceState || panel.style.display === 'none' || panel.offsetParent === null) { fxPrev = null; return; }
+    const snap = collectArenaSnapshot(panel);
+    const prev = fxPrev;
+    fxPrev = snap;
+    if (!arenaFxEnabled) { arenaGameStartPending = false; return; }
+    reapplyTileAnims(panel);
+    ensureAttackFxLoop();
+    if (arenaGameStartPending) {
+      arenaGameStartPending = false;
+      fxBanner('BATTLE START', `${practiceState.players[0].deckName}  VS  ${practiceState.players[1].deckName}`, FX_GOLD_RGB, true);
+      return;
+    }
+    // 1手戻す等で盤面データが丸ごと差し替わった場合は、基準だけ更新して演出しない
+    if (!prev || prev.stateRef !== practiceState) return;
+    const sideRgb = (pi) => (pi === practiceState.viewingIndex ? FX_SELF_RGB : FX_OPP_RGB);
+
+    if (snap.turnCount !== prev.turnCount) {
+      fxBanner(`TURN ${snap.turnCount}`, `${practiceState.players[snap.turnPlayer].deckName} のターン`, sideRgb(snap.turnPlayer), true);
+    } else if (snap.phase !== prev.phase) {
+      fxBanner(PHASE_FX_LABELS[snap.phase] || '', PHASE_LABELS[snap.phase] || '', sideRgb(snap.turnPlayer), false);
+    }
+    if (snap.viewingIndex !== prev.viewingIndex) {
+      // 盤面の上下が入れ替わるので、カード単位の差分演出は行わずに全体をスライドインさせる
+      const oppBlock = document.getElementById('oppMatBlock');
+      const selfBlock = document.getElementById('selfMatBlock');
+      restartAnim(oppBlock, 'fx-view-in-top');
+      restartAnim(selfBlock, 'fx-view-in-bottom');
+      setTimeout(() => { oppBlock.classList.remove('fx-view-in-top'); selfBlock.classList.remove('fx-view-in-bottom'); }, 600);
+      return;
+    }
+    if (snap.memory !== prev.memory) {
+      const cur = panel.querySelector('.memory-line .ml-slot.current');
+      if (cur) restartAnim(cur, 'fx-mem-pop');
+    }
+    if (snap.attackActive && !prev.attackActive && attackState) {
+      const atkEl = panel.querySelector(`[data-fxid="${getFxId(attackState.attackerStack)}"]`);
+      if (atkEl) {
+        const r = (atkEl.querySelector('.stack-fan') || atkEl).getBoundingClientRect();
+        fxSpawn('fx-slash', { left: `${r.left + r.width / 2}px`, top: `${r.top + r.height / 2}px` }, 'ATTACK!', 1000);
+      }
+    }
+
+    snap.stacks.forEach((cur, id) => {
+      const old = prev.stacks.get(id);
+      const rgb = sideRgb(cur.pi);
+      if (!old || old.zone !== cur.zone || old.pi !== cur.pi) { fxEnterAt(id, cur, rgb); return; }
+      if (old.top !== cur.top) {
+        if (cur.len > old.len) fxEvolveAt(id, cur, rgb);
+        else fxAnimateTile(id, 'fx-evolve', 760);
+      } else if (old.dp != null && cur.dp != null && old.dp !== cur.dp && cur.rect) {
+        const d = cur.dp - old.dp;
+        fxFloatAt(fxViewRect(cur.rect), `${d > 0 ? '+' : ''}${d}`, d > 0 ? 'up' : 'down');
+        fxAnimateTile(id, 'fx-dp-pop', 520, '.st-dp');
+      }
+    });
+    prev.stacks.forEach((old, id) => {
+      if (snap.stacks.has(id) || !old.rect) return;
+      const trashGrew = (snap.piles[`${old.pi}:trash`] || 0) > (prev.piles[`${old.pi}:trash`] || 0);
+      fxGhost(old, trashGrew, sideRgb(old.pi));
+    });
+    reapplyTileAnims(panel);
+
+    Object.keys(snap.piles).forEach(key => {
+      const a = prev.piles[key], b = snap.piles[key];
+      if (a === b || a == null) return;
+      const el = panel.querySelector(`[data-fxpile="${key}"]`);
+      if (!el) return;
+      if (key.endsWith(':security')) {
+        const target = el.querySelector('.card-back') || el;
+        const r = target.getBoundingClientRect();
+        const vr = { x: r.left, y: r.top + 30, w: r.width, h: r.height };
+        if (b < a) { restartAnim(el, 'fx-pile-hit'); fxFloatAt(vr, `-${a - b}`, 'down'); }
+        else { restartAnim(el, 'fx-pile-gain'); fxFloatAt(vr, `+${b - a}`, 'up'); }
+      } else {
+        restartAnim(el, 'fx-pile-tick');
+      }
     });
   }
 
@@ -5334,6 +6661,7 @@
     document.getElementById('opponentNameLabel').textContent = opp.deckName;
     document.getElementById('selfNameLabel').textContent = self.deckName;
     document.getElementById('phaseLabel').textContent = PHASE_LABELS[practiceState.turn.phase];
+    renderArenaHud(selfTurn);
 
     const nextBtn = document.getElementById('practiceNextPhaseBtn');
     const passBtn = document.getElementById('practicePassBtn');
@@ -5443,6 +6771,7 @@
     if (attackState && lastAttackStepFn && !zonePopupEl.classList.contains('open')) {
       lastAttackStepFn();
     }
+    arenaFxAfterRender();
   }
 
   // ---------- Undo (snapshot-based) ----------
@@ -7373,6 +8702,38 @@
       });
     });
   }
+  // 「【登場時】【進化時】[持続期間]、相手のデジモン全てをDP±Nする。」のように、複数の
+  // タイミングラベルを持つ1行の中に【進化時】が含まれていれば、進化した瞬間に一度だけ
+  // 自動発動する相手全体DP増減。対象が「このデジモン」ではなく「相手のデジモン全て」
+  // なので、stack.tempDPModifiersではなくpracticeState.fieldEffectsに積む(既存の
+  // フィールド効果の仕組みをそのまま流用)。同じ行にある他のラベル(【登場時】【消滅時】等)
+  // は自動化の対象外のまま(checkAutoRevealTrigger等と同じく、進化時のみ自動発動)。
+  // (DB検証済み: BT16-013/EX4-074の2件。BT16-013は【登場時】【進化時】の一方、EX4-074は
+  // 【進化時】【消滅時】の一方が進化時のため、どちらも進化時分のみ自動発動する)
+  const OPP_BROADCAST_DP_TRIGGER_RE = /^((?:【[^】]+】)+)(ターン終了まで|このターンの間|次の相手のターン終了まで|相手のターン終了まで)、相手のデジモン全てをDP([+\-＋－]\d+)(?:する)?。?$/;
+  function checkAutoOppBroadcastDPTrigger(stack, triggerLabel) {
+    const card = getStackTopCard(stack);
+    if (!card || !card.effect || !practiceState) return;
+    const owner = findStackOwnerAndZone(stack);
+    if (!owner) return;
+    const ownerIndex = practiceState.players.indexOf(owner.player);
+    card.effect.split('\n').forEach(line => {
+      const m = OPP_BROADCAST_DP_TRIGGER_RE.exec(line.trim());
+      if (!m || !m[1].includes(`【${triggerLabel}】`)) return;
+      const duration = (m[2] === '次の相手のターン終了まで' || m[2] === '相手のターン終了まで') ? 'untilOpponentTurnEnd' : 'thisTurn';
+      const amount = parseInt(m[3].replace('＋', '+').replace('－', '-'), 10);
+      if (!practiceState.fieldEffects) practiceState.fieldEffects = [];
+      practiceState.fieldEffects.push({
+        id: `fe-auto-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        ownerIndex, target: 'opponent', amount, duration,
+        expireAtTurnCount: computeExpireAtTurnCount(duration, ownerIndex),
+        refCardNumber: null, refCardName: card.name, refCheck: null,
+        createdTurn: practiceState.turn.count,
+      });
+      showToast(`「${card.name}」の${triggerLabel}効果: 相手のデジモン全てのDPを${amount > 0 ? '+' : ''}${amount}しました`);
+      checkAllBattleAreaRuleViolations();
+    });
+  }
   // ---------- Type A3: コスト支払いトリガー系の自己DP増減(半自動・手動発動ボタン) ----------
   // 「【進化時/アタック時】(色の自分のテイマーがいるなら、)?[コスト]することで、[持続期間]、
   // このデジモンのDPを±Nする。」という、コスト(手札破棄/デッキ破棄)を支払うことで発動する
@@ -7481,6 +8842,123 @@
     }));
     actions.push({ label: 'キャンセル', onClick: () => {} });
     openZonePopup(centerPoint(), `破棄するカードを選んでください(${opt.count}枚)`, actions, true);
+  }
+  // ---------- 【メイン】起動型・コスト無しの相手全体DP増減(手動発動ボタン) ----------
+  // 「【メイン】[持続期間]、相手のデジモン全てのDPを±Nする。」という、コスト不要の
+  // メインフェイズ起動型効果。対象が「相手のデジモン全て」なのでpracticeState.fieldEffects
+  // に積む。コストが無いため、≪トレーニング≫と同じくクリックで即発動する(確認ポップアップ
+  // は不要)。
+  // (DB検証済み: BT4-106の1件)
+  const MEIN_OPP_BROADCAST_DP_RE = /^【メイン】(ターン終了まで|このターンの間|次の相手のターン終了まで|相手のターン終了まで)、相手のデジモン全て(?:は)?のDP(?:を)?([+\-＋－]\d+)(?:する)?。?$/;
+  function getMeinOppBroadcastDPOptions(stack) {
+    const card = getStackTopCard(stack);
+    if (!card || !card.effect) return [];
+    const options = [];
+    card.effect.split('\n').forEach(line => {
+      const m = MEIN_OPP_BROADCAST_DP_RE.exec(line.trim());
+      if (!m) return;
+      const duration = (m[1] === '次の相手のターン終了まで' || m[1] === '相手のターン終了まで') ? 'untilOpponentTurnEnd' : 'thisTurn';
+      const amount = parseInt(m[2].replace('＋', '+').replace('－', '-'), 10);
+      options.push({
+        duration, durationPhrase: m[1], amount,
+        buttonLabel: `🌐 相手のデジモン全てDP${amount > 0 ? '+' : ''}${amount}(${m[1]})`,
+      });
+    });
+    return options;
+  }
+  function activateMeinOppBroadcastDP(stack, opt) {
+    const owner = findStackOwnerAndZone(stack);
+    if (!owner || !practiceState) return;
+    const ownerIndex = practiceState.players.indexOf(owner.player);
+    const card = getStackTopCard(stack);
+    snapshotPracticeState();
+    if (!practiceState.fieldEffects) practiceState.fieldEffects = [];
+    practiceState.fieldEffects.push({
+      id: `fe-auto-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      ownerIndex, target: 'opponent', amount: opt.amount, duration: opt.duration,
+      expireAtTurnCount: computeExpireAtTurnCount(opt.duration, ownerIndex),
+      refCardNumber: null, refCardName: card ? card.name : null, refCheck: null,
+      createdTurn: practiceState.turn.count,
+    });
+    showToast(`「${card ? card.name : ''}」の効果: 相手のデジモン全てのDPを${opt.amount > 0 ? '+' : ''}${opt.amount}しました`);
+    renderPracticeBoard();
+    checkAllBattleAreaRuleViolations();
+  }
+  // ---------- コスト支払い(セキュリティ破棄)トリガー系の相手全体DP増減(半自動・手動発動ボタン) ----------
+  // 「【登場時】【進化時】自分のセキュリティを上(か下)から1枚破棄することで、[持続期間]、
+  // 相手のデジモン全てをDP±Nする。」という、セキュリティを1枚破棄するコストで発動する
+  // 相手全体DP増減。対象は「相手のデジモン全て」なのでpracticeState.fieldEffectsに積む。
+  // Type A3(自己DP・手札/デッキ破棄コスト)と同じく、コスト支払いは任意のため
+  // 手動発動ボタン+確認ポップアップにする。「上か下から」(選択あり=AD1-017)と
+  // 「上から」(選択なし=BT23-035)の両方に対応する。
+  // (DB検証済み: AD1-017/BT23-035の2件。EX10-041はデッキ破棄の追加コストが絡む二重コスト
+  // のため、BT16-101は進化元条件+レスト状態限定の持続効果のため、それぞれ今回のスコープ外)
+  const SEC_DISCARD_OPP_BROADCAST_DP_RE = /^自分のセキュリティを(上か下|上)から1枚破棄することで、(ターン終了まで|このターンの間|次の相手のターン終了まで|相手のターン終了まで)、相手のデジモン全てをDP([+\-＋－]\d+)(?:する)?$/;
+  function getSecDiscardOppBroadcastDPOptions(stack) {
+    const card = getStackTopCard(stack);
+    if (!card || !card.effect) return [];
+    const owner = findStackOwnerAndZone(stack);
+    const player = owner ? owner.player : null;
+    if (!player || player.security.length === 0) return [];
+    const options = [];
+    card.effect.split('\n').forEach(line => {
+      const lm = /^((?:【[^】]+】)+)([\s\S]*)$/.exec(line.trim());
+      if (!lm) return;
+      const labels = (lm[1].match(/【([^】]+)】/g) || []).map(s => s.slice(1, -1));
+      if (!labels.includes('登場時') && !labels.includes('進化時')) return;
+      lm[2].split('。').map(s => s.trim()).filter(Boolean).forEach(sent => {
+        const m = SEC_DISCARD_OPP_BROADCAST_DP_RE.exec(sent);
+        if (!m) return;
+        const [, choiceType, durationPhrase, signedAmount] = m;
+        const duration = (durationPhrase === '次の相手のターン終了まで' || durationPhrase === '相手のターン終了まで') ? 'untilOpponentTurnEnd' : 'thisTurn';
+        const amount = parseInt(signedAmount.replace('＋', '+').replace('－', '-'), 10);
+        options.push({
+          choosable: choiceType === '上か下', duration, durationPhrase, amount,
+          buttonLabel: `⚡ セキュリティを${choiceType}から1枚破棄でDP相手全体${amount > 0 ? '+' : ''}${amount}(${durationPhrase})`,
+        });
+      });
+    });
+    return options;
+  }
+  function activateSecDiscardOppBroadcastDP(stack, opt) {
+    const owner = findStackOwnerAndZone(stack);
+    if (!owner || !practiceState) return;
+    const player = owner.player;
+    if (player.security.length === 0) { showToast('セキュリティがありません', true); return; }
+    const ownerIndex = practiceState.players.indexOf(player);
+    const card = getStackTopCard(stack);
+    const applyBonus = () => {
+      if (!practiceState.fieldEffects) practiceState.fieldEffects = [];
+      practiceState.fieldEffects.push({
+        id: `fe-auto-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        ownerIndex, target: 'opponent', amount: opt.amount, duration: opt.duration,
+        expireAtTurnCount: computeExpireAtTurnCount(opt.duration, ownerIndex),
+        refCardNumber: null, refCardName: card ? card.name : null, refCheck: null,
+        createdTurn: practiceState.turn.count,
+      });
+      showToast(`「${card ? card.name : ''}」の効果: コストを支払い、相手のデジモン全てのDPを${opt.amount > 0 ? '+' : ''}${opt.amount}しました`);
+      renderPracticeBoard();
+      checkAllBattleAreaRuleViolations();
+    };
+    const discardFrom = (fromTop) => {
+      snapshotPracticeState();
+      const num = fromTop ? cardEntryNum(player.security.shift()) : cardEntryNum(player.security.pop());
+      player.trash.push(num);
+      checkOverflow(num, player);
+      applyBonus();
+    };
+    if (!opt.choosable) {
+      openZonePopup(centerPoint(), `「${card ? card.name : ''}」: セキュリティの一番上を破棄して、${opt.durationPhrase}相手のデジモン全てのDPを${opt.amount > 0 ? '+' : ''}${opt.amount}しますか？`, [
+        { label: '実行する', onClick: () => discardFrom(true) },
+        { label: 'キャンセル', onClick: () => {} },
+      ], true);
+      return;
+    }
+    openZonePopup(centerPoint(), `「${card ? card.name : ''}」: セキュリティのどちらを破棄しますか？(${opt.durationPhrase}相手のデジモン全てのDPを${opt.amount > 0 ? '+' : ''}${opt.amount})`, [
+      { label: '上から1枚破棄', onClick: () => discardFrom(true) },
+      { label: '下から1枚破棄', onClick: () => discardFrom(false) },
+      { label: 'キャンセル', onClick: () => {} },
+    ], true);
   }
   function revealTopAndSort(x) {
     const self = practiceState.players[practiceState.viewingIndex];
@@ -9040,6 +10518,16 @@
     if (isTurnPlayersOwnBattleStack) {
       getCostTriggerDPOptions(stack).forEach(opt => {
         mk(opt.buttonLabel, () => activateCostTriggerDP(stack, opt));
+      });
+      getSecDiscardOppBroadcastDPOptions(stack).forEach(opt => {
+        mk(opt.buttonLabel, () => activateSecDiscardOppBroadcastDP(stack, opt));
+      });
+    }
+    // 【メイン】起動型・コスト無しの相手全体DP増減。≪トレーニング≫と同じくメインフェイズ
+    // 中のみボタンを表示する。
+    if (isTurnPlayersOwnBattleStack && practiceState.turn.phase === 'main') {
+      getMeinOppBroadcastDPOptions(stack).forEach(opt => {
+        mk(opt.buttonLabel, () => activateMeinOppBroadcastDP(stack, opt));
       });
     }
     if (stack.burstEvolved) {
