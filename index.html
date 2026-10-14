@@ -2564,7 +2564,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.31.1</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.31.2</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -4091,7 +4091,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.31.1`);
+    log(`DigiCA Tool build v0.31.2`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -5750,7 +5750,9 @@
       p.security = drawn.reverse(); // deck top ends up at security bottom
     });
     practiceState = {
-      turn: { count: 1, playerIndex: 0, phase: 'active' },
+      // 先攻1ターン目のアクティブフェイズ/ドローフェイズは、アクティブにするカードも
+      // ドローも無い(6-2-2)ため、自動でスキップして育成フェイズから開始する。
+      turn: { count: 1, playerIndex: 0, phase: 'raising' },
       memory: 0,
       players: order, // players[0] = 先攻
       viewingIndex: 0,
