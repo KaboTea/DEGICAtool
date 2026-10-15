@@ -2106,6 +2106,29 @@
   }
   #practiceBoardPanel .sec-pile .mp-label { margin-top: 4px; }
 
+  /* 枚数表示: デジタマ・デッキ(1桁)はセキュリティと同じ大きさ、デッキ(2桁)は少し小さめ。
+     セキュリティが1枚以下になったら赤文字で警告する。 */
+  #practiceBoardPanel .card-back .cb-count.cnt-big {
+    font-size: 26px;
+    font-weight: 900;
+    padding: 1px 10px;
+    border-radius: 6px;
+    line-height: 1.15;
+  }
+  #practiceBoardPanel .card-back .cb-count.cnt-deck {
+    font-size: 20px;
+    font-weight: 900;
+    padding: 1px 6px;
+    border-radius: 6px;
+    line-height: 1.15;
+  }
+  #practiceBoardPanel .card-back .cb-count.danger {
+    color: #ff3b4e;
+    border-color: #ff3b4e;
+    text-shadow: 0 0 10px rgba(255,59,78,0.95);
+    box-shadow: 0 0 12px rgba(255,59,78,0.55);
+  }
+
   /* ---- 手札(重ねて表示・選んだカードを前に出す) ---- */
   #practiceBoardPanel .hand-row.hand-fan {
     display: block;
@@ -2653,6 +2676,8 @@
     #practiceBoardPanel .arena-compact-toggle { margin-right: 8px; font-size: 10px; padding: 2px 8px; }
     #practiceBoardPanel .sec-pile .sec-stack { width: 60px; }
     #practiceBoardPanel .sec-pile .sec-count { font-size: 18px; padding: 0 8px; }
+    #practiceBoardPanel .card-back .cb-count.cnt-big { font-size: 18px; padding: 0 6px; }
+    #practiceBoardPanel .card-back .cb-count.cnt-deck { font-size: 14px; padding: 0 4px; }
     #practiceBoardPanel .hand-row.hand-fan { padding: 18px 6px 8px; }
     #practiceBoardPanel .hand-row.hand-fan.has-selection { padding-bottom: 70px; }
     #practiceBoardPanel .hand-fan .hand-card { width: 64px; border-radius: 6px; }
@@ -2690,7 +2715,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.32.1</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.32.4</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -4217,7 +4242,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.32.1`);
+    log(`DigiCA Tool build v0.32.4`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -4940,6 +4965,12 @@
     // ≪進撃≫は「進化した、その瞬間」だけの一度きりの機会。ここ(進化完了時点)の
     // メモリー状況で判定を確定させ、以後は変化しない(メモリーが後から変わっても不可)。
     setAdvanceAvailable(stack, hasAdvanceKeyword(stack) && memoryTowardOpponent() >= 1);
+    // 育成エリアのデジモンの効果は発揮されない(「{育成}」が付いた効果を除く)ため、
+    // 育成エリアでの進化では【進化時】の自動発動を一切行わない。
+    // ({育成}付きの行はどの自動判定パターンにも一致しない=元々自動化の対象外なので、
+    // 育成エリアでは全てスキップしてよい)
+    const evolvedInRaising = practiceState && practiceState.players.some(p => p.raising === stack);
+    if (evolvedInRaising) return;
     checkAutoRevealTrigger(stack, '進化時');
     checkAutoSelfEvolveDPTrigger(stack, '進化時');
     checkAutoMaterialConditionDPTrigger(stack, '進化時');
@@ -6308,7 +6339,7 @@
         <div class="card-back sec-back" style="${onClick ? 'cursor:pointer;' : ''}">
           <span class="cb-corner tl"></span><span class="cb-corner tr"></span>
           <span class="cb-corner bl"></span><span class="cb-corner br"></span>
-          <span class="cb-count sec-count">${len}</span>
+          <span class="cb-count sec-count${len <= 1 ? ' danger' : ''}">${len}</span>
         </div>
       </div>
       <div class="mp-label">セキュリティ</div>
@@ -6352,7 +6383,9 @@
 
     // Digi-egg deck: always face-down
     eggClusterEl.innerHTML = '';
-    eggClusterEl.appendChild(tagPile(buildFaceDownPile('デジタマ', player.eggLibrary.length), 'egg'));
+    const eggPile = tagPile(buildFaceDownPile('デジタマ', player.eggLibrary.length), 'egg');
+    eggPile.querySelector('.cb-count')?.classList.add('cnt-big');
+    eggClusterEl.appendChild(eggPile);
 
     // Side cluster: security(face-down)のみ。デッキ/トラッシュは実物のプレイマットに
     // 合わせてバトルエリアの右側(deckTrashClusterEl)に表示する。
@@ -6363,7 +6396,10 @@
 
     // デッキ(上)・トラッシュ(下)。バトルエリアの右側の縦カラムに表示する。
     deckTrashClusterEl.innerHTML = '';
-    deckTrashClusterEl.appendChild(tagPile(buildFaceDownPile('デッキ', player.library.length, isSelf ? (e) => openDeckPopup(e) : null), 'library'));
+    // デッキ枚数は2桁が普通なので少し小さめ、1桁(残りわずか)になったらセキュリティと同じ大きさにする
+    const deckPile = tagPile(buildFaceDownPile('デッキ', player.library.length, isSelf ? (e) => openDeckPopup(e) : null), 'library');
+    deckPile.querySelector('.cb-count')?.classList.add(player.library.length < 10 ? 'cnt-big' : 'cnt-deck');
+    deckTrashClusterEl.appendChild(deckPile);
     const trashPile = buildFaceUpPile('トラッシュ', player.trash, isSelf
       ? () => openTrashListView()
       : () => {
@@ -8904,10 +8940,15 @@
       }
     }
     if (threshold === null) return;
-    const currentTowardOpponent = practiceState.turn.playerIndex === 0 ? practiceState.memory : -practiceState.memory;
-    if (currentTowardOpponent <= threshold) {
-      practiceState.memory = practiceState.turn.playerIndex === 0 ? target : -target;
-      showToast(`🃏 テイマー効果: メモリーが${threshold}以下だったため${target}にしました`);
+    // 「メモリーが2以下」は、ターンプレイヤー自身の側にあるメモリーの数で判定する。
+    // practiceState.memoryは先攻(players[0])から見て「相手側へ動いた量」を正とするため、
+    // 自分側のメモリー = -(相手側への量)。(以前は相手側の量で判定・設定していたため、
+    // 「相手側の3」にしてしまう不具合があった)
+    const towardOpponent = practiceState.turn.playerIndex === 0 ? practiceState.memory : -practiceState.memory;
+    const ownSide = -towardOpponent;
+    if (ownSide <= threshold) {
+      practiceState.memory = practiceState.turn.playerIndex === 0 ? -target : target;
+      showToast(`🃏 テイマー効果: メモリーが${threshold}以下だったため、自分側の${target}にしました`);
     }
   }
   function checkAutoDelayMemory(stack) {
