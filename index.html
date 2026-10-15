@@ -1614,9 +1614,11 @@
     --self: #3b82f6;
     --self-rgb: 59,130,246;
     --self-light: #8db8ff;
+    --self-ink: #fff;
     --opp: #f43f5e;
     --opp-rgb: 244,63,94;
     --opp-light: #ff8fa1;
+    --opp-ink: #fff;
     --gold: #fbbf24;
     --gold-rgb: 251,191,36;
     --arena-line: rgba(255,255,255,0.08);
@@ -1934,7 +1936,7 @@
     letter-spacing: 0.06em;
     min-width: 0 !important;
     color: #fff !important;
-    background: linear-gradient(180deg, #ffffff 30%, #9cc2ff 100%);
+    background: linear-gradient(180deg, #ffffff 30%, var(--self-light) 100%);
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
@@ -1942,7 +1944,7 @@
     line-height: 1.2;
   }
   #practiceBoardPanel #phaseLabel.opp-turn {
-    background: linear-gradient(180deg, #ffffff 30%, #ffb0bd 100%);
+    background: linear-gradient(180deg, #ffffff 30%, var(--opp-light) 100%);
     -webkit-background-clip: text;
     background-clip: text;
     filter: drop-shadow(0 0 10px rgba(var(--opp-rgb),0.55));
@@ -1965,15 +1967,16 @@
   }
   #practiceBoardPanel .phase-pip.done { color: rgba(255,255,255,0.55); border-color: rgba(var(--self-rgb),0.35); background: rgba(var(--self-rgb),0.12); }
   #practiceBoardPanel .phase-pip.current {
-    color: #fff;
+    color: var(--self-ink);
     border-color: var(--self-light);
-    background: linear-gradient(90deg, var(--self), #60a5fa);
+    background: linear-gradient(90deg, var(--self), var(--self-light));
     box-shadow: 0 0 12px rgba(var(--self-rgb),0.8);
   }
   #practiceBoardPanel .phase-pips.opp-turn .phase-pip.done { border-color: rgba(var(--opp-rgb),0.35); background: rgba(var(--opp-rgb),0.12); }
   #practiceBoardPanel .phase-pips.opp-turn .phase-pip.current {
+    color: var(--opp-ink);
     border-color: var(--opp-light);
-    background: linear-gradient(90deg, var(--opp), #fb7185);
+    background: linear-gradient(90deg, var(--opp), var(--opp-light));
     box-shadow: 0 0 12px rgba(var(--opp-rgb),0.8);
   }
   #practiceBoardPanel #practiceNextPhaseBtn {
@@ -1982,14 +1985,14 @@
     padding: 10px 26px 10px 22px;
     border: none;
     border-radius: 0;
-    color: #fff;
-    background: linear-gradient(90deg, #2563eb, #38bdf8);
+    color: var(--self-ink);
+    background: linear-gradient(90deg, var(--self), var(--self-light));
     clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 50%, calc(100% - 12px) 100%, 0 100%, 8px 50%);
     text-shadow: 0 1px 2px rgba(0,0,0,0.4);
   }
   #practiceBoardPanel #practiceNextPhaseBtn:not(:disabled) { animation: arenaNextPulse 2s ease-in-out infinite; }
   #practiceBoardPanel #practiceNextPhaseBtn:hover:not(:disabled) { filter: brightness(1.2); box-shadow: none; }
-  @keyframes arenaNextPulse { 0%, 100% { filter: brightness(1) drop-shadow(0 0 0 rgba(56,189,248,0)); } 50% { filter: brightness(1.15) drop-shadow(0 0 10px rgba(56,189,248,0.8)); } }
+  @keyframes arenaNextPulse { 0%, 100% { filter: brightness(1) drop-shadow(0 0 0 rgba(var(--self-rgb),0)); } 50% { filter: brightness(1.15) drop-shadow(0 0 10px rgba(var(--self-rgb),0.85)); } }
   #practiceBoardPanel #practicePassBtn { font-weight: 700; }
 
   #practiceBoardPanel .turn-memory-row { gap: 10px; }
@@ -2064,6 +2067,122 @@
     border-radius: 0;
     box-shadow: 0 0 24px rgba(var(--gold-rgb),0.4);
   }
+
+  /* ---- セキュリティ(横向きの山+表向きカードの重ね表示) ---- */
+  #practiceBoardPanel .mat-pile.sec-pile { width: auto; }
+  #practiceBoardPanel .sec-pile .sec-stack { position: relative; width: 86px; }
+  #practiceBoardPanel .sec-pile .sec-back {
+    aspect-ratio: 60 / 43;
+    width: 100%;
+    position: relative;
+    z-index: 20;
+  }
+  #practiceBoardPanel .sec-pile .sec-back::after { width: 30%; }
+  #practiceBoardPanel .sec-pile .sec-count {
+    font-size: 26px;
+    font-weight: 900;
+    padding: 1px 12px;
+    border-radius: 6px;
+    line-height: 1.15;
+  }
+  #practiceBoardPanel .sec-faceup {
+    position: absolute;
+    inset: 0;
+    border-radius: 6px;
+    overflow: hidden;
+    cursor: pointer;
+    border: 1px solid rgba(var(--gold-rgb),0.9);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.7), 0 0 10px rgba(var(--gold-rgb),0.35);
+    background: #0b0e16;
+  }
+  #practiceBoardPanel .sec-faceup img {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 71.667%;   /* = 43/60: 横向きの枠の中で、縦長のカード画像を90度回して収める */
+    height: 139.53%;  /* = 60/43 */
+    object-fit: cover;
+    transform: translate(-50%, -50%) rotate(-90deg);
+  }
+  #practiceBoardPanel .sec-pile .mp-label { margin-top: 4px; }
+
+  /* ---- 手札(重ねて表示・選んだカードを前に出す) ---- */
+  #practiceBoardPanel .hand-row.hand-fan {
+    display: block;
+    position: relative;
+    padding: 22px 12px 12px;
+    overflow: visible;
+  }
+  #practiceBoardPanel .hand-row.hand-fan.has-selection { padding-bottom: 74px; }
+  #practiceBoardPanel .hand-fan-cards {
+    display: flex;
+    flex-wrap: nowrap;
+    justify-content: center;
+    align-items: flex-end;
+  }
+  #practiceBoardPanel .hand-fan .hand-card {
+    position: relative;
+    flex-shrink: 0;
+    width: 96px;
+    padding: 0;
+    border-radius: 8px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease, margin .18s ease;
+  }
+  #practiceBoardPanel .hand-fan .hand-card img { width: 100%; aspect-ratio: 43 / 60; object-fit: cover; display: block; }
+  @media (hover: hover) {
+    #practiceBoardPanel .hand-fan .hand-card:not(.selected):hover { transform: translateY(-8px); }
+  }
+  #practiceBoardPanel .hand-fan .hand-card.selected {
+    transform: translateY(-18px) scale(1.08);
+    border-color: var(--gold);
+    box-shadow: 0 0 0 2px var(--gold), 0 14px 26px rgba(0,0,0,0.7), 0 0 26px rgba(var(--gold-rgb),0.6);
+  }
+  #practiceBoardPanel .hand-action-bar {
+    position: absolute;
+    bottom: 10px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+    padding: 6px 8px 7px;
+    border-radius: 10px;
+    background: linear-gradient(180deg, rgba(20,24,38,0.97), rgba(8,10,18,0.97));
+    border: 1px solid rgba(var(--gold-rgb),0.6);
+    box-shadow: 0 8px 22px rgba(0,0,0,0.6), 0 0 16px rgba(var(--gold-rgb),0.2);
+    z-index: 250;
+    white-space: nowrap;
+  }
+  #practiceBoardPanel .hand-action-bar::before {
+    content: '';
+    position: absolute;
+    top: -7px;
+    left: calc(var(--arrow-x, 50%) - 7px);
+    width: 12px;
+    height: 12px;
+    background: rgb(20,24,38);
+    border-left: 1px solid rgba(var(--gold-rgb),0.6);
+    border-top: 1px solid rgba(var(--gold-rgb),0.6);
+    transform: rotate(45deg);
+  }
+  #practiceBoardPanel .hand-action-bar .hab-name { font-size: 11px; font-weight: 700; color: #fff; max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+  #practiceBoardPanel .hand-action-bar .hab-buttons { display: flex; gap: 5px; }
+  #practiceBoardPanel .hand-action-bar .hab-note { font-size: 11px; color: rgba(255,255,255,0.55); }
+  #practiceBoardPanel .hab-btn {
+    font-size: 12px;
+    font-weight: 700;
+    padding: 6px 12px;
+    border-radius: 6px;
+    border: 1px solid rgba(255,255,255,0.18);
+    background: rgba(255,255,255,0.06);
+    color: #e6eaf4;
+    cursor: pointer;
+  }
+  #practiceBoardPanel .hab-btn:hover { border-color: var(--self-light); background: rgba(var(--self-rgb),0.25); }
+  #practiceBoardPanel .hab-btn.primary { background: linear-gradient(180deg, var(--self-light), var(--self)); border-color: var(--self-light); color: var(--self-ink); }
+  #practiceBoardPanel .hab-btn.danger { color: #ffb3c0; border-color: rgba(var(--opp-rgb),0.55); background: rgba(var(--opp-rgb),0.1); }
+  #practiceBoardPanel .hab-btn.danger:hover { background: rgba(var(--opp-rgb),0.28); }
 
   /* ---- 自ターンでない側(上段の相手側)の縮小表示 ----
      盤面全体をzoomで縮めることで、進化元のずらし表示・DPプレート・バッジ等の
@@ -2532,6 +2651,13 @@
     #practiceBoardPanel .mat-block.is-compact .battle-sub-area { min-height: 0; }
     #practiceBoardPanel .mat-block.is-compact .mat-pile .mp-label { font-size: 11px; }
     #practiceBoardPanel .arena-compact-toggle { margin-right: 8px; font-size: 10px; padding: 2px 8px; }
+    #practiceBoardPanel .sec-pile .sec-stack { width: 60px; }
+    #practiceBoardPanel .sec-pile .sec-count { font-size: 18px; padding: 0 8px; }
+    #practiceBoardPanel .hand-row.hand-fan { padding: 18px 6px 8px; }
+    #practiceBoardPanel .hand-row.hand-fan.has-selection { padding-bottom: 70px; }
+    #practiceBoardPanel .hand-fan .hand-card { width: 64px; border-radius: 6px; }
+    #practiceBoardPanel .hand-fan .hand-card.selected { transform: translateY(-14px) scale(1.1); }
+    #practiceBoardPanel .hab-btn { font-size: 12px; padding: 6px 9px; }
 
     #practiceBoardPanel .st-dp { font-size: 11px; padding: 1px 9px; top: -19px; clip-path: polygon(6px 0, calc(100% - 6px) 0, 100% 50%, calc(100% - 6px) 100%, 6px 100%, 0 50%); }
     #practiceBoardPanel .hand-row { padding: 8px; gap: 4px; }
@@ -2564,7 +2690,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.31.2</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.32.1</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -4091,7 +4217,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.31.2`);
+    log(`DigiCA Tool build v0.32.1`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -6150,6 +6276,54 @@
     return wrap;
   }
 
+
+  // セキュリティ: 実物と同じく横向きの山で表示し、枚数を大きく出す。
+  // 表向きで差し込まれているカードは、山の後ろから少しはみ出す形で重ねて表示する。
+  // 山の上半分(上から数えて前半)にあるものは左上に、下半分にあるものは右下にはみ出させ、
+  // 上側/下側どちらに差し込まれているかが見た目で分かるようにする。はみ出した部分を
+  // タップするとそのカードの詳細を開く。
+  function buildSecurityPile(player, onClick) {
+    const wrap = document.createElement('div');
+    wrap.className = 'mat-pile sec-pile';
+    const len = player.security.length;
+    const faceUps = [];
+    player.security.forEach((entry, idx) => {
+      if (!cardEntryFaceUp(entry)) return;
+      faceUps.push({ number: cardEntryNum(entry), idx, side: idx <= (len - 1) / 2 ? 'top' : 'bottom' });
+    });
+    const tops = faceUps.filter(f => f.side === 'top');
+    const bottoms = faceUps.filter(f => f.side === 'bottom').reverse(); // 一番下のカードを一番外側に
+    const STEP_X = 14, STEP_Y = 15;
+    const peekHtml = [
+      ...tops.map((f, i) => ({ f, dx: -(i + 1) * STEP_X, dy: -(i + 1) * STEP_Y, z: tops.length - i })),
+      ...bottoms.map((f, i) => ({ f, dx: (i + 1) * STEP_X, dy: (i + 1) * STEP_Y, z: bottoms.length - i })),
+    ].map(({ f, dx, dy, z }) =>
+      `<div class="sec-faceup" data-num="${escapeHtml(f.number)}" title="${escapeHtml(miniCardName(f.number))}(表向き・上から${f.idx + 1}枚目)" style="transform:translate(${dx}px,${dy}px);z-index:${z};"><img src="${escapeHtml(miniCardImg(f.number))}" alt="" onerror="this.style.opacity=0"></div>`
+    ).join('');
+    // はみ出した分だけ山の周りに余白を取り、隣の山やラベルと重ならないようにする
+    const stackMargin = `margin:${tops.length * STEP_Y}px ${bottoms.length * STEP_X}px ${bottoms.length * STEP_Y}px ${tops.length * STEP_X}px;`;
+    wrap.innerHTML = `
+      <div class="sec-stack" style="${stackMargin}">
+        ${peekHtml}
+        <div class="card-back sec-back" style="${onClick ? 'cursor:pointer;' : ''}">
+          <span class="cb-corner tl"></span><span class="cb-corner tr"></span>
+          <span class="cb-corner bl"></span><span class="cb-corner br"></span>
+          <span class="cb-count sec-count">${len}</span>
+        </div>
+      </div>
+      <div class="mp-label">セキュリティ</div>
+    `;
+    if (onClick) wrap.querySelector('.sec-back').addEventListener('click', (e) => { e.stopPropagation(); onClick(e); });
+    wrap.querySelectorAll('.sec-faceup').forEach(el => {
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const card = cardIndexByNumber.get(el.dataset.num);
+        if (card) openCardDetail(card, true);
+      });
+    });
+    return wrap;
+  }
+
   // A face-up pile showing just the top card (trash): public info.
   function buildFaceUpPile(label, cards, onClick) {
     const wrap = document.createElement('div');
@@ -6183,9 +6357,8 @@
     // Side cluster: security(face-down)のみ。デッキ/トラッシュは実物のプレイマットに
     // 合わせてバトルエリアの右側(deckTrashClusterEl)に表示する。
     sideClusterEl.innerHTML = '';
-    sideClusterEl.appendChild(tagPile(buildFaceDownPile(
-      'セキュリティ', player.security.length, isSelf ? (e) => openSecurityPopup(e) : (e) => openOpponentSecurityDiscardPopup(e, player),
-      player.security.filter(entry => cardEntryFaceUp(entry)).map(entry => cardEntryNum(entry))
+    sideClusterEl.appendChild(tagPile(buildSecurityPile(
+      player, isSelf ? (e) => openSecurityPopup(e) : (e) => openOpponentSecurityDiscardPopup(e, player)
     ), 'security'));
 
     // デッキ(上)・トラッシュ(下)。バトルエリアの右側の縦カラムに表示する。
@@ -6292,8 +6465,55 @@
   // 演出は再生しない(全カードが「新しく登場した」ように見えてしまうため)。
   const PHASE_PIP_LABELS = [['active', 'ACTIVE'], ['draw', 'DRAW'], ['raising', 'BREED'], ['main', 'MAIN'], ['end', 'END']];
   const PHASE_FX_LABELS = { active: 'ACTIVE PHASE', draw: 'DRAW PHASE', raising: 'BREEDING PHASE', main: 'MAIN PHASE', end: 'END PHASE' };
-  const FX_SELF_RGB = '59,130,246';
-  const FX_OPP_RGB = '244,63,94';
+  // 陣営カラーは各デッキのメインカラー(カード枚数が最も多い色)に合わせる。
+  // 同じ色同士(ミラー戦)のときは、相手側を暗めにして区別する。
+  // ink はその色の上に乗せる文字色(黄/白/緑/黒系の明るい色では暗い文字にする)。
+  const ARENA_COLOR_TABLE = {
+    red: { rgb: '239,68,68', light: '#ffa3a3', ink: '#fff' },
+    blue: { rgb: '59,130,246', light: '#8db8ff', ink: '#fff' },
+    yellow: { rgb: '234,179,8', light: '#fde68a', ink: '#1a1204' },
+    green: { rgb: '34,197,94', light: '#86efac', ink: '#04140a' },
+    black: { rgb: '148,163,184', light: '#e2e8f0', ink: '#0b0f1a' },
+    purple: { rgb: '168,85,247', light: '#d8b4fe', ink: '#fff' },
+    white: { rgb: '226,232,240', light: '#ffffff', ink: '#0b0f1a' },
+  };
+  let arenaSideRgb = { self: '59,130,246', opp: '244,63,94' };
+  function getPlayerMainColor(player) {
+    const counts = {};
+    const add = (entry) => {
+      const c = cardIndexByNumber.get(cardEntryNum(entry));
+      if (!c) return;
+      (c.color || []).forEach(col => { counts[col] = (counts[col] || 0) + 1; });
+    };
+    [...player.library, ...player.hand, ...player.trash, ...player.security, ...(player.eggLibrary || [])].forEach(add);
+    [...player.battle, ...(player.raising ? [player.raising] : [])].forEach(st => {
+      (st.cards || []).forEach(add);
+      (st.links || []).forEach(add);
+    });
+    let best = null, bestN = -1;
+    Object.keys(counts).forEach(k => { if (ARENA_COLOR_TABLE[k] && counts[k] > bestN) { best = k; bestN = counts[k]; } });
+    return best;
+  }
+  function applyArenaSideColors() {
+    const panel = practiceBoardPanel;
+    const selfP = practiceState.players[practiceState.viewingIndex];
+    const oppP = practiceState.players[1 - practiceState.viewingIndex];
+    const selfKey = getPlayerMainColor(selfP) || 'blue';
+    let oppKey = getPlayerMainColor(oppP) || 'red';
+    const selfC = ARENA_COLOR_TABLE[selfKey];
+    const oppC = { ...ARENA_COLOR_TABLE[oppKey] };
+    if (selfKey === oppKey) {
+      oppC.rgb = oppC.rgb.split(',').map(v => Math.round(parseInt(v, 10) * 0.6)).join(',');
+      oppC.ink = '#fff';
+    }
+    [['self', selfC], ['opp', oppC]].forEach(([side, c]) => {
+      panel.style.setProperty(`--${side}`, `rgb(${c.rgb})`);
+      panel.style.setProperty(`--${side}-rgb`, c.rgb);
+      panel.style.setProperty(`--${side}-light`, c.light);
+      panel.style.setProperty(`--${side}-ink`, c.ink);
+    });
+    arenaSideRgb = { self: selfC.rgb, opp: oppC.rgb };
+  }
   const FX_GOLD_RGB = '251,191,36';
   let arenaGameStartPending = false;
   let arenaFxEnabled = (() => {
@@ -6336,6 +6556,7 @@
     renderPracticeBoard();
   });
   function renderArenaHud(selfTurn) {
+    applyArenaSideColors();
     const t = practiceState.turn;
     const chip = document.getElementById('arenaTurnChip');
     if (chip) chip.textContent = `TURN ${t.count}`;
@@ -6583,7 +6804,7 @@
     }
     // 1手戻す等で盤面データが丸ごと差し替わった場合は、基準だけ更新して演出しない
     if (!prev || prev.stateRef !== practiceState) return;
-    const sideRgb = (pi) => (pi === practiceState.viewingIndex ? FX_SELF_RGB : FX_OPP_RGB);
+    const sideRgb = (pi) => (pi === practiceState.viewingIndex ? arenaSideRgb.self : arenaSideRgb.opp);
 
     if (snap.turnCount !== prev.turnCount) {
       fxBanner(`TURN ${snap.turnCount}`, `${practiceState.players[snap.turnPlayer].deckName} のターン`, sideRgb(snap.turnPlayer), true);
@@ -6706,21 +6927,55 @@
     // 効果もあるため、メインフェイズ以外でもこれらのフェイズでは操作を許可する。
     const phaseAllowsHandAction = ['active', 'main', 'end'].includes(practiceState.turn.phase);
     const canAct = phaseAllowsHandAction && !evolveMode && !materialTargetMode && !multiEvolveMode && !assemblyMode && !linkTargetMode && !deckToTamerMode && !artsEvolveMode;
+    renderSelfHand(self, canAct);
+
+    // 他の操作(進化・DP増減・カード移動など)によってゾーンポップアップが閉じても、
+    // アタック処理中であれば直前のステップ表示を自動的に復帰させる。個別の操作すべてに
+    // 復帰処理を書く代わりに、描画のたびにここでまとめて面倒を見る。
+    if (attackState && lastAttackStepFn && !zonePopupEl.classList.contains('open')) {
+      lastAttackStepFn();
+    }
+    arenaFxAfterRender();
+  }
+
+
+  // ---------- 手札(重ねて表示し、選んだ1枚を前に出してその下に操作ボタンを出す) ----------
+  // 手札は少しずつ重ねて並べ、タップしたカードを「選択中」として手前に浮かせる。
+  // 選択中のカードの真下に、登場/使用・進化・進化元・破棄(・リンク)の操作ボタンを表示する。
+  // 選択中のカードをもう一度タップするとカード詳細を開く。
+  // 選択状態は描画をまたいで保持し、手札の並びが変わって同じ位置に同じカードが無くなったら解除する。
+  let selectedHand = null; // { index, number }
+  function renderSelfHand(self, canAct) {
     const handRow = document.getElementById('selfHandRow');
     handRow.innerHTML = '';
+    handRow.classList.add('hand-fan');
+    if (selectedHand && self.hand[selectedHand.index] !== selectedHand.number) selectedHand = null;
+    handRow.classList.toggle('has-selection', !!selectedHand);
+    // カード以外の余白をタップしたら選択を解除する(カード側のクリックは伝播を止めている)
+    handRow.onclick = () => { if (selectedHand) { selectedHand = null; renderSelfHand(self, canAct); } };
+    if (self.hand.length === 0) {
+      handRow.innerHTML = '<div class="empty-state" style="padding:10px 0;font-size:12px;">(手札はありません)</div>';
+      return;
+    }
+    const cardsWrap = document.createElement('div');
+    cardsWrap.className = 'hand-fan-cards';
+    handRow.appendChild(cardsWrap);
+    const cardEls = [];
     self.hand.forEach((number, index) => {
       const card = cardIndexByNumber.get(number);
+      const isSelected = !!selectedHand && selectedHand.index === index;
       const c = document.createElement('div');
-      c.className = 'hand-card';
-      c.innerHTML = `
-        <img src="${escapeHtml(miniCardImg(number))}" alt="" onerror="this.style.opacity=0">
-        <div class="hc-name">${escapeHtml(miniCardName(number))}</div>
-        <div class="hc-actions"></div>
-        <button type="button" class="hc-mobile-btn" title="操作">⋮</button>
-      `;
-      c.querySelector('img').addEventListener('click', () => { if (card) openCardDetail(card, true); });
-      // ドラッグ&ドロップ(小さく試験導入): 手札カードを育成/バトルエリアへドラッグして
-      // 離すと、「登場」ボタンと同じ処理(コスト入力等はそのまま)を呼び出す。
+      c.className = 'hand-card' + (isSelected ? ' selected' : '');
+      c.style.zIndex = isSelected ? 200 : String(index + 1);
+      c.innerHTML = `<img src="${escapeHtml(miniCardImg(number))}" alt="" title="${escapeHtml(miniCardName(number))}" onerror="this.style.opacity=0">`;
+      c.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (isSelected) { if (card) openCardDetail(card, true); return; }
+        selectedHand = { index, number };
+        renderSelfHand(self, canAct);
+      });
+      // ドラッグ&ドロップ: 手札カードを育成/バトルエリアへドラッグして離すと、
+      // 「登場」ボタンと同じ処理(コスト入力等はそのまま)を呼び出す。
       c.draggable = canAct && !!card;
       if (c.draggable) {
         c.addEventListener('dragstart', (e) => {
@@ -6733,47 +6988,79 @@
         // 画像の長押しで出る標準コンテキストメニュー(プレビュー/保存等)を止める。
         c.addEventListener('contextmenu', (e) => e.preventDefault());
       }
-
-      const mobileBtn = c.querySelector('.hc-mobile-btn');
-      if (canAct && card) {
-        // 操作の定義を1箇所にまとめ、PC向けのインラインボタンと、スマホ幅向けの
-        // 「⋮」メニュー(ポップアップ)の両方から同じ内容を使い回す。
-        const actionDefs = [];
-        actionDefs.push({ label: card.category === 'option' || card.dual ? '使用' : '登場', onClick: (e) => appearFromHand(index, number, e) });
-        if (card.category !== 'tamer' && card.category !== 'option') {
-          actionDefs.push({ label: '進化', onClick: () => enterEvolveMode(index, number) });
-        }
-        actionDefs.push({ label: '進化元に追加', onClick: () => enterMaterialTargetMode(number, 'hand', index) });
-        if (cardHasLinkEffect(card)) {
-          actionDefs.push({ label: '🔗 リンクする', onClick: () => enterLinkTargetMode('hand', index, number) });
-        }
-        actionDefs.push({ label: '捨てる', onClick: () => trashFromHand(index) });
-
-        const actions = c.querySelector('.hc-actions');
-        actionDefs.forEach(def => {
-          const b = document.createElement('button');
-          b.type = 'button';
-          b.textContent = def.label;
-          b.addEventListener('click', (e) => { e.stopPropagation(); def.onClick(e); });
-          actions.appendChild(b);
-        });
-        mobileBtn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          openZonePopup(e, `「${card.name}」の操作`, actionDefs);
-        });
-      } else {
-        mobileBtn.style.display = 'none';
-      }
-      handRow.appendChild(c);
+      cardsWrap.appendChild(c);
+      cardEls.push(c);
     });
+    layoutHandFan(handRow, cardsWrap, cardEls);
 
-    // 他の操作(進化・DP増減・カード移動など)によってゾーンポップアップが閉じても、
-    // アタック処理中であれば直前のステップ表示を自動的に復帰させる。個別の操作すべてに
-    // 復帰処理を書く代わりに、描画のたびにここでまとめて面倒を見る。
-    if (attackState && lastAttackStepFn && !zonePopupEl.classList.contains('open')) {
-      lastAttackStepFn();
+    if (!selectedHand) return;
+    const { index, number } = selectedHand;
+    const card = cardIndexByNumber.get(number);
+    if (!card) return;
+    const bar = document.createElement('div');
+    bar.className = 'hand-action-bar';
+    const nameEl = document.createElement('div');
+    nameEl.className = 'hab-name';
+    nameEl.textContent = card.name;
+    bar.appendChild(nameEl);
+    const btnRow = document.createElement('div');
+    btnRow.className = 'hab-buttons';
+    bar.appendChild(btnRow);
+    if (canAct) {
+      const actionDefs = [];
+      actionDefs.push({ label: card.category === 'option' || card.dual ? '使用' : '登場', cls: 'primary', onClick: (e) => appearFromHand(index, number, e) });
+      if (card.category !== 'tamer' && card.category !== 'option') {
+        actionDefs.push({ label: '進化', cls: 'primary', onClick: () => enterEvolveMode(index, number) });
+      }
+      actionDefs.push({ label: '進化元', onClick: () => enterMaterialTargetMode(number, 'hand', index) });
+      if (cardHasLinkEffect(card)) {
+        actionDefs.push({ label: '🔗 リンク', onClick: () => enterLinkTargetMode('hand', index, number) });
+      }
+      actionDefs.push({ label: '破棄', cls: 'danger', onClick: () => trashFromHand(index) });
+      actionDefs.forEach(def => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'hab-btn' + (def.cls ? ` ${def.cls}` : '');
+        b.textContent = def.label;
+        b.addEventListener('click', (e) => {
+          e.stopPropagation();
+          selectedHand = null; // 操作後は選択を解除する(手札の並びが変わるため)
+          def.onClick(e);
+        });
+        btnRow.appendChild(b);
+      });
+    } else {
+      const note = document.createElement('div');
+      note.className = 'hab-note';
+      note.textContent = '今は手札を操作できません(タップで詳細)';
+      btnRow.appendChild(note);
     }
-    arenaFxAfterRender();
+    handRow.appendChild(bar);
+    positionHandActionBar(handRow, cardEls[index], bar);
+  }
+  // 手札の枚数と表示幅から重なり具合を決める(少ないときは軽く重ね、多いときは
+  // はみ出さないよう重なりを深くする)。
+  function layoutHandFan(handRow, cardsWrap, cardEls) {
+    if (cardEls.length === 0) return;
+    const cardW = cardEls[0].getBoundingClientRect().width || 90;
+    const style = getComputedStyle(handRow);
+    const avail = handRow.clientWidth - parseFloat(style.paddingLeft || 0) - parseFloat(style.paddingRight || 0);
+    const n = cardEls.length;
+    const relaxedStep = cardW * 0.62; // 余裕があるときの1枚あたりのずらし幅
+    const fitStep = n > 1 ? (avail - cardW) / (n - 1) : cardW;
+    const step = Math.max(cardW * 0.18, Math.min(relaxedStep, fitStep));
+    cardEls.forEach((el, i) => { el.style.marginLeft = i === 0 ? '0px' : `${Math.round(step - cardW)}px`; });
+  }
+  function positionHandActionBar(handRow, cardEl, bar) {
+    if (!cardEl) return;
+    const rowRect = handRow.getBoundingClientRect();
+    const cardRect = cardEl.getBoundingClientRect();
+    const barW = bar.getBoundingClientRect().width;
+    const center = cardRect.left + cardRect.width / 2 - rowRect.left;
+    const maxLeft = handRow.clientWidth - barW - 4;
+    const left = Math.max(4, Math.min(maxLeft, center - barW / 2));
+    bar.style.left = `${Math.round(left)}px`;
+    bar.style.setProperty('--arrow-x', `${Math.round(center - left)}px`);
   }
 
   // ---------- Undo (snapshot-based) ----------
