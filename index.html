@@ -2816,7 +2816,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.35.2</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.36.3</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -2963,6 +2963,7 @@
         <span class="mono" id="practiceHeaderLabel" style="font-size:12px;color:var(--text-dim);"></span>
         <span class="arena-topbar-spacer"></span>
         <button class="btn" id="effectPanelToggle" title="登場・進化・ターン開始などで誘発した効果を、効果処理パネルで1つずつ処理します(OFFで従来の手動進行)">⚡ 効果パネル ON</button>
+        <button class="btn" id="autoEndToggle" title="メインフェイズでメモリーが相手側に移り、効果処理・アタックが全て終わったら自動でエンドフェイズへ進みます">⏭ 自動エンド ON</button>
         <button class="btn" id="arenaFxToggle" title="登場・進化・消滅・フェイズ切替などの演出を切り替えます">✨ 演出 ON</button>
         <button class="btn" id="practiceEndGameBtn">練習を終了</button>
       </div>
@@ -4350,7 +4351,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.35.2`);
+    log(`DigiCA Tool build v0.36.3`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -7403,6 +7404,8 @@
         const parsed = parseEffectLine(line);
         if (!parsed.labels.length || !lineAllowedInZone(parsed, zone)) return;
         if (!engineTurnLabelOk(parsed.labels, pi)) return;
+        // 「〜とき、≪ディレイ≫」は、そのカードを置いたターンには使えないので候補に出さない
+        if (parsed.text.includes('≪ディレイ≫') && stack.enteredTurn != null && stack.enteredTurn === practiceState.turn.count) return;
         const clauses = parseWhenClauses(parsed.text);
         if (!clauses.length) return;
         const hit = events.find(ev => clauses.some(cl => engineClauseMatches(cl, ev, pi, holderUid)));
@@ -7689,8 +7692,10 @@
     entries.forEach(e => q.pending.push(stamp(e)));
     (immediate || []).forEach(e => {
       stamp(e, 100000);
-      if (!q.current) q.current = e;
-      else q.pending.unshift(e);
+      if (!q.current) {
+        q.current = e;
+        if (practiceState && e.ownerIndex !== practiceState.viewingIndex) setTimeout(() => engineSetView(e.ownerIndex), 0);
+      } else q.pending.unshift(e);
     });
     effectPanelFlash = true;
     if (arenaFxEnabled) {
@@ -7735,18 +7740,39 @@
     const mine = top.filter(e => e.ownerIndex === tp);
     return mine.length ? mine : top;
   }
+  // 効果の持ち主の視点へ自動で切り替える(相手の効果を発揮するとき等)
+  function engineSetView(pi) {
+    if (!practiceState || pi == null || practiceState.viewingIndex === pi) return false;
+    cancelTargetModes();
+    practiceState.viewingIndex = pi;
+    renderPracticeBoard();
+    showToast(`👁 ${practiceState.players[pi].deckName} の視点に切り替えました`);
+    return true;
+  }
+  // 手番でない側の効果を処理し終え、その側の効果がもう残っていなければ手番の視点に戻す
+  function engineReturnViewIfDone(ownerIndex) {
+    if (!practiceState || ownerIndex == null) return;
+    const tp = practiceState.turn.playerIndex;
+    if (ownerIndex === tp || practiceState.viewingIndex !== ownerIndex) return;
+    const q = getEffectQueue();
+    if (q.current && q.current.ownerIndex === ownerIndex) return;
+    const remaining = q.pending.filter(isEffectEntryValid).some(e => e.ownerIndex === ownerIndex);
+    if (!remaining) engineSetView(tp);
+  }
   function selectEffect(id) {
     const q = getEffectQueue();
     const idx = q.pending.findIndex(e => e.id === id);
     if (idx < 0) return;
     q.current = q.pending.splice(idx, 1)[0];
     effectPanelCollapsed = false;
-    renderEffectPanel();
+    if (!engineSetView(q.current.ownerIndex)) renderEffectPanel();
   }
   function skipPendingEffect(id) {
     const q = getEffectQueue();
-    q.pending = q.pending.filter(e => e.id !== id);
+    const e = q.pending.find(x => x.id === id);
+    q.pending = q.pending.filter(x => x.id !== id);
     renderEffectPanel();
+    if (e) engineReturnViewIfDone(e.ownerIndex);
   }
   function finishCurrentEffect(skipped) {
     const q = getEffectQueue();
@@ -7760,6 +7786,7 @@
       fxSpawn('fx-float up', { left: '50%', top: '30%' }, '効果処理完了', 1300);
     }
     renderEffectPanel();
+    if (cur) engineReturnViewIfDone(cur.ownerIndex);
     resumeAttackStepIfAny();
   }
   function hasUnresolvedEffects() {
@@ -7774,26 +7801,68 @@
     q.pending = [];
   }
 
+  // 効果のプレイヤーがデッキからN枚引く(≪Nドロー≫)
+  function drawCardsFor(pi, n, label) {
+    if (!practiceState || !(n > 0)) return;
+    const p = practiceState.players[pi];
+    snapshotPracticeState();
+    let drawn = 0;
+    for (let i = 0; i < n; i++) {
+      if (!p.library.length) break;
+      p.hand.push(p.library.shift());
+      drawn++;
+    }
+    renderPracticeBoard();
+    if (drawn < n) showToast(`デッキが足りず、${drawn}枚だけ引きました`, true);
+    else showToast(`🃏 ${label || ''}${drawn}枚ドローしました`);
+  }
+  // 効果テキスト中の≪Nドロー≫からドローボタンを作る。「〜ごとに、≪1ドロー≫」のような回数が変わるものは枚数を選べるボタンも出す
+  function drawHandlersFor(e) {
+    const list = [];
+    const text = engineStripNotes(e.text || '');
+    const ns = [...new Set([...text.matchAll(/≪([0-9０-９]+)ドロー≫/g)].map(m => parseInt(m[1].replace(/[０-９]/g, d => String.fromCharCode(d.charCodeAt(0) - 0xFEE0)), 10)))];
+    ns.forEach(n => list.push({ label: `🃏 ${n}枚ドロー`, run: () => drawCardsFor(e.ownerIndex, n) }));
+    if (ns.length && /ごとに[^。]*≪[0-9０-９]+ドロー≫/.test(text)) {
+      list.push({ label: '🃏 ドロー(枚数を選ぶ)', run: () => {
+        openZonePopup(centerPoint(), '何枚ドローしますか?', [1, 2, 3, 4, 5, 6, 7].map(n => ({ label: `${n}枚`, onClick: () => drawCardsFor(e.ownerIndex, n) })).concat([{ label: 'キャンセル', onClick: () => {} }]), true);
+      } });
+    }
+    return list;
+  }
+  // 効果のプレイヤーのメモリーを±Nする(+は自分側へ、-は相手側へ)
+  function changeMemoryFor(pi, amount, cardName) {
+    if (!practiceState || !amount) return;
+    snapshotPracticeState();
+    payMemory(pi, -amount);
+    renderPracticeBoard();
+    showToast(`⚡「${cardName || ''}」の効果: メモリー${amount > 0 ? '+' : ''}${amount}`);
+  }
+  // 効果テキスト中の「メモリー+N」「メモリーを-Nする」からメモリー増減ボタンを作る。「〜ごとにメモリー+N」は数を選べるボタンも出す
+  function memoryHandlersFor(e) {
+    const list = [];
+    const text = engineStripNotes(e.text || '').replace(/[＋]/g, '+').replace(/[－]/g, '-').replace(/[０-９]/g, d => String.fromCharCode(d.charCodeAt(0) - 0xFEE0));
+    const amounts = [...new Set([...text.matchAll(/メモリー(?:を)?([+\-]\d+)/g)].map(m => parseInt(m[1], 10)))];
+    amounts.forEach(a => list.push({ label: `⚡ メモリー${a > 0 ? '+' : ''}${a}`, run: () => changeMemoryFor(e.ownerIndex, a, e.cardName) }));
+    if (amounts.length && /ごとに[^。]*メモリー(?:を)?[+\-]\d+/.test(text)) {
+      const sign = amounts[0] > 0 ? 1 : -1;
+      list.push({ label: `⚡ メモリー${sign > 0 ? '+' : '-'}(数を選ぶ)`, run: () => {
+        openZonePopup(centerPoint(), `メモリーをいくつ${sign > 0 ? '増やし' : '減らし'}ますか?`, [1, 2, 3, 4, 5, 6].map(n => ({ label: `${sign > 0 ? '+' : '-'}${n}`, onClick: () => changeMemoryFor(e.ownerIndex, sign * n, e.cardName) })).concat([{ label: 'キャンセル', onClick: () => {} }]), true);
+      } });
+    }
+    return list;
+  }
   // 効果1行に対して用意できる「⚡自動処理」(既に自動化済みの処理)を列挙する
   function getEffectHandlers(e) {
     if (e.timing === 'ディレイ') {
-      const list = [];
-      const mm = /・メモリー(?:を)?([+\-＋－]\d+)/.exec(e.text);
-      if (mm) {
-        const amount = parseInt(mm[1].replace('＋', '+').replace('－', '-'), 10);
-        list.push({ label: `⚡ メモリー${amount >= 0 ? '+' : ''}${amount}`, run: () => {
-          snapshotPracticeState();
-          payMemory(e.ownerIndex, -amount);
-          showToast(`⏳「${e.cardName}」のディレイ効果: メモリー${amount >= 0 ? '+' : ''}${amount}`);
-          renderPracticeBoard();
-        } });
-      }
+      const list = [...memoryHandlersFor(e)];
       const rm = /自分のデッキの上から(\d+)枚オープン/.exec(e.text);
       if (rm) list.push({ label: `📖 デッキの上から${rm[1]}枚オープン`, run: () => revealTopAndSort(parseInt(rm[1], 10)) });
+      list.push(...drawHandlersFor(e));
       return list;
     }
     const f = findStackByUid(e.stackUid);
-    if (!f || e.field !== 'effect') return [];
+    // 進化元効果・リンク効果・消滅時(場を離れた後)・手札の効果などでも、ドローだけは使えるようにする
+    if (!f || e.field !== 'effect') return [...memoryHandlersFor(e), ...drawHandlersFor(e)];
     const stack = f.stack;
     const line = e.text;
     const list = [];
@@ -7806,6 +7875,20 @@
       const n = parseInt(rm[1], 10);
       list.push({ label: `📖 デッキの上から${n}枚オープン`, run: () => { if (viewOk()) revealTopAndSort(n); } });
     }
+    // 「〜とき、≪ディレイ≫」等: このオプションをディレイして、ディレイの効果に割り込みで切り替える
+    if (line.includes('≪ディレイ≫') && e.timing !== 'ディレイ') {
+      const top = getStackTopCard(stack);
+      const isOptionStack = (top && top.category === 'option') || stack.dualAsOption;
+      const sameTurn = stack.enteredTurn != null && stack.enteredTurn === practiceState.turn.count;
+      if (isOptionStack && !sameTurn) {
+        list.push({ label: '⏳ ディレイする', run: () => {
+          const q = getEffectQueue();
+          if (q.current && q.current.id === e.id) { markOnceUsed(e); q.current = null; }
+          useDelay(stack);
+        } });
+      }
+    }
+    list.push(...memoryHandlersFor(e), ...drawHandlersFor(e));
     if (checkAutoSelfEvolveDPTrigger(stack, e.timing, line, true)) {
       list.push({ label: '⚡ このデジモンのDP増減', run: () => { checkAutoSelfEvolveDPTrigger(stack, e.timing, line); renderPracticeBoard(); } });
     }
@@ -8098,6 +8181,69 @@
     }
     arenaFxAfterRender();
     effectEngineAfterRender();
+    autoEndAfterRender();
+  }
+
+  // ---------- 自動エンドフェイズ ----------
+  // メインフェイズ中にメモリーが相手側(1以上)へ移ったら「待機」状態にし、
+  // 効果処理(処理中・発揮待ち)・アタック・各種ポップアップ/選択モードが全て片付いた時点で
+  // 自動的にエンドフェイズへ進める。
+  // ・待機に入るのは「この盤面で操作した結果メモリーが自分側→相手側へ移った瞬間」だけ。
+  //   「1手戻す」で盤面が差し替わった場合は待機しない(戻した直後にまた自動で進んでしまうのを防ぐ)。
+  // ・効果パネルOFF時は効果の処理状況が分からないため、自動では進めない。
+  let autoEndEnabled = (() => { try { return localStorage.getItem('digica_auto_end') !== '0'; } catch (e) { return true; } })();
+  const autoEnd = { stateRef: null, turnCount: null, prevMt: null, armed: false, timer: null, okCount: 0 };
+  function applyAutoEndToggleUi() {
+    const b = document.getElementById('autoEndToggle');
+    if (b) b.textContent = autoEndEnabled ? '⏭ 自動エンド ON' : '自動エンド OFF';
+  }
+  applyAutoEndToggleUi();
+  document.getElementById('autoEndToggle').addEventListener('click', () => {
+    autoEndEnabled = !autoEndEnabled;
+    try { localStorage.setItem('digica_auto_end', autoEndEnabled ? '1' : '0'); } catch (e) {}
+    applyAutoEndToggleUi();
+    if (!autoEndEnabled) autoEndDisarm();
+  });
+  function memoryTowardOpponentOfTurnPlayer() {
+    return practiceState.turn.playerIndex === 0 ? practiceState.memory : -practiceState.memory;
+  }
+  function autoEndDisarm() {
+    autoEnd.armed = false;
+    autoEnd.okCount = 0;
+    if (autoEnd.timer) { clearInterval(autoEnd.timer); autoEnd.timer = null; }
+  }
+  function autoEndAfterRender() {
+    if (!practiceState) { autoEndDisarm(); autoEnd.stateRef = null; return; }
+    const t = practiceState.turn;
+    const mt = memoryTowardOpponentOfTurnPlayer();
+    const sameBoard = autoEnd.stateRef === practiceState && autoEnd.turnCount === t.count;
+    if (!sameBoard || t.phase !== 'main' || mt < 1) autoEndDisarm();
+    if (sameBoard && t.phase === 'main' && autoEnd.prevMt != null && autoEnd.prevMt < 1 && mt >= 1 && autoEndEnabled && effectPanelEnabled) {
+      autoEnd.armed = true;
+      autoEnd.okCount = 0;
+      if (!autoEnd.timer) autoEnd.timer = setInterval(autoEndTick, 400);
+    }
+    autoEnd.stateRef = practiceState;
+    autoEnd.turnCount = t.count;
+    autoEnd.prevMt = t.phase === 'main' ? mt : null;
+  }
+  function autoEndBusy() {
+    if (attackState) return true;
+    if (hasUnresolvedEffects()) return true;
+    if (activeRevealSession || evolveMode || materialTargetMode || multiEvolveMode || linkTargetMode || artsEvolveMode || assemblyMode || deckToTamerMode) return true;
+    if (zonePopupEl.classList.contains('open') || cardDetailModal.classList.contains('open')) return true;
+    if (document.querySelector('#evolveRouteModal.open, #fieldEffectsModal.open, #imageLightbox.open')) return true;
+    return false;
+  }
+  function autoEndTick() {
+    if (!autoEnd.armed || !practiceState || !autoEndEnabled || !effectPanelEnabled) { autoEndDisarm(); return; }
+    if (practiceState.turn.phase !== 'main' || memoryTowardOpponentOfTurnPlayer() < 1) { autoEndDisarm(); return; }
+    if (autoEndBusy()) { autoEnd.okCount = 0; return; }
+    autoEnd.okCount++;
+    if (autoEnd.okCount < 2) return; // 片付いた状態が少し続いてから進める
+    autoEndDisarm();
+    showToast('⏭ メモリーが相手側に移ったため、エンドフェイズへ進みます(「1手戻す」で戻せます)');
+    advancePhase();
   }
 
 
@@ -12156,6 +12302,7 @@
           snapshotPracticeState();
           stack.actingAsDigimon = false;
           stack.assignedDP = null;
+          if (stack.quickByTamerDigimon) { delete stack.quickOverride; delete stack.quickByTamerDigimon; }
           cardDetailModal.classList.remove('open');
           renderPracticeBoard();
           showToast('人間(テイマー)に戻しました');
@@ -12170,8 +12317,10 @@
               snapshotPracticeState();
               stack.actingAsDigimon = true;
               stack.assignedDP = dp;
+              // テイマーがデジモンになったときは必ず≪速攻≫を得る
+              if (!hasQuickKeyword(stack)) { stack.quickOverride = true; stack.quickByTamerDigimon = true; }
               renderPracticeBoard();
-              showToast(`デジモンとして扱います(DP${dp})`);
+              showToast(`デジモンとして扱います(DP${dp}・≪速攻≫)`);
             },
           })));
         });
@@ -12287,6 +12436,22 @@
         renderPracticeBoard();
         return;
       }
+      // デジモンとして扱っているテイマーは、上に何も重ねられていなければ(一番上がテイマーのまま)
+      // ターン終了時に全てテイマーに戻す。
+      const revertedTamers = [];
+      practiceState.players.forEach(p => {
+        [p.raising, ...p.battle].forEach(st => {
+          if (!st || !st.actingAsDigimon) return;
+          const top = getStackTopCard(st);
+          if (top && top.category === 'tamer') {
+            st.actingAsDigimon = false;
+            st.assignedDP = null;
+            if (st.quickOverride === true && st.quickByTamerDigimon) { delete st.quickOverride; delete st.quickByTamerDigimon; }
+            revertedTamers.push(top.name);
+          }
+        });
+      });
+      if (revertedTamers.length) showToast(`ターン終了: ${revertedTamers.join('、')} をテイマーに戻しました`);
       // was 'end' -> start next turn for the other player, and follow the viewpoint to them
       const nextPlayerIndex = 1 - turn.playerIndex;
       practiceState.turn = { count: turn.count + 1, playerIndex: nextPlayerIndex, phase: 'active' };
