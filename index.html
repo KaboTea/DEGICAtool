@@ -1455,6 +1455,8 @@
     font-size: 14px;
     filter: drop-shadow(0 1px 2px rgba(0,0,0,0.7));
   }
+  .st-resist { color: #fbbf24; display: inline-flex; align-items: center; }
+  .dkb-icon .resist-ico { color: #fbbf24; }
   .mat-side-col {
     display: flex;
     flex-direction: column;
@@ -2814,7 +2816,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.34.0</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.35.2</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -3674,6 +3676,9 @@
       Object.keys(LOCK_LABELS).forEach(k => {
         if (hasLock(stackContext, k)) kwBadges.push(['🔒', LOCK_LABELS[k]]);
       });
+      Object.keys(RESIST_LABELS).forEach(k => {
+        if (hasResist(stackContext, k)) kwBadges.push([RESIST_ICON_HTML, `${RESIST_LABELS[k]}(${RESIST_DURATION_LABELS[stackContext.resists[k].until] || ''})`]);
+      });
       if (kwBadges.length > 0) {
         const badgeRow = document.createElement('div');
         badgeRow.className = 'detail-keyword-badges';
@@ -4345,7 +4350,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.34.0`);
+    log(`DigiCA Tool build v0.35.2`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -4862,7 +4867,18 @@
     if (owner.zone !== 'battle') return false;
     const stackOwnerIndex = practiceState.players.indexOf(owner.player);
     const isSameSide = stackOwnerIndex === effect.ownerIndex;
-    return effect.target === 'own' ? isSameSide : !isSameSide;
+    const applies = effect.target === 'own' ? isSameSide : !isSameSide;
+    // 耐性: 相手側のフィールド効果によるDPマイナスは受けない
+    if (applies && !isSameSide && effect.amount < 0 && hasAnyResist(stack)) {
+      if (hasResist(stack, 'immuneOpp') || hasResist(stack, 'noDpMinus')) return false;
+      if (hasResist(stack, 'immuneOppDigimon') || hasResist(stack, 'immuneOppOption')) {
+        const src = effect.refCardNumber ? cardIndexByNumber.get(effect.refCardNumber) : [...cardIndexByNumber.values()].find(c => c.name === effect.refCardName);
+        const cat = src ? src.category : null;
+        if (cat === 'digimon' && hasResist(stack, 'immuneOppDigimon')) return false;
+        if (cat === 'option' && hasResist(stack, 'immuneOppOption')) return false;
+      }
+    }
+    return applies;
   }
   function getFieldEffectDPBonus(stack) {
     if (!practiceState || !practiceState.fieldEffects || practiceState.fieldEffects.length === 0) return 0;
@@ -5915,6 +5931,7 @@
   function toggleLock(stack, type) {
     if (!practiceState) return;
     if (!stack.locks) stack.locks = {};
+    if (!stack.locks[type]) warnIfResistant(stack, [], 'ロック');
     if (stack.locks[type]) {
       delete stack.locks[type];
       showToast(`🔓 ロック解除: ${LOCK_LABELS[type]}`);
@@ -5932,6 +5949,122 @@
     }));
     actions.push({ label: '閉じる', onClick: () => resumeAttackStepIfAny() });
     openZonePopup(e, `「${c ? c.name : '?'}」にロックを付与/解除`, actions, true);
+  }
+
+  // ---------- ⛨ 耐性(「相手の効果を受けない」等を、ロックと同じ要領でスタックに付与する) ----------
+  // stack.resists = { [type]: { until: 'oppTurnEnd' | 'turnEnd' | 'manual', setTurn } }
+  // 解除タイミング:
+  //   oppTurnEnd(相手のターン終了まで) … このカードの持ち主から見た「相手」のターンが終了したとき
+  //                                     (自分のターン中に付与 → 次の相手ターン終了で解除。相手ターン中に付与 → そのターン終了で解除)
+  //   turnEnd(ターン終了まで)         … 今のターンが終了したとき
+  //   manual(解除するまで)            … 自動では解除しない(「〜の間」のような常在型用)
+  // 判定は基本的にプレイヤーに委ねるが、相手側のフィールド効果によるDPマイナスは自動で受けない
+  // ようにし、相手のカードに手動操作(DPマイナス・退化・ロック等)をしたときは注意を出す。
+  const RESIST_LABELS = {
+    immuneOpp: '相手の効果を受けない',
+    immuneOppDigimon: '相手のデジモンの効果を受けない',
+    immuneOppOption: '相手のオプションの効果を受けない',
+    noDpMinus: '相手の効果でDPをマイナスされない',
+    noDegen: '≪退化≫の効果を受けない',
+    noReturn: '手札/デッキに戻らない',
+    noDestroyByEffect: '効果で消滅しない',
+  };
+  // 耐性マーク「⛨」(盾に十字)。端末によって記号フォントが無く□になるのを避けるため、SVGで描く。
+  const RESIST_ICON_HTML = '<svg class="resist-ico" viewBox="0 0 16 16" width="1em" height="1em" aria-hidden="true" style="vertical-align:-0.12em"><path d="M8 1.2 14 3.3V8c0 3.4-2.5 5.9-6 6.9C4.5 13.9 2 11.4 2 8V3.3Z" fill="currentColor" fill-opacity="0.18" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M8 3.6v9.6M3.6 7.3h8.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>';
+  const RESIST_DURATION_LABELS = { oppTurnEnd: '相手のターン終了まで', turnEnd: 'ターン終了まで', manual: '解除するまで' };
+  function hasResist(stack, type) {
+    return !!(stack && stack.resists && stack.resists[type]);
+  }
+  function hasAnyResist(stack) {
+    return !!(stack && stack.resists && Object.keys(stack.resists).length);
+  }
+  function resistSummary(stack) {
+    if (!hasAnyResist(stack)) return '';
+    return Object.keys(stack.resists).map(k => `${RESIST_LABELS[k] || k}(${RESIST_DURATION_LABELS[stack.resists[k].until] || ''})`).join(' / ');
+  }
+  function setResist(stack, type, until, silent) {
+    if (!practiceState || !stack) return;
+    snapshotPracticeState();
+    if (!stack.resists) stack.resists = {};
+    stack.resists[type] = { until: until || 'oppTurnEnd', setTurn: practiceState.turn.count };
+    if (!silent) {
+      const c = getStackTopCard(stack);
+      showToast(`「${c ? c.name : '?'}」に耐性を付与: ${RESIST_LABELS[type]}(${RESIST_DURATION_LABELS[until || 'oppTurnEnd']})`);
+    }
+    renderPracticeBoard();
+  }
+  function removeResist(stack, type) {
+    if (!stack || !stack.resists || !stack.resists[type]) return;
+    snapshotPracticeState();
+    delete stack.resists[type];
+    showToast(`耐性を解除: ${RESIST_LABELS[type]}`);
+    renderPracticeBoard();
+  }
+  function openResistMenu(e, stack) {
+    const c = getStackTopCard(stack);
+    const actions = Object.keys(RESIST_LABELS).map(type => {
+      const cur = stack.resists && stack.resists[type];
+      return {
+        label: cur ? `✅ ${RESIST_LABELS[type]}(${RESIST_DURATION_LABELS[cur.until]})` : `☐ ${RESIST_LABELS[type]}`,
+        onClick: () => {
+          if (cur) { removeResist(stack, type); openResistMenu(e, stack); return; }
+          openResistDurationPicker(e, stack, type, () => openResistMenu(e, stack));
+        },
+      };
+    });
+    actions.push({ label: '閉じる', onClick: () => resumeAttackStepIfAny() });
+    openZonePopup(e, `「${c ? c.name : '?'}」に耐性を付与/解除`, actions, true);
+  }
+  function openResistDurationPicker(e, stack, type, after) {
+    const actions = Object.keys(RESIST_DURATION_LABELS).map(until => ({
+      label: RESIST_DURATION_LABELS[until],
+      onClick: () => { setResist(stack, type, until); if (after) after(); },
+    }));
+    actions.push({ label: 'キャンセル', onClick: () => { if (after) after(); } });
+    openZonePopup(e || centerPoint(), `「${RESIST_LABELS[type]}」の期間`, actions, true);
+  }
+  // ターン終了時の自動解除。endingPlayerIndex = 今終わったターンのプレイヤー
+  function clearExpiredResists(endingPlayerIndex) {
+    if (!practiceState) return;
+    practiceState.players.forEach((p, pi) => {
+      [p.raising, ...p.battle].forEach(s => {
+        if (!s || !s.resists) return;
+        Object.keys(s.resists).forEach(k => {
+          const r = s.resists[k];
+          if (r.until === 'turnEnd' || (r.until === 'oppTurnEnd' && pi !== endingPlayerIndex)) delete s.resists[k];
+        });
+      });
+    });
+  }
+  // 相手のカードに手動で何かしようとしたとき、関係する耐性があれば注意を出す(操作自体は止めない)
+  function warnIfResistant(stack, kinds, actionLabel) {
+    if (!practiceState || !hasAnyResist(stack)) return;
+    const f = findStackOwnerAndZone(stack);
+    if (!f || f.player === practiceState.players[practiceState.viewingIndex]) return;
+    const hit = ['immuneOpp', 'immuneOppDigimon', 'immuneOppOption', ...kinds].filter(k => hasResist(stack, k));
+    if (!hit.length) return;
+    const c = getStackTopCard(stack);
+    showToast(`注意: 「${c ? c.name : '?'}」は耐性を持っています(${hit.map(k => RESIST_LABELS[k]).join('/')})。${actionLabel}が効果によるものなら適用されない可能性があります`, true);
+  }
+  // 効果テキストから「〜効果を受けない」等の耐性を読み取る(効果パネルの⚡自動処理用)
+  function parseResistGrants(text) {
+    const t = engineStripNotes(text || '');
+    const out = [];
+    t.split('。').forEach(sent => {
+      const types = [];
+      if (/相手の効果を受けない/.test(sent)) types.push('immuneOpp');
+      if (/相手のデジモンの効果を受けない/.test(sent)) types.push('immuneOppDigimon');
+      if (/相手のオプションの効果を受けない/.test(sent)) types.push('immuneOppOption');
+      if (/DPをマイナスされ(ず|ない)/.test(sent)) types.push('noDpMinus');
+      if (/≪退化≫の効果を受けない/.test(sent)) types.push('noDegen');
+      if (/(手札|デッキ)[^、。]{0,6}に?戻らず|戻らない/.test(sent)) types.push('noReturn');
+      if (/効果で消滅しない/.test(sent)) types.push('noDestroyByEffect');
+      if (!types.length) return;
+      const until = /(次の)?相手のターン終了まで/.test(sent) ? 'oppTurnEnd' : (/ターン終了まで/.test(sent) ? 'turnEnd' : 'manual');
+      const target = /このデジモン/.test(sent) ? 'self' : (/自分のデジモン(\d+体|全て)/.test(sent) ? (/全て/.test(sent) ? 'allOwn' : 'pickOwn') : 'self');
+      out.push({ types, until, target });
+    });
+    return out;
   }
 
   // 手札の「リンクする」ボタンは、そのカード自体がリンク効果を持つ場合のみ表示する。
@@ -6117,11 +6250,12 @@
     // (タイルのサイズを安定させるため)。
     const kwVisible = kwBadgeList.slice(0, 3);
     const kwRest = kwBadgeList.slice(3);
-    const badgesHtml = (kwBadgeList.length > 0 || hasAnyLock(stack))
+    const badgesHtml = (kwBadgeList.length > 0 || hasAnyLock(stack) || hasAnyResist(stack))
       ? `<div class="status-badges-row">
           ${kwVisible.map(def => `<span class="kw-pill" title="${escapeHtml(def.label)}">${def.icon}</span>`).join('')}
           ${kwRest.length > 0 ? `<span class="kw-pill kw-pill-more">+${kwRest.length}</span>` : ''}
           ${hasAnyLock(stack) ? `<span class="st-lock" title="ロック: ${escapeHtml(Object.keys(LOCK_LABELS).filter(k => hasLock(stack, k)).map(k => LOCK_LABELS[k]).join('/'))}">🔒</span>` : ''}
+          ${hasAnyResist(stack) ? `<span class="st-lock st-resist" title="耐性: ${escapeHtml(resistSummary(stack))}">${RESIST_ICON_HTML}</span>` : ''}
         </div>`
       : '';
     el.innerHTML = `
@@ -7178,6 +7312,12 @@
         if (/消滅/.test(verb)) kinds.push('destroy');
       }
       if (!kinds.length) continue;
+      // 「自分の「大門大」が登場したときかレストしたとき」のように主語が省略された2つ目以降は、直前の主語を引き継ぐ
+      const bare = subject.replace(/^[かや、\s]+/, '').trim();
+      if (!bare && out.length) {
+        out.push(Object.assign({}, out[out.length - 1], { kinds }));
+        continue;
+      }
       out.push({
         kinds, subject,
         self: /この(デジモン|テイマー)/.test(subject),
@@ -7185,9 +7325,51 @@
         own: /自分の/.test(subject),
         opp: /相手の/.test(subject),
         cats: [...(/デジモン/.test(subject) ? ['digimon'] : []), ...(/テイマー/.test(subject) ? ['tamer'] : [])],
+        filters: parseSubjectFilters(subject),
+        colors: parseSubjectColors(subject),
       });
     }
     return out;
+  }
+  // 主語の「名称/特徴/記述/カード名」条件を読み取る(いずれか1つでも合えばよい)
+  function parseSubjectFilters(subj) {
+    const groups = [];
+    const re = /(名称に|特徴に|特徴)?((?:「[^」]+」\/?)+)(を含む|を持つ|の記述がある)?/g;
+    let m;
+    while ((m = re.exec(subj))) {
+      const names = (m[2].match(/「([^」]+)」/g) || []).map(x => x.slice(1, -1));
+      if (!names.length) continue;
+      let kind = 'nameExact';
+      if (m[1] === '名称に') kind = 'nameInc';
+      else if (m[1] === '特徴に') kind = 'traitInc';
+      else if (m[1] === '特徴') kind = 'traitExact';
+      else if (m[3] === 'の記述がある') kind = 'mention';
+      groups.push({ kind, names });
+    }
+    return groups;
+  }
+  const JA_COLOR_EN = { 赤: 'red', 青: 'blue', 黄: 'yellow', 緑: 'green', 黒: 'black', 紫: 'purple', 白: 'white' };
+  function parseSubjectColors(subj) {
+    const m = /((?:[赤青黄緑黒紫白](?:か|\/)?)+)の(?:自分|相手|他|デジモン|テイマー)/.exec(subj);
+    if (!m) return [];
+    return [...m[1].matchAll(/[赤青黄緑黒紫白]/g)].map(x => JA_COLOR_EN[x[0]]);
+  }
+  function cardMatchesSubject(card, cl) {
+    if (!card) return true; // 不明なカードは除外しない
+    if (cl.colors && cl.colors.length && !cl.colors.some(c => (card.color || []).includes(c))) return false;
+    if (!cl.filters || !cl.filters.length) return true;
+    const traits = [card.type, card.form, card.attribute].filter(Boolean).join('/').split('/').filter(Boolean);
+    const text = `${card.effect || ''}\n${card.inherited || ''}`;
+    const alsoNamed = (n) => text.includes(`「${n}」としても扱`) || text.includes(`名称:「${n}」`);
+    return cl.filters.some(g => g.names.some(n => {
+      switch (g.kind) {
+        case 'nameInc': return (card.name || '').includes(n) || alsoNamed(n);
+        case 'traitInc': return traits.some(t => t.includes(n));
+        case 'traitExact': return traits.includes(n);
+        case 'mention': return card.name === n || text.includes(`「${n}」`);
+        default: return card.name === n || alsoNamed(n);
+      }
+    }));
   }
   function engineTurnLabelOk(labels, ownerPi) {
     const tp = practiceState.turn.playerIndex;
@@ -7208,6 +7390,7 @@
     if (cl.own && !cl.opp && ev.pi !== holderPi) return false;
     if (cl.opp && !cl.own && ev.pi === holderPi) return false;
     if (cl.cats.length && ev.category && !cl.cats.includes(ev.category === 'digi-egg' ? 'digimon' : ev.category)) return false;
+    if (ev.num && !cardMatchesSubject(cardIndexByNumber.get(ev.num), cl)) return false;
     return true;
   }
   // 1つのスタック(または消滅直前の情報)を効果の持ち主として、出来事に反応する行を集める
@@ -7273,7 +7456,7 @@
   }
   function engineStackEvent(kind, stack, pi) {
     const top = getStackTopCard(stack);
-    return { kind, pi, uid: ensureStackUid(stack), category: top ? top.category : null };
+    return { kind, pi, uid: ensureStackUid(stack), category: top ? top.category : null, num: top ? top.number : null };
   }
   // アタック対象が決まった時点で【アタック時】と「アタックしたとき」「レストしたとき」をまとめて誘発させる
   function engineOnAttackDeclared() {
@@ -7413,7 +7596,7 @@
 
     const immediate = [];
     const events = []; // 「〜したとき」推定用の出来事
-    const evOf = (kind, cur, uid) => ({ kind, pi: cur.pi, uid, category: cur.category });
+    const evOf = (kind, cur, uid) => ({ kind, pi: cur.pi, uid, category: cur.category, num: cur.top });
     snap.stacks.forEach((cur, uid) => {
       const old = prev.stacks.get(uid);
       if (!old) {
@@ -7443,6 +7626,13 @@
         const deferredByAttack = cur.rested && attackState && attackState.attackerStack === cur.stack && !attackState.triggersFired;
         if (deferredByAttack) attackState.restedByAttack = true;
         else events.push(evOf(cur.rested ? 'rest' : 'active', cur, uid));
+        // 自分のメインフェイズに「【メイン】このデジモン/テイマーをレストさせることで、…」を持つカードを
+        // レストした = その起動型効果を使った、とみなして本人の効果を出す
+        if (effectPanelEnabled && cur.rested && !deferredByAttack && !attackState && snap.phase === 'main' && cur.pi === tp) {
+          collectStackTriggers(cur.stack, cur.pi, 'battle', ['メイン'], { fields: ['effect'], event: '起動' })
+            .filter(e => /この(デジモン|テイマー)をレストさせることで/.test(e.text))
+            .forEach(e => found.push(Object.assign(e, { eventLabel: '起動(レスト)' })));
+        }
       }
       const addedLinks = cur.links.filter(n => !old.links.includes(n));
       addedLinks.forEach(num => {
@@ -7586,6 +7776,22 @@
 
   // 効果1行に対して用意できる「⚡自動処理」(既に自動化済みの処理)を列挙する
   function getEffectHandlers(e) {
+    if (e.timing === 'ディレイ') {
+      const list = [];
+      const mm = /・メモリー(?:を)?([+\-＋－]\d+)/.exec(e.text);
+      if (mm) {
+        const amount = parseInt(mm[1].replace('＋', '+').replace('－', '-'), 10);
+        list.push({ label: `⚡ メモリー${amount >= 0 ? '+' : ''}${amount}`, run: () => {
+          snapshotPracticeState();
+          payMemory(e.ownerIndex, -amount);
+          showToast(`⏳「${e.cardName}」のディレイ効果: メモリー${amount >= 0 ? '+' : ''}${amount}`);
+          renderPracticeBoard();
+        } });
+      }
+      const rm = /自分のデッキの上から(\d+)枚オープン/.exec(e.text);
+      if (rm) list.push({ label: `📖 デッキの上から${rm[1]}枚オープン`, run: () => revealTopAndSort(parseInt(rm[1], 10)) });
+      return list;
+    }
     const f = findStackByUid(e.stackUid);
     if (!f || e.field !== 'effect') return [];
     const stack = f.stack;
@@ -7633,6 +7839,36 @@
         list.push({ label: o.buttonLabel, run: () => activateCostTriggerDP(stack, o) });
       });
     }
+    parseResistGrants(line).forEach(g => {
+      const names = g.types.map(t => RESIST_LABELS[t]).join('・');
+      const dur = RESIST_DURATION_LABELS[g.until];
+      const apply = (targets) => {
+        snapshotPracticeState();
+        targets.forEach(t => {
+          if (!t.resists) t.resists = {};
+          g.types.forEach(type => { t.resists[type] = { until: g.until, setTurn: practiceState.turn.count }; });
+        });
+        showToast(`耐性を付与: ${targets.map(t => (getStackTopCard(t) || {}).name || '?').join('、')} に「${names}」(${dur})`);
+        renderPracticeBoard();
+      };
+      if (g.target === 'self') {
+        list.push({ label: `⚡ このデジモンに耐性(${names}/${dur})`, run: () => apply([stack]) });
+      } else {
+        const ownerP = practiceState.players[e.ownerIndex];
+        list.push({
+          label: `⚡ 自分のデジモン${g.target === 'allOwn' ? '全て' : '1体'}に耐性(${names}/${dur})`,
+          run: () => {
+            const cands = ownerP.battle.filter(s => isDigimonLikeStack(s));
+            if (!cands.length) { showToast('対象にできる自分のデジモンがいません', true); return; }
+            if (g.target === 'allOwn') { apply(cands); return; }
+            openZonePopup(centerPoint(), '耐性を付与するデジモンを選んでください', [
+              ...cands.map(s => ({ label: `${(getStackTopCard(s) || {}).name || '?'}(DP${getEffectiveDP(s)})`, onClick: () => apply([s]) })),
+              { label: 'キャンセル', onClick: () => {} },
+            ], true);
+          },
+        });
+      }
+    });
     if (['登場時', '進化時'].includes(e.timing)) {
       getSecDiscardOppBroadcastDPOptions(stack).forEach(o => {
         list.push({ label: o.buttonLabel, run: () => activateSecDiscardOppBroadcastDP(stack, o) });
@@ -8111,7 +8347,7 @@
       const sameTurn = stack.enteredTurn === practiceState.turn.count;
       if (!sameTurn) {
         openZonePopup(centerPoint(), `「${card.name}」をトラッシュへ`, [
-          { label: '🕐 ディレイとして破棄する(効果を発揮)', onClick: () => { checkAutoDelayMemory(stack); trashEntireStack(stack); } },
+          { label: '🕐 ディレイとして破棄する(効果を発揮)', onClick: () => useDelay(stack) },
           { label: '🗑 そのまま破棄する(効果は発揮しない)', onClick: () => { trashEntireStack(stack); showToast(`「${card.name}」を破棄しました`); } },
         ], true);
       } else {
@@ -9838,6 +10074,43 @@
       practiceState.memory = practiceState.turn.playerIndex === 0 ? -target : target;
       showToast(`🃏 テイマー効果: メモリーが${threshold}以下だったため、自分側の${target}にしました`);
     }
+  }
+  // ≪ディレイ≫で破棄したときの効果テキスト(≪ディレイ≫の行と、それに続く「・」の行)
+  function getDelayEffectText(card) {
+    if (!card) return '';
+    const text = (card.dual && card.category !== 'option') ? `${card.dual.effect || ''}\n${card.effect || ''}` : (card.effect || '');
+    const lines = text.split('\n');
+    const i = lines.findIndex(l => l.includes('≪ディレイ≫'));
+    if (i < 0) return '';
+    const out = [lines[i]];
+    for (let j = i + 1; j < lines.length && /^\s*・/.test(lines[j]); j++) out.push(lines[j]);
+    return out.join('\n');
+  }
+  // ディレイを使う: 破棄して、効果パネルに効果を即座に出す(パネルOFF時は従来どおりメモリー系だけ自動)
+  function useDelay(stack) {
+    const card = getStackTopCard(stack);
+    const f = findStackOwnerAndZone(stack);
+    if (!card || !f) return;
+    cardDetailModal.classList.remove('open');
+    if (!effectPanelEnabled || !practiceState) {
+      checkAutoDelayMemory(stack);
+      trashEntireStack(stack);
+      renderPracticeBoard();
+      return;
+    }
+    const text = getDelayEffectText(card);
+    const pi = practiceState.players.indexOf(f.player);
+    trashEntireStack(stack);
+    if (text) {
+      enqueueEffects([], [{
+        ownerIndex: pi, stackUid: null, lki: true, lkiUid: 'delay-' + ensureStackUid(stack), cardNumber: card.number, cardName: card.name,
+        field: 'effect', sourceLabel: '', lineIndex: 0, text, timing: 'ディレイ', event: 'ディレイ', eventLabel: '',
+      }]);
+      showToast(`⏳「${card.name}」をディレイとして破棄しました`);
+    } else {
+      showToast(`「${card.name}」を破棄しました(≪ディレイ≫の記載が見つかりません)`, true);
+    }
+    renderPracticeBoard();
   }
   function checkAutoDelayMemory(stack) {
     const card = getStackTopCard(stack);
@@ -11576,6 +11849,7 @@
     stack.tempDPModifiers = stack.tempDPModifiers.filter(m => practiceState.turn.count <= m.expireAtTurnCount);
   }
   function modifyStackDP(stack, delta, duration) {
+    if (delta < 0) warnIfResistant(stack, ['noDpMinus'], 'DPマイナス');
     snapshotPracticeState();
     if (!duration || duration === 'permanent') {
       stack.dpModifier = (stack.dpModifier || 0) + delta;
@@ -11719,12 +11993,14 @@
     const topIndex = stack.cards.length - 1;
     const oppTopCardObj = cardIndexByNumber.get(cardEntryNum(stack.cards[topIndex]));
     if (!oppTopCardObj || oppTopCardObj.category !== 'tamer') {
-      mk('退化', () => removeCardFromStackAt(stack, topIndex, 'trash'));
+      mk('退化', () => { warnIfResistant(stack, ['noDegen'], '退化'); removeCardFromStackAt(stack, topIndex, 'trash'); });
     }
-    mk('一番上を移動▾', (e) => openHierarchicalDestinationPicker(e, '一番上のカードを送る', (dest) => removeCardFromStackAt(stack, topIndex, dest), { excludeBattle: true, excludeTrash: true, ownerPlayer: (findStackOwnerAndZone(stack) || {}).player }));
-    mk('消滅', () => resolveDestructionQueue([stack], () => {}));
+    mk('一番上を移動▾', (e) => openHierarchicalDestinationPicker(e, '一番上のカードを送る', (dest) => { warnIfResistant(stack, ['noReturn'], '移動'); removeCardFromStackAt(stack, topIndex, dest); }, { excludeBattle: true, excludeTrash: true, ownerPlayer: (findStackOwnerAndZone(stack) || {}).player }));
+    mk('消滅', () => { warnIfResistant(stack, ['noDestroyByEffect'], '消滅'); resolveDestructionQueue([stack], () => {}); });
     if (isDigimonLikeStack(stack) || (oppTopCardObj && oppTopCardObj.category === 'tamer')) {
       mk('🔒 ロック', (e) => openLockMenu(e, stack));
+      mk('耐性', (e) => openResistMenu(e, stack));
+      row.lastChild.innerHTML = RESIST_ICON_HTML + ' 耐性';
     }
     wrap.appendChild(row);
     return wrap;
@@ -11905,9 +12181,11 @@
     if (!topCardObj || topCardObj.category !== 'tamer') {
       mk('退化', () => removeCardFromStackAt(stack, topIndex, 'trash'));
     }
+    mk('耐性', (e) => openResistMenu(e, stack));
+    if (row.lastChild) row.lastChild.innerHTML = RESIST_ICON_HTML + ' 耐性';
     if (topCardObj && (topCardObj.category === 'option' || stack.dualAsOption)) {
       const sameTurn = stack.enteredTurn === practiceState.turn.count;
-      mk(sameTurn ? 'ディレイ(このターンは発揮不可)' : 'ディレイ', () => { checkAutoDelayMemory(stack); trashEntireStack(stack); }, sameTurn);
+      mk(sameTurn ? 'ディレイ(このターンは発揮不可)' : 'ディレイ', () => useDelay(stack), sameTurn);
     }
     if (topCardObj && topCardObj.dual && stack.dualAsOption && stack.cards.length === 1) {
       mk('🎨 アーツ進化させる(破棄せず進化元にする)', () => enterArtsEvolveMode(stack));
@@ -12042,6 +12320,8 @@
       [endingPlayer.raising, ...endingPlayer.battle].forEach(s => {
         if (s && s.locks) s.locks = {};
       });
+      // 耐性の期限切れ解除(今終わったのは turnPlayer のターン)
+      clearExpiredResists(practiceState.players.indexOf(endingPlayer));
       // ≪再起動≫(16-11): 相手(=このアクティブフェイズの持ち主ではない側)のデジモンも、
       // ≪再起動≫を持っていればこのアクティブフェイズで強制的にアクティブになる。
       // ≪ロック≫(アクティブにならない)の方が優先されるため、そちらは除外する。
