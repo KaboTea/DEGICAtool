@@ -2813,7 +2813,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.33.0</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.33.1</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -4344,7 +4344,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.33.0`);
+    log(`DigiCA Tool build v0.33.1`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -4398,9 +4398,24 @@
 
       log(`パラレル版を除外し、${cards.length}枚のカードを収録対象にしました`, 'ok');
 
+      // heroi.cc側にまだ無いカード(公式サイトから手動追加した新弾など)は消さずに引き継ぐ。
+      // heroi.cc側に同じ番号が入ってきたら、そちらのデータで上書きされる。
+      const heroiNumbers = new Set(cards.map(c => c.number));
+      const keptCards = (currentDb && Array.isArray(currentDb.cards) ? currentDb.cards : [])
+        .filter(c => c && c.number && !heroiNumbers.has(c.number));
+      if (keptCards.length > 0) {
+        const sets = [...new Set(keptCards.map(c => String(c.number).split('-')[0]))];
+        log(`heroi.ccに未収録のカード${keptCards.length}枚(${sets.join(', ')})は現在のDBから引き継ぎます`, 'ok');
+        cards.push(...keptCards);
+      }
+      const prevSourceDate = currentDb && currentDb.source_updated_at;
+      if (prevSourceDate && attrs['updated-at'] && String(attrs['updated-at']).slice(0, 10) === String(prevSourceDate).slice(0, 10)) {
+        log(`注意: データ元(heroi.cc)の更新日が前回と同じ(${prevSourceDate})です。新弾が反映されていない可能性があります`, 'err');
+      }
+
       pendingDb = {
         generated_at: new Date().toISOString().slice(0, 10),
-        source: 'heroi.cc bulk-data (ja)',
+        source: keptCards.length > 0 ? `heroi.cc bulk-data (ja) + 既存DBから引き継ぎ${keptCards.length}枚` : 'heroi.cc bulk-data (ja)',
         source_updated_at: attrs['updated-at'] || null,
         cards,
       };
