@@ -2818,7 +2818,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.37.1</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.37.2</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -3457,6 +3457,41 @@
     return tile;
   }
 
+  // ---------- カードの並び順: 新しい弾から ----------
+  // ブースター系(BT/EX/RB/AD)は発売順の新しいものから → スタートデッキ(ST)新しい順 → リミテッド(LM) →
+  // プロモ(P) → その他。同じ弾の中はカード番号順。表に無い新弾(BT27等)は一番新しい扱いにする。
+  const BOOSTER_RELEASE_ORDER = ['BT1', 'BT2', 'BT3', 'BT4', 'BT5', 'BT6', 'EX1', 'BT7', 'BT8', 'EX2', 'BT9', 'BT10', 'EX3', 'BT11', 'BT12', 'EX4',
+    'RB1', 'BT13', 'BT14', 'EX5', 'BT15', 'BT16', 'EX6', 'BT17', 'EX7', 'BT18', 'BT19', 'EX8', 'BT20', 'BT21', 'EX9', 'BT22', 'EX10', 'BT23',
+    'BT24', 'EX11', 'AD1', 'BT25', 'EX12', 'BT26', 'EX13'];
+  const cardSortKeyCache = new Map();
+  function cardSortKey(number) {
+    if (cardSortKeyCache.has(number)) return cardSortKeyCache.get(number);
+    const m = /^([A-Za-z]+)(\d*)-?(\d*)/.exec(number || '');
+    const prefix = m ? m[1].toUpperCase() : '';
+    const setNum = m && m[2] ? parseInt(m[2], 10) : 0;
+    const cardNum = m && m[3] ? parseInt(m[3], 10) : 0;
+    const setId = prefix + (m && m[2] ? setNum : '');
+    let group, setRank;
+    if (['BT', 'EX', 'RB', 'AD'].includes(prefix)) {
+      group = 0;
+      const idx = BOOSTER_RELEASE_ORDER.indexOf(setId);
+      setRank = idx >= 0 ? idx : 1000 + setNum; // 表に無い = 新弾
+    } else if (prefix === 'ST') { group = 1; setRank = setNum; }
+    else if (prefix === 'LM') { group = 2; setRank = 0; }
+    else if (prefix === 'P') { group = 3; setRank = 0; }
+    else { group = 4; setRank = 0; }
+    // 小さいほど先: グループ昇順 → 弾は新しい順(setRank降順) → 番号昇順(LM/Pは新しい番号から)
+    const numPart = (group === 2 || group === 3) ? -cardNum : cardNum;
+    const key = [group, -setRank, numPart];
+    cardSortKeyCache.set(number, key);
+    return key;
+  }
+  function compareCardsNewestFirst(a, b) {
+    const ka = cardSortKey(a.number), kb = cardSortKey(b.number);
+    for (let i = 0; i < ka.length; i++) if (ka[i] !== kb[i]) return ka[i] - kb[i];
+    return 0;
+  }
+
   function renderGrid() {
     if (!currentDb || !Array.isArray(currentDb.cards)) {
       cardGrid.innerHTML = '<div class="empty-state">DBが未生成です。DB管理タブから更新してください。</div>';
@@ -3471,7 +3506,7 @@
       level: filterLevel.value,
       costMin: filterCostMin.value !== '' ? parseInt(filterCostMin.value, 10) : null,
       costMax: filterCostMax.value !== '' ? parseInt(filterCostMax.value, 10) : null,
-    }));
+    })).sort(compareCardsNewestFirst);
 
     resultCountEl.textContent = `${results.length}件 / 全${currentDb.cards.length}枚`;
 
@@ -4079,7 +4114,7 @@
       deckSearchGrid.innerHTML = '<div class="empty-state">カード名を入力すると候補が表示されます。クリックでデッキに追加します。</div>';
       return;
     }
-    const results = currentDb.cards.filter(c => matchesFilters(c, { query }));
+    const results = currentDb.cards.filter(c => matchesFilters(c, { query })).sort(compareCardsNewestFirst);
     if (results.length === 0) {
       deckSearchGrid.innerHTML = '<div class="empty-state">見つかりません</div>';
       return;
@@ -4472,7 +4507,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.37.1`);
+    log(`DigiCA Tool build v0.37.2`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
