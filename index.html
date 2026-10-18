@@ -733,6 +733,8 @@
     cursor: pointer;
   }
   .my-deck-item:hover { border-color: var(--accent-dim); }
+  .my-deck-group { font-size: 11px; color: var(--text-dim); margin: 8px 0 4px; }
+  .my-deck-group:first-child { margin-top: 0; }
   .my-deck-item.active { border-left-color: var(--accent); background: var(--panel); }
   .my-deck-item .mdi-main { flex: 1; min-width: 0; }
   .my-deck-item .mdi-name {
@@ -2816,7 +2818,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.36.3</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.37.1</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -2930,6 +2932,7 @@
             <button class="btn primary" id="saveDeckBtn">保存</button>
             <button class="btn" id="deleteDeckBtn">削除</button>
             <button class="btn" id="bulkImportDeckBtn">📋 一括インポート</button>
+            <button class="btn" id="exportDeckBtn" title="今のデッキを「カード番号 枚数」の文字にしてコピーします。友達は「一括インポート」に貼り付けると同じデッキを作れます">📤 書き出し</button>
           </div>
           <div class="deck-validation" id="deckValidation"></div>
           <div class="deck-status-msg" id="deckStatusMsg"></div>
@@ -3189,11 +3192,11 @@
     <div class="field">
       <label for="ghToken">GitHub Personal Access Token</label>
       <input type="password" id="ghToken" placeholder="ghp_xxxxxxxxxxxx" autocomplete="off">
-      <div class="hint">db.json / decks.json の読み書きに使用します。ブラウザのlocalStorageに保存され、外部には送信されません。</div>
+      <div class="hint">入力しなくても使えます。共有デッキ(decks.json)への保存・削除やDB更新のコミットをしたい人だけ設定してください。ブラウザのlocalStorageに保存され、外部には送信されません。</div>
     </div>
     <div class="field">
       <label for="ghRepo">リポジトリ(owner/repo)</label>
-      <input type="text" id="ghRepo" placeholder="KaboTea/digica-tool" autocomplete="off">
+      <input type="text" id="ghRepo" placeholder="KaboTea/DEGICAtool" autocomplete="off">
     </div>
     <div class="modal-actions">
       <span class="save-msg" id="saveMsg">保存しました</span>
@@ -3256,9 +3259,10 @@
   const repoInput = document.getElementById('ghRepo');
   const saveMsg = document.getElementById('saveMsg');
 
+  const DEFAULT_GH_REPO = 'KaboTea/DEGICAtool';
   function loadSettings() {
     tokenInput.value = localStorage.getItem('digica_gh_token') || '';
-    repoInput.value = localStorage.getItem('digica_gh_repo') || 'KaboTea/digica-tool';
+    repoInput.value = localStorage.getItem('digica_gh_repo') || DEFAULT_GH_REPO;
   }
 
   openBtn.addEventListener('click', () => { loadSettings(); modal.classList.add('open'); });
@@ -3278,7 +3282,7 @@
     config() {
       return {
         token: localStorage.getItem('digica_gh_token') || '',
-        repo: localStorage.getItem('digica_gh_repo') || '',
+        repo: localStorage.getItem('digica_gh_repo') || DEFAULT_GH_REPO,
       };
     },
 
@@ -3981,6 +3985,9 @@
       return;
     }
     const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+    // 「# デッキ名」の行があればデッキ名にする(📤書き出しの形式)
+    const nameLine = lines.find(l => /^#\s*/.test(l));
+    if (nameLine) deckNameInput.value = nameLine.replace(/^#\s*/, '').trim();
     let addedCount = 0;
     let matchedLines = 0;
     const notFound = [];
@@ -4036,6 +4043,29 @@
     ], true);
   }
   document.getElementById('bulkImportDeckBtn').addEventListener('click', (e) => openBulkImportPopup(e));
+  function deckToText() {
+    const name = deckNameInput.value.trim() || '無題のデッキ';
+    const rows = [...Object.entries(deckState.eggs), ...Object.entries(deckState.main)].filter(([, c]) => c > 0).map(([n, c]) => `${n} x${c}`);
+    return [`# ${name}`, ...rows].join('\n');
+  }
+  document.getElementById('exportDeckBtn').addEventListener('click', async (e) => {
+    const text = deckToText();
+    if (text.split('\n').length <= 1) { flashDeckStatus('デッキにカードがありません'); return; }
+    let copied = false;
+    try { await navigator.clipboard.writeText(text); copied = true; } catch (err) { copied = false; }
+    openZonePopup(e, copied ? 'コピーしました。友達は「📋 一括インポート」に貼り付けて保存できます' : '下の文字をコピーして、友達に送ってください', [
+      {
+        custom: true,
+        render: (container) => {
+          container.style.cssText = 'display:flex;flex-direction:column;gap:8px;width:280px;max-width:100%;box-sizing:border-box;';
+          container.innerHTML = `<textarea readonly rows="10" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px;color:var(--text);font-size:12px;font-family:'JetBrains Mono',monospace;resize:vertical;"></textarea>`;
+          const ta = container.querySelector('textarea');
+          ta.value = text;
+          ta.addEventListener('focus', () => ta.select());
+        },
+      },
+    ], true);
+  });
 
   deckNameInput.addEventListener('input', updateDeckStatusHeader);
 
@@ -4087,6 +4117,38 @@
 
   let cachedDecks = [];
 
+  // ---------- デッキの保存先: 共有(GitHubのdecks/decks.json) と この端末(localStorage) ----------
+  // ・共有デッキは、トークン/リポジトリが未設定でも、サイトと同じ場所の decks/decks.json を読み込んで使える(読むだけ)。
+  //   保存・削除できるのはトークンを設定している人だけ。
+  // ・この端末のデッキは、トークンなしで誰でも保存できる(そのブラウザにだけ残る)。
+  const LOCAL_DECKS_KEY = 'digica_local_decks';
+  function canWriteSharedDecks() {
+    const { token, repo } = window.DigicaGitHub.config();
+    return !!(token && repo);
+  }
+  function loadLocalDecks() {
+    try {
+      const j = JSON.parse(localStorage.getItem(LOCAL_DECKS_KEY) || '{"decks":[]}');
+      return Array.isArray(j.decks) ? j.decks : [];
+    } catch (e) { return []; }
+  }
+  function saveLocalDecks(decks) {
+    try { localStorage.setItem(LOCAL_DECKS_KEY, JSON.stringify({ decks })); return true; } catch (e) { return false; }
+  }
+  async function loadSharedDecks() {
+    if (canWriteSharedDecks()) {
+      const { data } = await loadDecksFile();
+      return data.decks || [];
+    }
+    try {
+      const res = await fetch('decks/decks.json', { cache: 'no-store' });
+      if (!res.ok) return [];
+      const j = await res.json();
+      return Array.isArray(j.decks) ? j.decks : [];
+    } catch (e) { return []; }
+  }
+  const stripDeckMeta = (d) => { const o = Object.assign({}, d); delete o._src; return o; };
+
   function renderMyDeckList() {
     hideDeckPreview();
     if (cachedDecks.length === 0) {
@@ -4095,7 +4157,15 @@
     }
     myDeckList.innerHTML = '';
     const frag = document.createDocumentFragment();
+    let lastSrc = null;
     cachedDecks.forEach(d => {
+      if (d._src !== lastSrc) {
+        lastSrc = d._src;
+        const head = document.createElement('div');
+        head.className = 'my-deck-group';
+        head.textContent = d._src === 'local' ? '📱 この端末のデッキ' : `☁ 共有デッキ${canWriteSharedDecks() ? '' : '(見るだけ)'}`;
+        frag.appendChild(head);
+      }
       const eggCount = (d.eggs || []).reduce((s, c) => s + c.count, 0);
       const mainCount = (d.main || []).reduce((s, c) => s + c.count, 0);
       const row = document.createElement('div');
@@ -4105,10 +4175,11 @@
           <div class="mdi-name">${escapeHtml(d.name || '無題')}</div>
           <div class="mdi-meta mono">${mainCount}/50・${eggCount}/5・${escapeHtml(d.updated || '')}</div>
         </div>
-        <button type="button" class="mdi-delete" title="削除">✕</button>
+        ${d._src === 'shared' && !canWriteSharedDecks() ? '' : '<button type="button" class="mdi-delete" title="削除">✕</button>'}
       `;
       row.querySelector('.mdi-main').addEventListener('click', () => { hideDeckPreview(); loadDeckById(d.id); });
-      row.querySelector('.mdi-delete').addEventListener('click', (e) => {
+      const delBtn = row.querySelector('.mdi-delete');
+      if (delBtn) delBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         hideDeckPreview();
         deleteDeckById(d.id, d.name);
@@ -4123,13 +4194,14 @@
   }
 
   async function refreshMyDeckList() {
-    try {
-      const { data } = await loadDecksFile();
-      cachedDecks = data.decks || [];
-      renderMyDeckList();
-    } catch (e) {
-      console.error(e);
-    }
+    let shared = [];
+    try { shared = await loadSharedDecks(); } catch (e) { console.error(e); }
+    const local = loadLocalDecks();
+    cachedDecks = [
+      ...shared.map(d => Object.assign({}, d, { _src: 'shared' })),
+      ...local.map(d => Object.assign({}, d, { _src: 'local' })),
+    ];
+    renderMyDeckList();
   }
 
   function flashDeckStatus(msg) {
@@ -4138,7 +4210,7 @@
   }
 
   newDeckBtn.addEventListener('click', () => {
-    deckState = { id: null, eggs: {}, main: {} };
+    deckState = { id: null, eggs: {}, main: {}, src: null };
     deckNameInput.value = '';
     deckValidation.textContent = '';
     renderDeckLists();
@@ -4148,11 +4220,11 @@
 
   async function loadDeckById(id) {
     try {
-      const { data } = await loadDecksFile();
-      const found = (data.decks || []).find(d => d.id === id);
+      const found = cachedDecks.find(d => d.id === id);
       if (!found) return;
       deckState = {
         id: found.id,
+        src: found._src || null,
         eggs: Object.fromEntries((found.eggs || []).map(e => [e.number, e.count])),
         main: Object.fromEntries((found.main || []).map(e => [e.number, e.count])),
       };
@@ -4166,7 +4238,24 @@
   }
 
   async function deleteDeckById(id, name) {
+    const target = cachedDecks.find(d => d.id === id);
+    const isLocal = target ? target._src === 'local' : String(id).startsWith('local_');
+    if (!isLocal && !canWriteSharedDecks()) {
+      flashDeckStatus('共有デッキは削除できません(GitHubの設定をした人だけ削除できます)');
+      return;
+    }
     if (!confirm(`「${name || '無題'}」を削除しますか?この操作は取り消せません。`)) return;
+    if (isLocal) {
+      saveLocalDecks(loadLocalDecks().filter(d => d.id !== id));
+      if (deckState.id === id) {
+        deckState = { id: null, eggs: {}, main: {}, src: null };
+        deckNameInput.value = '';
+        renderDeckLists();
+      }
+      await refreshMyDeckList();
+      flashDeckStatus('削除しました');
+      return;
+    }
     try {
       const { data, sha } = await loadDecksFile();
       data.decks = (data.decks || []).filter(d => d.id !== id);
@@ -4197,8 +4286,39 @@
 
   saveDeckBtn.addEventListener('click', async () => {
     saveDeckBtn.disabled = true;
+    // 保存先: 共有デッキを編集中で書き込める → 共有 / この端末のデッキ → この端末 /
+    // 新規 → GitHub設定があれば共有、なければこの端末 / 共有デッキを書き込めない人が編集 → この端末にコピー
+    const writable = canWriteSharedDecks();
+    let toLocal = deckState.src === 'local' || (!deckState.src && !writable) || (deckState.src === 'shared' && !writable);
+    if (toLocal) {
+      try {
+        const copiedFromShared = deckState.src === 'shared';
+        const name = deckNameInput.value.trim() || '無題のデッキ';
+        const id = (deckState.src === 'local' && deckState.id) ? deckState.id : `local_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        const deckObj = {
+          id, name,
+          updated: new Date().toISOString().slice(0, 10),
+          eggs: Object.entries(deckState.eggs).map(([number, count]) => ({ number, count })),
+          main: Object.entries(deckState.main).map(([number, count]) => ({ number, count })),
+        };
+        const decks = loadLocalDecks();
+        const idx = decks.findIndex(d => d.id === id);
+        if (idx >= 0) decks[idx] = deckObj; else decks.push(deckObj);
+        if (!saveLocalDecks(decks)) throw new Error('この端末に保存できませんでした(ブラウザの保存領域が使えない可能性があります)');
+        deckState.id = id;
+        deckState.src = 'local';
+        flashDeckStatus(copiedFromShared ? '共有デッキは編集できないため、この端末にコピーとして保存しました' : 'この端末に保存しました');
+        await refreshMyDeckList();
+      } catch (e) {
+        deckValidation.textContent = `保存エラー: ${e.message}`;
+      } finally {
+        saveDeckBtn.disabled = false;
+      }
+      return;
+    }
     try {
       const { data, sha } = await loadDecksFile();
+      data.decks = (data.decks || []).map(stripDeckMeta);
       const name = deckNameInput.value.trim() || '無題のデッキ';
       const deckObj = {
         id: deckState.id || (window.crypto && crypto.randomUUID ? crypto.randomUUID() : `deck_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`),
@@ -4211,6 +4331,7 @@
       const idx = data.decks.findIndex(d => d.id === deckObj.id);
       if (idx >= 0) data.decks[idx] = deckObj; else data.decks.push(deckObj);
       deckState.id = deckObj.id;
+      deckState.src = 'shared';
 
       const content = JSON.stringify(data);
       const message = `デッキ保存: ${name}`;
@@ -4351,7 +4472,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.36.3`);
+    log(`DigiCA Tool build v0.37.1`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -4561,7 +4682,7 @@
       cachedDecks.forEach(d => {
         const opt = document.createElement('option');
         opt.value = d.id;
-        opt.textContent = d.name || '無題';
+        opt.textContent = (d.name || '無題') + (d._src === 'local' ? '(この端末)' : '');
         sel.appendChild(opt);
       });
       if (prevValue) sel.value = prevValue;
