@@ -1,0 +1,61 @@
+name: カードDBを公式サイトから更新
+
+on:
+  schedule:
+    # 毎週土曜 6:00(日本時間) = 金曜 21:00(UTC)。新弾の発売日(だいたい土曜)の朝に見に行く
+    - cron: '0 21 * * 5'
+  workflow_dispatch:
+    inputs:
+      full_scan:
+        description: '全商品を見直す(通常はOFFでOK)'
+        type: boolean
+        default: false
+      dry_run:
+        description: '確認だけ(db.jsonを書き換えない)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-db
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 依存パッケージを入れる
+        run: npm install --no-save --no-package-lock cheerio@1.0.0
+
+      - name: 公式サイトから未登録のカードを取得
+        run: node scripts/update-db-official.mjs
+        env:
+          FULL_SCAN: ${{ inputs.full_scan && '1' || '' }}
+          DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
+
+      - name: 変更があればコミット
+        if: ${{ !inputs.dry_run }}
+        run: |
+          if git diff --quiet -- cards/ && [ -z "$(git ls-files --others --exclude-standard cards/)" ]; then
+            echo "変更なし"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add cards/db.json cards/official-sync.json
+          if git diff --cached --quiet -- cards/db.json; then
+            MSG="DB自動更新: チェック記録のみ"
+          else
+            MSG="DB自動更新: 公式サイトから新しいカードを追加"
+          fi
+          git commit -m "$MSG"
+          git push
