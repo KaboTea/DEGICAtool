@@ -2818,7 +2818,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.37.2</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.37.4</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -4507,7 +4507,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.37.2`);
+    log(`DigiCA Tool build v0.37.4`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -7646,6 +7646,18 @@
     const own = collectStackTriggers(info.pseudo, info.pi, 'battle', ['消滅時'], { event: '消滅' }).map(e => Object.assign(e, { lki: true, lkiUid: info.uid, stackUid: null }));
     engineFireEvents([info.event], own, { extraHolders: [{ stack: info.pseudo, pi: info.pi, uid: info.uid }] });
   }
+  // 手札のカードが、そのデジモンの上に進化できるか(進化画面と同じ判定: 基本条件のLv/色と、判定できる特殊条件)
+  function canEvolveOntoStack(card, stack) {
+    if (!card || !stack || !isDigimonLikeStack(stack)) return false;
+    const top = getStackTopCard(stack);
+    if (!top) return false;
+    if (['BT12-013', 'BT12-012'].includes(card.number)) return true; // 進化画面でも自動判定しないカード
+    return buildEvolveRoutes(card, top).some(r => !r.sub || evaluateSpecialCondition(r.sub, top, stack) !== false);
+  }
+  function blastEvolveTargets(card, pi) {
+    const p = practiceState.players[pi];
+    return p.battle.filter(s => canEvolveOntoStack(card, s));
+  }
   // カウンタータイミング: 相手(非ターンプレイヤー)の【カウンター】を候補にする(場と［手札］)
   function collectCounterCandidates(defenderPi) {
     const p = practiceState.players[defenderPi];
@@ -7661,6 +7673,8 @@
       c.effect.split('\n').forEach((line, lineIndex) => {
         const parsed = parseEffectLine(line);
         if (!/手札/.test(parsed.prefix) || !parsed.labels.includes('カウンター')) return;
+        // ≪ブラスト進化≫は、進化できる自分のデジモンがいるときだけ候補に出す
+        if (parsed.text.includes('≪ブラスト進化≫') && !blastEvolveTargets(c, defenderPi).length) return;
         res.push({
           ownerIndex: defenderPi, stackUid: null, zone: 'hand', cardNumber: num, cardName: c.name,
           field: 'effect', sourceLabel: '手札', lineIndex, text: parsed.text, timing: 'カウンター', event: 'カウンター',
@@ -8007,6 +8021,32 @@
     }
     return list;
   }
+  // ≪ブラスト進化≫: 進化できる自分のデジモンを選び、手札のこのカードにコストなしで進化させる(進化なので1ドロー)
+  function openBlastEvolvePicker(e, card) {
+    if (!card || !practiceState) return;
+    const targets = blastEvolveTargets(card, e.ownerIndex);
+    if (!targets.length) { showToast('ブラスト進化できる自分のデジモンがいません', true); return; }
+    const doEvolve = (stack) => {
+      const owner = practiceState.players[e.ownerIndex];
+      const idx = owner.hand.findIndex(x => cardEntryNum(x) === card.number);
+      if (idx < 0) { showToast('手札にこのカードがありません', true); return; }
+      snapshotPracticeState();
+      owner.hand.splice(idx, 1);
+      if (stack.burstEvolved) stack.burstEvolved = false;
+      stack.cards.push(card.number);
+      if (owner.library.length > 0) owner.hand.push(owner.library.shift()); // 進化解決時に1ドロー
+      resetKeywordStateOnEvolve(stack, owner);
+      renderPracticeBoard();
+      showToast(`⚡ ≪ブラスト進化≫: 「${card.name}」に進化しました(コストなし・1ドロー)`);
+      const q = getEffectQueue();
+      if (q.current && q.current.id === e.id) finishCurrentEffect(false);
+    };
+    if (targets.length === 1) { doEvolve(targets[0]); return; }
+    openZonePopup(centerPoint(), `「${card.name}」にブラスト進化させるデジモンを選んでください`, [
+      ...targets.map(st => ({ label: `${(getStackTopCard(st) || {}).name || '?'}(DP${getEffectiveDP(st)})`, onClick: () => doEvolve(st) })),
+      { label: 'キャンセル', onClick: () => resumeAttackStepIfAny() },
+    ], true);
+  }
   // 効果1行に対して用意できる「⚡自動処理」(既に自動化済みの処理)を列挙する
   function getEffectHandlers(e) {
     if (e.timing === 'ディレイ') {
@@ -8015,6 +8055,10 @@
       if (rm) list.push({ label: `📖 デッキの上から${rm[1]}枚オープン`, run: () => revealTopAndSort(parseInt(rm[1], 10)) });
       list.push(...drawHandlersFor(e));
       return list;
+    }
+    if (e.zone === 'hand' && (e.text || '').includes('≪ブラスト進化≫')) {
+      const card = cardIndexByNumber.get(e.cardNumber);
+      return [{ label: '⚡ ブラスト進化する', run: () => openBlastEvolvePicker(e, card) }, ...memoryHandlersFor(e), ...drawHandlersFor(e)];
     }
     const f = findStackByUid(e.stackUid);
     // 進化元効果・リンク効果・消滅時(場を離れた後)・手札の効果などでも、ドローだけは使えるようにする
@@ -11723,8 +11767,12 @@
     const allowEvasion = !opts || opts.allowEvasion !== false;
     const battleContext = !!(opts && opts.battleContext);
     const queue = stacks.slice();
+    // この確認ポップアップは「アタック中に他の操作で閉じても出し直す」ために lastAttackStepFn に登録するが、
+    // 消滅処理を選んだ後まで残っていると、処理中の再描画で同じポップアップが出し直されて残ってしまう。
+    // ボタンを押した時点で登録を外し、全部終わったら元のステップに戻す。
+    const prevStep = lastAttackStepFn;
     const next = () => {
-      if (queue.length === 0) { afterAll(); return; }
+      if (queue.length === 0) { lastAttackStepFn = prevStep; afterAll(); return; }
       const stack = queue.shift();
       // 相打ちの片方が、既に別の効果等で場を離れている場合はスキップする。
       const ownerZone = findStackOwnerAndZone(stack);
@@ -11768,8 +11816,14 @@
       const promptText = allowEvasion
         ? `「${name}」が消滅します。回避する効果があれば選んでください(無ければそのまま消滅させてください)`
         : `「${name}」が消滅します(DPのマイナスは回避しても引き継がれ再度消滅するため、回避系の選択肢は表示していません)`;
-      lastAttackStepFn = () => openZonePopup(centerPoint(), promptText, actions, true);
-      lastAttackStepFn();
+      const wrapped = actions.map(a => Object.assign({}, a, { onClick: (...args) => { lastAttackStepFn = null; return a.onClick(...args); } }));
+      const show = () => {
+        // 既に場を離れていたら(別の処理で消滅済み等)出さずに次へ
+        if (!findStackOwnerAndZone(stack)) { lastAttackStepFn = null; next(); return; }
+        openZonePopup(centerPoint(), promptText, wrapped, true);
+      };
+      lastAttackStepFn = show;
+      show();
     };
     next();
   }
@@ -12127,7 +12181,14 @@
     };
     next();
   }
+  let destructionPromptStack = null; // 今表示中の「DP0以下で消滅」確認の対象
   function promptDestructionChoice(stack, afterDone, reason) {
+    // 既に場にいなければ何もしない/同じデジモンの確認が今まさに表示中なら二重に出さない
+    if (!findStackOwnerAndZone(stack) || (destructionPromptStack === stack && zonePopupEl.classList.contains('open'))) {
+      (afterDone || resumeAttackStepIfAny)();
+      return;
+    }
+    destructionPromptStack = stack;
     const topCard = getStackTopCard(stack);
     const centerEvent = { clientX: window.innerWidth / 2 - 130, clientY: 70 };
     const after = afterDone || resumeAttackStepIfAny;
