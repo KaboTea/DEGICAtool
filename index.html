@@ -2820,7 +2820,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.38.1</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.39.0</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -4509,7 +4509,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.38.1`);
+    log(`DigiCA Tool build v0.39.0`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -8141,13 +8141,179 @@
     }
     return [{ label: '🎯 アタックの対象を変更', run: () => openRetargetPicker(e.ownerIndex, /プレイヤー/.test(desc), () => {}) }];
   }
+  // ---------- 対象を選んで処理するボタン(DP±・消滅・退化・レスト・アクティブ) ----------
+  // 効果文の「(条件の)相手/自分のデジモン(テイマー)N体(まで)/全てを〜」を読み取り、条件に合う対象だけを候補に出す。
+  // 名称・特徴・色・DP/Lv/登場コストの上限・最もDPの低い等の条件に対応。読み取れない条件は判定しない(候補が多めに出る)。
+  const TARGET_RE = /([^、。]*?)(相手|自分)の((?:デジモン|テイマー)(?:\/(?:デジモン|テイマー))?)(?:(\d+)体(まで)?|全て)を/g;
+  function parseTargetActions(text) {
+    const t = engineStripNotes(text || '').replace(/[＋]/g, '+').replace(/[－]/g, '-');
+    const out = [];
+    t.split('。').forEach(sent => {
+      let m;
+      TARGET_RE.lastIndex = 0;
+      while ((m = TARGET_RE.exec(sent))) {
+        const rest = sent.slice(m.index + m[0].length);
+        let action = null;
+        let am;
+        if ((am = /^DP([+\-]\d+)/.exec(rest))) action = { type: 'dp', amount: parseInt(am[1], 10) };
+        else if (/^消滅(させ|でき)/.test(rest)) action = { type: 'destroy' };
+        else if ((am = /^≪退化(\d+)≫/.exec(rest))) action = { type: 'degen', n: parseInt(am[1], 10) };
+        else if (/^レスト(させ|でき)/.test(rest)) action = { type: 'rest' };
+        else if (/^アクティブに(する|でき)/.test(rest)) action = { type: 'active' };
+        if (!action) continue;
+        const before = sent.slice(0, m.index + m[1].length);
+        const duration = /相手のターン終了まで/.test(before) ? 'untilOpponentTurnEnd' : (/ターン終了まで/.test(before) ? 'thisTurn' : 'permanent');
+        const prefix = m[1];
+        out.push({
+          action, duration, prefix,
+          side: m[2] === '相手' ? 'opp' : 'own',
+          kinds: m[3].split('/').map(k => (k === 'デジモン' ? 'digimon' : 'tamer')),
+          count: m[4] ? parseInt(m[4], 10) : Infinity,
+          upTo: !!m[5],
+          phrase: `${m[2]}の${m[3]}${m[4] ? m[4] + '体' : '全て'}`,
+        });
+      }
+    });
+    return out;
+  }
+  function targetCandidates(ta, ownerIndex, excludeStack) {
+    const sidePi = ta.side === 'opp' ? 1 - ownerIndex : ownerIndex;
+    const p = practiceState.players[sidePi];
+    const pre = ta.prefix || '';
+    const num = (re) => { const x = re.exec(pre); return x ? parseInt(x[1], 10) : null; };
+    const dpMax = num(/DP(\d+)以下/), dpMin = num(/DP(\d+)以上/), lvMax = num(/Lv\.(\d+)以下/), lvMin = num(/Lv\.(\d+)以上/);
+    const costMax = num(/登場コスト(\d+)以下/), costMin = num(/登場コスト(\d+)以上/);
+    const subj = { filters: parseSubjectFilters(pre), colors: parseSubjectColors(pre + '自分') };
+    const lvEq = /Lv\.\d+(以下|以上)/.test(pre) ? null : num(/Lv\.(\d+)の/);
+    let list = p.battle.filter(s => {
+      const top = getStackTopCard(s);
+      if (!top) return false;
+      const isTamer = top.category === 'tamer' && !s.actingAsDigimon;
+      const isDigi = isDigimonLikeStack(s);
+      if (!((ta.kinds.includes('digimon') && isDigi) || (ta.kinds.includes('tamer') && isTamer))) return false;
+      if (/他の/.test(pre) && s === excludeStack) return false;
+      const dp = getEffectiveDP(s);
+      if (dpMax != null && !(isDigi && dp <= dpMax)) return false;
+      if (dpMin != null && !(isDigi && dp >= dpMin)) return false;
+      if (lvMax != null && !(top.level != null && top.level <= lvMax)) return false;
+      if (lvMin != null && !(top.level != null && top.level >= lvMin)) return false;
+      if (lvEq != null && top.level !== lvEq) return false;
+      if (costMax != null && !(top.play_cost != null && top.play_cost <= costMax)) return false;
+      if (costMin != null && !(top.play_cost != null && top.play_cost >= costMin)) return false;
+      if (/レスト状態の/.test(pre) && !s.rested) return false;
+      if (/アクティブ状態の/.test(pre) && s.rested) return false;
+      if (!cardMatchesSubject(top, subj)) return false;
+      return true;
+    });
+    const pickExtreme = (val, wantMin) => {
+      if (!list.length) return;
+      const vals = list.map(val).filter(v => v != null);
+      if (!vals.length) return;
+      const target = wantMin ? Math.min(...vals) : Math.max(...vals);
+      list = list.filter(s => val(s) === target);
+    };
+    if (/最もDPの低い/.test(pre)) pickExtreme(s => getEffectiveDP(s), true);
+    if (/最もDPの高い/.test(pre)) pickExtreme(s => getEffectiveDP(s), false);
+    if (/最もLv\.の低い/.test(pre)) pickExtreme(s => (getStackTopCard(s) || {}).level, true);
+    if (/最もLv\.の高い/.test(pre)) pickExtreme(s => (getStackTopCard(s) || {}).level, false);
+    if (/最も登場コストの低い/.test(pre)) pickExtreme(s => (getStackTopCard(s) || {}).play_cost, true);
+    if (/最も登場コストの高い/.test(pre)) pickExtreme(s => (getStackTopCard(s) || {}).play_cost, false);
+    return list;
+  }
+  function applyEffectDP(stack, delta, duration, ownerIndex) {
+    if (delta < 0) warnIfResistant(stack, ['noDpMinus'], 'DPマイナス');
+    if (!duration || duration === 'permanent') stack.dpModifier = (stack.dpModifier || 0) + delta;
+    else {
+      if (!stack.tempDPModifiers) stack.tempDPModifiers = [];
+      stack.tempDPModifiers.push({ amount: delta, expireAtTurnCount: computeExpireAtTurnCount(duration, ownerIndex) });
+    }
+  }
+  function runTargetAction(ta, e, targets) {
+    if (!targets.length) return;
+    const names = targets.map(s => (getStackTopCard(s) || {}).name || '?').join('、');
+    const a = ta.action;
+    if (a.type === 'destroy') {
+      targets.forEach(s => warnIfResistant(s, ['noDestroyByEffect'], '消滅'));
+      resolveDestructionQueue(targets.slice(), () => { renderPracticeBoard(); });
+      return;
+    }
+    snapshotPracticeState();
+    if (a.type === 'dp') {
+      targets.forEach(s => applyEffectDP(s, a.amount, ta.duration, e.ownerIndex));
+      renderPracticeBoard();
+      const durLabel = ta.duration === 'thisTurn' ? '(ターン終了まで)' : ta.duration === 'untilOpponentTurnEnd' ? '(相手のターン終了まで)' : '';
+      showToast(`🎯 ${names} をDP${a.amount > 0 ? '+' : ''}${a.amount}${durLabel}`);
+      const dead = targets.filter(s => findStackOwnerAndZone(s) && getEffectiveDP(s) <= 0);
+      if (dead.length) checkAllBattleAreaRuleViolations();
+      return;
+    }
+    if (a.type === 'degen') {
+      const noEffect = targets.filter(s => s.cards.length <= 1);
+      if (noEffect.length) showToast(`${noEffect.map(s => (getStackTopCard(s) || {}).name || '?').join('、')} は進化元がないため退化しません`, true);
+      targets.forEach(s => {
+        warnIfResistant(s, ['noDegen'], '退化');
+        for (let i = 0; i < a.n && s.cards.length > 1; i++) {
+          const owner = findStackOwnerAndZone(s);
+          if (!owner) break;
+          const [removed] = s.cards.splice(s.cards.length - 1, 1);
+          owner.player.trash.push(cardEntryNum(removed));
+          checkOverflow(cardEntryNum(removed), owner.player);
+        }
+      });
+      renderPracticeBoard();
+      showToast(`🎯 ${names} を≪退化${a.n}≫`);
+      targets.forEach(s => { if (findStackOwnerAndZone(s)) checkStackRuleViolation(s); });
+      return;
+    }
+    if (a.type === 'rest' || a.type === 'active') {
+      targets.forEach(s => {
+        if (a.type === 'rest' && hasLock(s, 'noRest')) showToast(`🔒「${(getStackTopCard(s) || {}).name}」はレストできないロックが付いています`, true);
+        if (a.type === 'active' && hasLock(s, 'noActive')) showToast(`🔒「${(getStackTopCard(s) || {}).name}」はアクティブにならないロックが付いています`, true);
+        warnIfResistant(s, [], a.type === 'rest' ? 'レスト' : 'アクティブ');
+        s.rested = a.type === 'rest';
+      });
+      renderPracticeBoard();
+      showToast(`🎯 ${names} を${a.type === 'rest' ? 'レスト' : 'アクティブに'}しました`);
+    }
+  }
+  function openTargetPicker(ta, e, holderStack) {
+    const cands = targetCandidates(ta, e.ownerIndex, holderStack);
+    if (!cands.length) { showToast('条件に合う対象がいません(条件の一部は自動判定していません)', true); return; }
+    if (ta.count === Infinity) { runTargetAction(ta, e, cands); return; }
+    const chosen = [];
+    const label = targetActionLabel(ta);
+    const step = () => {
+      const remain = cands.filter(s => !chosen.includes(s) && findStackOwnerAndZone(s));
+      if (chosen.length >= ta.count || !remain.length) { runTargetAction(ta, e, chosen); return; }
+      const actions = remain.map(s => {
+        const c = getStackTopCard(s);
+        return { label: `${c ? c.name : '?'}(DP${getEffectiveDP(s)}${s.rested ? '・レスト' : ''})`, onClick: () => { chosen.push(s); step(); } };
+      });
+      if (chosen.length) actions.push({ label: `これで決定(${chosen.length}体)`, onClick: () => runTargetAction(ta, e, chosen) });
+      actions.push({ label: 'キャンセル', onClick: () => resumeAttackStepIfAny() });
+      openZonePopup(centerPoint(), `${label}: 対象を選んでください${ta.count > 1 ? `(${chosen.length}/${ta.count}${ta.upTo ? 'まで' : ''})` : ''}`, actions, true);
+    };
+    step();
+  }
+  function targetActionLabel(ta) {
+    const a = ta.action;
+    const what = a.type === 'dp' ? `DP${a.amount > 0 ? '+' : ''}${a.amount}` : a.type === 'destroy' ? '消滅' : a.type === 'degen' ? `≪退化${a.n}≫` : a.type === 'rest' ? 'レスト' : 'アクティブ';
+    const pre = (ta.prefix || '').replace(/【[^】]*】/g, '').replace(/[［\[][^］\]]*[］\]]/g, '').replace(/^[・\s]+/, '').trim();
+    return `${pre ? pre : ''}${ta.phrase}を${what}`;
+  }
+  function targetHandlersFor(e, holderStack) {
+    return parseTargetActions(e.text).map(ta => ({
+      label: `🎯 ${targetActionLabel(ta)}`.slice(0, 40),
+      run: () => openTargetPicker(ta, e, holderStack),
+    }));
+  }
   // 効果1行に対して用意できる「⚡自動処理」(既に自動化済みの処理)を列挙する
   function getEffectHandlers(e) {
     if (e.timing === 'ディレイ') {
       const list = [...memoryHandlersFor(e)];
       const rm = /自分のデッキの上から(\d+)枚オープン/.exec(e.text);
       if (rm) list.push({ label: `📖 デッキの上から${rm[1]}枚オープン`, run: () => revealTopAndSort(parseInt(rm[1], 10)) });
-      list.push(...drawHandlersFor(e));
+      list.push(...targetHandlersFor(e, null), ...drawHandlersFor(e));
       return list;
     }
     if (e.zone === 'hand' && (e.text || '').includes('≪ブラスト進化≫')) {
@@ -8156,7 +8322,7 @@
     }
     const f = findStackByUid(e.stackUid);
     // 進化元効果・リンク効果・消滅時(場を離れた後)・手札の効果などでも、ドローだけは使えるようにする
-    if (!f || e.field !== 'effect') return [...retargetHandlersFor(e, f && f.stack), ...memoryHandlersFor(e), ...drawHandlersFor(e)];
+    if (!f || e.field !== 'effect') return [...targetHandlersFor(e, f && f.stack), ...retargetHandlersFor(e, f && f.stack), ...memoryHandlersFor(e), ...drawHandlersFor(e)];
     const stack = f.stack;
     const line = e.text;
     const list = [];
@@ -8182,7 +8348,7 @@
         } });
       }
     }
-    list.push(...retargetHandlersFor(e, stack), ...memoryHandlersFor(e), ...drawHandlersFor(e));
+    list.push(...targetHandlersFor(e, stack), ...retargetHandlersFor(e, stack), ...memoryHandlersFor(e), ...drawHandlersFor(e));
     if (checkAutoSelfEvolveDPTrigger(stack, e.timing, line, true)) {
       list.push({ label: '⚡ このデジモンのDP増減', run: () => { checkAutoSelfEvolveDPTrigger(stack, e.timing, line); renderPracticeBoard(); } });
     }
