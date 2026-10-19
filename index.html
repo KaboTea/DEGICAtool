@@ -1607,6 +1607,8 @@
     opacity: 1;
     transform: translateX(-50%) translateY(0);
   }
+  /* 場のカードを選ぶモード中は、画面下のバナーに重ならないようトーストをその上に出す */
+  body.field-picking .toast { bottom: var(--fpb-h, 120px); }
   /* ========================================================================
      対戦アリーナ風デザイン(プレイ画面のみ)。
      他タブの見た目に影響しないよう、すべて #practiceBoardPanel 配下にスコープする。
@@ -2213,6 +2215,50 @@
   #practiceBoardPanel .hab-btn.danger { color: #ffb3c0; border-color: rgba(var(--opp-rgb),0.55); background: rgba(var(--opp-rgb),0.1); }
   #practiceBoardPanel .hab-btn.danger:hover { background: rgba(var(--opp-rgb),0.28); }
 
+  /* ---- 場のカードを選ぶモード(カード自体をタップして選ぶ) ---- */
+  #practiceBoardPanel .field-pick-banner {
+    position: fixed;
+    left: 50%;
+    bottom: 14px;
+    transform: translateX(-50%);
+    z-index: 140;
+    width: min(600px, calc(100vw - 24px));
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    padding: 9px 11px;
+    border-radius: 12px;
+    background: linear-gradient(180deg, rgba(16,19,32,0.97), rgba(8,10,18,0.97));
+    border: 1px solid rgba(var(--gold-rgb),0.85);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.6), 0 0 22px rgba(var(--gold-rgb),0.3);
+    animation: fpbIn .25s ease-out;
+  }
+  @keyframes fpbIn { from { transform: translate(-50%, 16px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
+  #practiceBoardPanel .field-pick-banner[hidden] { display: none; }
+  #practiceBoardPanel .fpb-text { font-size: 12.5px; font-weight: 700; color: #fff; line-height: 1.45; }
+  #practiceBoardPanel .fpb-text .fpb-sub { display: block; font-size: 11px; font-weight: 500; color: rgba(255,255,255,0.7); }
+  #practiceBoardPanel .fpb-text .fpb-count { color: var(--gold); margin-left: 4px; }
+  #practiceBoardPanel .fpb-btns { display: flex; flex-wrap: wrap; gap: 6px; }
+  #practiceBoardPanel .fpb-btns button {
+    font-size: 11.5px; padding: 6px 10px; border-radius: 6px; cursor: pointer;
+    border: 1px solid rgba(255,255,255,0.22); background: rgba(255,255,255,0.06); color: #e8ecf5;
+  }
+  #practiceBoardPanel .fpb-btns button:hover { background: rgba(255,255,255,0.14); }
+  #practiceBoardPanel .fpb-btns button.primary { background: linear-gradient(180deg, rgba(var(--gold-rgb),1), rgba(var(--gold-rgb),0.8)); color: #1a1204; border-color: transparent; font-weight: 700; }
+  #practiceBoardPanel .fpb-btns button.toggle.on { border-color: #67e8f9; color: #a5f3fc; background: rgba(103,232,249,0.12); }
+  #practiceBoardPanel .fpb-btns button.cancel { margin-left: auto; color: #ffb3c0; border-color: rgba(var(--opp-rgb),0.55); }
+  /* タイル自体には登場演出のアニメーション(opacity/filter)が残ることがあるため、中身の方を暗くする */
+  #practiceBoardPanel .stack-tile.pick-dim > * { opacity: 0.35; filter: grayscale(0.7); }
+  #practiceBoardPanel .stack-tile.pick-extra .stack-layer:last-child { border-color: #67e8f9 !important; box-shadow: 0 0 0 2px rgba(0,0,0,0.6), 0 0 0 4px #67e8f9, 0 0 18px rgba(103,232,249,0.6) !important; }
+  #practiceBoardPanel .stack-tile.pick-selected .stack-layer:last-child { border-color: #4ade80 !important; box-shadow: 0 0 0 2px rgba(0,0,0,0.6), 0 0 0 4px #4ade80, 0 0 24px rgba(74,222,128,0.8) !important; animation: none; }
+  #practiceBoardPanel .stack-tile.pick-selected::after {
+    content: '✓'; position: absolute; top: -8px; right: -8px; z-index: 30;
+    width: 22px; height: 22px; border-radius: 50%; background: #22c55e; color: #04140a;
+    font-weight: 900; font-size: 14px; display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 0 0 2px rgba(0,0,0,0.6);
+  }
+
   /* ---- 効果処理パネル ---- */
   #practiceBoardPanel .effect-panel {
     position: sticky;
@@ -2266,6 +2312,7 @@
   #practiceBoardPanel .ep-timing { font-size: 12px; font-weight: 800; color: var(--gold); }
   #practiceBoardPanel .ep-src { font-size: 10px; color: rgba(255,255,255,0.6); border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; padding: 0 5px; }
   #practiceBoardPanel .ep-src.ev { color: #fde68a; border-color: rgba(253,230,138,0.45); }
+  #practiceBoardPanel .ep-ref-note { font-size: 11px; color: #a5f3fc; margin-top: 4px; }
   #practiceBoardPanel .ep-name { font-size: 12px; font-weight: 700; color: #fff; }
   #practiceBoardPanel .ep-text { font-size: 13px; line-height: 1.6; color: #e9edf6; white-space: pre-wrap; }
   #practiceBoardPanel .ep-text.small { font-size: 12px; color: rgba(233,237,246,0.85); }
@@ -2820,7 +2867,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.39.0</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.40.0</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -2979,6 +3026,12 @@
       <div class="evolve-mode-banner" id="evolveModeBanner">
         <span id="evolveModeText"></span>
         <button type="button" id="evolveModeCancel">キャンセル</button>
+      </div>
+
+      <!-- 場のカードを選ぶモード: 対象のカード自体をタップして選ぶ(画面下に固定表示) -->
+      <div class="field-pick-banner" id="fieldPickBanner" hidden>
+        <div class="fpb-text" id="fieldPickText"></div>
+        <div class="fpb-btns" id="fieldPickBtns"></div>
       </div>
 
       <!-- 相手側(奥) -->
@@ -4509,7 +4562,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.39.0`);
+    log(`DigiCA Tool build v0.40.0`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -5421,16 +5474,17 @@
       showToast('身代わりにできる他の自分のデジモンがいないため≪スケープゴート≫は使えません', true);
       return;
     }
-    openZonePopup(centerPoint(), '身代わりにするデジモンを選んでください(≪スケープゴート≫)', candidates.map(s => {
-      const c = getStackTopCard(s);
-      return {
-        label: c ? c.name : '?',
-        onClick: () => {
-          showToast(`🐐 ≪スケープゴート≫: 「${c ? c.name : '?'}」を身代わりにします`);
-          resolveFinalDestruction(s, next);
-        },
-      };
-    }), true);
+    startFieldPick({
+      title: '≪スケープゴート≫: 身代わりにする自分のデジモンをタップ',
+      candidates,
+      noCancel: true,
+      onDone: (sel) => {
+        const s = sel[0];
+        if (!s) return;
+        showToast(`🐐 ≪スケープゴート≫: 「${stackLabel(s)}」を身代わりにします`);
+        resolveFinalDestruction(s, next);
+      },
+    });
   }
 
   // ≪デコイ≫(16-18)・≪守護≫(16-45): どちらも「他の自分のデジモンに何かが起きるとき、
@@ -5509,11 +5563,13 @@
       showToast('消滅させられる自分の他のデジモン(トークン等)がいません', true);
       return;
     }
-    openZonePopup(centerPoint(), '消滅させるデジモン(トークン等)を選んでください(≪オーバークロック≫)', candidates.map(s => {
-      const c = getStackTopCard(s);
-      return {
-        label: c ? c.name : '?',
-        onClick: () => {
+    startFieldPick({
+      title: '≪オーバークロック≫: 消滅させる自分のデジモン(トークン等)をタップ',
+      candidates,
+      onDone: (sel) => {
+        const s = sel[0];
+        if (!s) return;
+        {
           resolveFinalDestruction(s, () => {
             const defenderOwner = practiceState.players[1 - practiceState.viewingIndex];
             snapshotPracticeState();
@@ -5527,9 +5583,9 @@
             showToast('⚙️ ≪オーバークロック≫: レストせずプレイヤーへアタックします');
             showAttackTriggerStep();
           });
-        },
-      };
-    }), true);
+        }
+      },
+    });
   }
 
   // ≪進撃≫(16-16): 「メモリーが相手側の1以上なら、このデジモンでアタックできる」。
@@ -5923,10 +5979,12 @@
               } else if (tamers.length === 1) {
                 placeUnder(tamers[0]);
               } else {
-                openZonePopup(centerPoint(), 'どのテイマーの下に置きますか?', tamers.map(s => {
-                  const c = getStackTopCard(s);
-                  return { label: c ? c.name : '?', onClick: () => placeUnder(s) };
-                }), true);
+                startFieldPick({
+                  title: '≪マテリアルセーブ≫: 下に置くテイマーをタップ',
+                  candidates: tamers,
+                  noCancel: true,
+                  onDone: (sel) => { if (sel[0]) placeUnder(sel[0]); },
+                });
               }
             }
           ),
@@ -6368,6 +6426,9 @@
   });
 
   function buildStackTile(stack, onClick, isEvolveTarget) {
+    // 場のカードを選ぶモード中は、進化先選択などより優先して「選べるカードだけ光らせてタップで選ぶ」
+    const pick = fieldPickMode ? fieldPickTileState(stack) : null;
+    if (pick) isEvolveTarget = false;
     const el = document.createElement('div');
     const MAX_LAYERS = 10;
     const layers = stack.cards.slice(-MAX_LAYERS); // bottom-to-top order, capped
@@ -6378,7 +6439,8 @@
     const fanUp = false;
     const OFFSET_STEP = 24;
     const maxOffset = (layers.length - 1) * OFFSET_STEP;
-    el.className = 'stack-tile' + (stack.rested ? ' rested' : '') + (isEvolveTarget ? ' target-pick' : '') + (stack.burstEvolved ? ' burst-evolved' : '');
+    el.className = 'stack-tile' + (stack.rested ? ' rested' : '') + (isEvolveTarget ? ' target-pick' : '') + (stack.burstEvolved ? ' burst-evolved' : '') +
+      (pick ? (pick.selectable ? ' target-pick' + (pick.extra ? ' pick-extra' : '') + (pick.selected ? ' pick-selected' : '') : ' pick-dim') : '');
     el.dataset.fxid = getFxId(stack); // 演出(FX)用に、再描画をまたいで同じスタックを特定するID
     el.style.padding = fanUp ? `${maxOffset}px 0 0 0` : `0 0 ${maxOffset}px 0`;
     if (stack.links && stack.links.length > 0) {
@@ -6454,7 +6516,10 @@
         openZonePopup(e, 'その他のキーワード効果', kwRest.map(def => ({ label: `${def.icon} ${def.label}`, onClick: () => {} })));
       });
     }
-    if (isEvolveTarget) {
+    if (pick && pick.selectable) {
+      el.title = pick.selected ? 'タップで選択を外す' : 'タップして選択';
+      el.addEventListener('click', (e) => { e.stopPropagation(); fieldPickClick(stack); });
+    } else if (isEvolveTarget) {
       el.title = 'クリックして選択';
       el.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -7496,8 +7561,12 @@
   // 主語の「名称/特徴/記述/カード名」条件を読み取る(いずれか1つでも合えばよい)
   function parseSubjectFilters(subj) {
     const groups = [];
-    const re = /(名称に|特徴に|特徴)?((?:「[^」]+」\/?)+)(を含む|を持つ|の記述がある)?/g;
+    // 「「A」/「B」」「「A」か「B」」のような並びは、どれか1つに合えばよい
+    const re = /(名称に|特徴に|特徴)?((?:「[^」]+」(?:\/|か(?=「))?)+)(を含む|を持つ|の記述がある)?/g;
     let m;
+    // ≪セーブ≫の記述がある(「≪X≫を持つ」は付与も含めてスタック側で判定するため、ここでは扱わない)
+    const kwNames = [...subj.matchAll(/≪([^≫]+)≫の記述がある/g)].map(x => x[1]);
+    if (kwNames.length) groups.push({ kind: 'kwMention', names: kwNames });
     while ((m = re.exec(subj))) {
       const names = (m[2].match(/「([^」]+)」/g) || []).map(x => x.slice(1, -1));
       if (!names.length) continue;
@@ -7529,6 +7598,7 @@
         case 'traitInc': return traits.some(t => t.includes(n));
         case 'traitExact': return traits.includes(n);
         case 'mention': return card.name === n || text.includes(`「${n}」`);
+        case 'kwMention': return text.includes(`≪${n}`);
         default: return card.name === n || alsoNamed(n);
       }
     }));
@@ -7993,11 +8063,100 @@
     renderEffectPanel();
     if (e) engineReturnViewIfDone(e.ownerIndex);
   }
+  // ---------- 「このカードの【セキュリティ】効果を発揮する」等: 別の効果を呼び出す効果 ----------
+  // 「この(カード/デジモン/テイマー)の【X】効果(1つ)を発揮」は、元の効果を「処理完了」にした時点で、
+  // 呼び出される【X】の効果をパネルに出す(1つなら処理中に、複数なら選べるように)。
+  // 「そのデジモン/自分の◯◯1体の【X】効果」は対象が決まらないため、選んで出すボタンにする。
+  const EFFECT_REF_RE = /(この(?:カード|デジモン|テイマー)|その(?:デジモン|カード|テイマー)|この効果で登場したデジモン|[^、。]*?1体)の(オプション側の)?((?:【[^】]+】)+)効果(1つ)?を発揮/g;
+  function parseEffectRefs(text) {
+    const t = engineStripNotes(text || '');
+    const out = [];
+    let m;
+    EFFECT_REF_RE.lastIndex = 0;
+    while ((m = EFFECT_REF_RE.exec(t))) {
+      out.push({
+        self: /^この(カード|デジモン|テイマー)$/.test(m[1]),
+        subject: m[1],
+        optionSide: !!m[2],
+        labels: (m[3].match(/【([^】]+)】/g) || []).map(x => x.slice(1, -1)),
+        one: !!m[4],
+      });
+    }
+    return out;
+  }
+  // 呼び出される側の効果行を、カードから集めて発揮待ちの形にする
+  function referencedEntriesFrom(card, ref, base) {
+    if (!card) return [];
+    const sources = [];
+    if (ref.optionSide) { if (card.dual && card.dual.effect) sources.push(['dual', card.dual.effect]); }
+    else {
+      if (card.effect) sources.push(['effect', card.effect]);
+      if (ref.labels.includes('セキュリティ') && card.security_effect) sources.push(['security', card.security_effect]);
+    }
+    const res = [];
+    sources.forEach(([field, text]) => {
+      text.split('\n').forEach((line, lineIndex) => {
+        const parsed = parseEffectLine(line);
+        if (!parsed.labels.some(l => ref.labels.includes(l))) return;
+        if (base.parentField === field && base.parentLine === lineIndex && base.parentCard === card.number) return; // 自分自身は除く
+        res.push({
+          ownerIndex: base.ownerIndex, stackUid: base.stackUid || null, lki: true, lkiUid: `ref-${base.stackUid || card.number}`,
+          cardNumber: card.number, cardName: card.name, field: field === 'security' ? 'security' : field, sourceLabel: field === 'dual' ? 'オプション側' : (field === 'security' ? 'セキュリティ効果' : ''),
+          lineIndex: field === 'effect' ? lineIndex : 1000 + lineIndex, text: parsed.text, timing: ref.labels.join(''), event: '効果で発揮', eventLabel: '効果で発揮',
+        });
+      });
+    });
+    return res;
+  }
+  function buildReferencedEffects(e) {
+    const refs = parseEffectRefs(e.text).filter(r => r.self);
+    if (!refs.length) return [];
+    const f = e.stackUid ? findStackByUid(e.stackUid) : null;
+    // 進化元効果/リンク効果の「このデジモン」はスタックの一番上のカードを指す
+    const card = (e.field === 'effect' || !f) ? cardIndexByNumber.get(e.cardNumber) : getStackTopCard(f.stack);
+    const out = [];
+    refs.forEach(ref => out.push(...referencedEntriesFrom(card, ref, {
+      ownerIndex: e.ownerIndex, stackUid: f ? e.stackUid : null, parentField: e.field, parentLine: e.lineIndex, parentCard: e.cardNumber,
+    })));
+    return out;
+  }
+  // 対象が決まらない呼び出し(「そのデジモンの【進化時】効果1つ」等)は、選んで出すボタンにする
+  function effectRefHandlersFor(e) {
+    return parseEffectRefs(e.text).filter(r => !r.self).map(ref => ({
+      label: `🔗 対象の【${ref.labels.join('】【')}】効果を発揮`,
+      run: () => {
+        const p = practiceState.players[e.ownerIndex];
+        const subj = { filters: parseSubjectFilters(ref.subject), colors: parseSubjectColors(ref.subject + '自分') };
+        const cands = p.battle.filter(s => { const top = getStackTopCard(s); return top && cardMatchesSubject(top, subj) && referencedEntriesFrom(top, ref, { ownerIndex: e.ownerIndex }).length; });
+        if (!cands.length) { showToast(`【${ref.labels.join('】【')}】効果を持つ対象がいません`, true); return; }
+        const pick = (s) => {
+          const list = referencedEntriesFrom(getStackTopCard(s), ref, { ownerIndex: e.ownerIndex, stackUid: ensureStackUid(s) });
+          enqueueEffects(list, []);
+          renderEffectPanel();
+          showToast('呼び出した効果を発揮待ちに追加しました(今の効果を処理完了にすると選べます)');
+        };
+        if (cands.length === 1) { pick(cands[0]); return; }
+        startFieldPick({
+          title: `【${ref.labels.join('】【')}】効果を発揮するデジモンをタップ`,
+          candidates: cands,
+          onDone: (sel) => { if (sel[0]) pick(sel[0]); },
+        });
+      },
+    }));
+  }
+
   function finishCurrentEffect(skipped) {
     const q = getEffectQueue();
     const cur = q.current;
     q.current = null;
     if (cur && !skipped) markOnceUsed(cur);
+    // 「この◯◯の【X】効果を発揮する」なら、処理完了と同時に呼び出された効果を出す
+    if (cur && !skipped) {
+      const derived = buildReferencedEffects(cur);
+      if (derived.length === 1) enqueueEffects([], derived);
+      else if (derived.length > 1) enqueueEffects(derived, [], {});
+      if (derived.length) showToast(`🔗 「${cur.cardName}」の効果で呼び出された効果を出しました`);
+    }
     // 発揮できなくなった効果は、ここでまとめて片付ける
     q.pending = q.pending.filter(isEffectEntryValid);
     if (cur) showToast(skipped ? `「${cur.cardName}」の効果を発揮しませんでした` : `「${cur.cardName}」の効果処理が完了しました`);
@@ -8091,10 +8250,11 @@
       if (q.current && q.current.id === e.id) finishCurrentEffect(false);
     };
     if (targets.length === 1) { doEvolve(targets[0]); return; }
-    openZonePopup(centerPoint(), `「${card.name}」にブラスト進化させるデジモンを選んでください`, [
-      ...targets.map(st => ({ label: `${(getStackTopCard(st) || {}).name || '?'}(DP${getEffectiveDP(st)})`, onClick: () => doEvolve(st) })),
-      { label: 'キャンセル', onClick: () => resumeAttackStepIfAny() },
-    ], true);
+    startFieldPick({
+      title: `「${card.name}」にブラスト進化させるデジモンをタップ`,
+      candidates: targets,
+      onDone: (sel) => { if (sel[0]) doEvolve(sel[0]); },
+    });
   }
   // ---------- アタック対象の変更(効果用) ----------
   function retargetAttack(target) {
@@ -8117,18 +8277,22 @@
     if (!attackState) { showToast('アタック中ではありません', true); return; }
     const side = practiceState.players[sidePi];
     const cands = side.battle.filter(s => isDigimonLikeStack(s) && s !== attackState.attackerStack);
-    const cur = attackState.targetType === 'digimon' ? attackState.targetStack : 'player';
-    const done = onDone || (() => resumeAttackStepIfAny());
-    const actions = cands.map(s => {
-      const c = getStackTopCard(s);
-      return { label: `${cur === s ? '✅ ' : ''}${c ? c.name : '?'}(DP${getEffectiveDP(s)}${s.rested ? '・レスト' : ''})`, onClick: () => { retargetAttack(s); done(); } };
-    });
-    if (includePlayer && side === attackState.defenderOwner) {
-      actions.unshift({ label: `${cur === 'player' ? '✅ ' : ''}相手プレイヤー(セキュリティ${side.security.length}枚)`, onClick: () => { retargetAttack('player'); done(); } });
+    const curName = attackState.targetType === 'digimon' && attackState.targetStack ? stackLabel(attackState.targetStack) : '相手プレイヤー';
+    const done = onDone || (() => {});
+    const buttons = [];
+    if (includePlayer && side === attackState.defenderOwner && attackState.targetType !== 'player') {
+      buttons.push({ label: `🛡 相手プレイヤーへ(セキュリティ${side.security.length}枚)`, onClick: () => { retargetAttack('player'); done(); } });
     }
-    if (!actions.length) { showToast('対象にできるデジモンがいません', true); done(); return; }
-    actions.push({ label: 'キャンセル', onClick: () => done() });
-    openZonePopup(centerPoint(), 'アタックの対象をどれに変更しますか?', actions, true);
+    if (!cands.length && !buttons.length) { showToast('対象にできるデジモンがいません', true); done(); return; }
+    startFieldPick({
+      title: 'アタックの新しい対象をタップ',
+      attackStep: true,
+      sub: `現在の対象: ${curName}`,
+      candidates: cands.filter(s => !(attackState.targetType === 'digimon' && attackState.targetStack === s)),
+      buttons,
+      onDone: (sel) => { if (sel[0]) retargetAttack(sel[0]); done(); },
+      onCancel: () => done(),
+    });
   }
   // 効果テキストの「アタックの対象を〜に変更」からボタンを作る(アタック中のみ)
   function retargetHandlersFor(e, stack) {
@@ -8177,10 +8341,15 @@
     return out;
   }
   function targetCandidates(ta, ownerIndex, excludeStack) {
+    // 「デジモン1体に」のように自分/相手の指定がないときは、両方の場から探す
+    if (!ta.side) return [...targetCandidates(Object.assign({}, ta, { side: 'own' }), ownerIndex, excludeStack), ...targetCandidates(Object.assign({}, ta, { side: 'opp' }), ownerIndex, excludeStack)];
     const sidePi = ta.side === 'opp' ? 1 - ownerIndex : ownerIndex;
     const p = practiceState.players[sidePi];
     const pre = ta.prefix || '';
     const num = (re) => { const x = re.exec(pre); return x ? parseInt(x[1], 10) : null; };
+    const matMin = num(/進化元(?:が|を)(\d+)枚以上/);
+    const noMat = /進化元(?:を持たない|がない|が0枚)/.test(pre);
+    const kwHas = [...pre.matchAll(/≪([^≫]+)≫を持つ/g)].map(x => KEYWORD_TOGGLE_DEFS.find(d => d.label === x[1])).filter(Boolean);
     const dpMax = num(/DP(\d+)以下/), dpMin = num(/DP(\d+)以上/), lvMax = num(/Lv\.(\d+)以下/), lvMin = num(/Lv\.(\d+)以上/);
     const costMax = num(/登場コスト(\d+)以下/), costMin = num(/登場コスト(\d+)以上/);
     const subj = { filters: parseSubjectFilters(pre), colors: parseSubjectColors(pre + '自分') };
@@ -8201,6 +8370,9 @@
       if (costMax != null && !(top.play_cost != null && top.play_cost <= costMax)) return false;
       if (costMin != null && !(top.play_cost != null && top.play_cost >= costMin)) return false;
       if (/レスト状態の/.test(pre) && !s.rested) return false;
+      if (matMin != null && !(s.cards.length - 1 >= matMin)) return false;
+      if (noMat && s.cards.length > 1) return false;
+      if (kwHas.some(def => !def.has(s))) return false;
       if (/アクティブ状態の/.test(pre) && s.rested) return false;
       if (!cardMatchesSubject(top, subj)) return false;
       return true;
@@ -8278,22 +8450,37 @@
   }
   function openTargetPicker(ta, e, holderStack) {
     const cands = targetCandidates(ta, e.ownerIndex, holderStack);
-    if (!cands.length) { showToast('条件に合う対象がいません(条件の一部は自動判定していません)', true); return; }
-    if (ta.count === Infinity) { runTargetAction(ta, e, cands); return; }
-    const chosen = [];
+    const extra = targetPoolAll(ta, e.ownerIndex).filter(st => !cands.includes(st));
+    if (!cands.length && !extra.length) { showToast('対象にできるカードがいません', true); return; }
+    if (ta.count === Infinity) {
+      if (!cands.length) { showToast('条件に合う対象がいません(条件の一部は自動判定していません)', true); return; }
+      runTargetAction(ta, e, cands);
+      return;
+    }
     const label = targetActionLabel(ta);
-    const step = () => {
-      const remain = cands.filter(s => !chosen.includes(s) && findStackOwnerAndZone(s));
-      if (chosen.length >= ta.count || !remain.length) { runTargetAction(ta, e, chosen); return; }
-      const actions = remain.map(s => {
-        const c = getStackTopCard(s);
-        return { label: `${c ? c.name : '?'}(DP${getEffectiveDP(s)}${s.rested ? '・レスト' : ''})`, onClick: () => { chosen.push(s); step(); } };
+    startFieldPick({
+      title: `${label}: 対象をタップ`,
+      sub: ta.count > 1 && !ta.upTo ? `${ta.count}体選ぶと実行します` : (ta.count > 1 ? '選び終わったら「決定」' : ''),
+      candidates: cands, extra,
+      max: ta.count, upTo: ta.upTo,
+      onDone: (sel) => runTargetAction(ta, e, sel),
+    });
+  }
+  // 条件を無視した、その側の(デジモン/テイマーの種類だけ合う)場のカード全て。「条件外も選ぶ」用
+  function targetPoolAll(ta, ownerIndex) {
+    const sides = ta.side === 'opp' ? [1 - ownerIndex] : ta.side === 'own' ? [ownerIndex] : [ownerIndex, 1 - ownerIndex];
+    const out = [];
+    sides.forEach(pi => {
+      const p = practiceState.players[pi];
+      p.battle.forEach(st => {
+        if (!st) return;
+        const top = getStackTopCard(st);
+        if (!top) return;
+        const isTamer = top.category === 'tamer' && !st.actingAsDigimon;
+        if ((ta.kinds.includes('digimon') && isDigimonLikeStack(st)) || (ta.kinds.includes('tamer') && isTamer)) out.push(st);
       });
-      if (chosen.length) actions.push({ label: `これで決定(${chosen.length}体)`, onClick: () => runTargetAction(ta, e, chosen) });
-      actions.push({ label: 'キャンセル', onClick: () => resumeAttackStepIfAny() });
-      openZonePopup(centerPoint(), `${label}: 対象を選んでください${ta.count > 1 ? `(${chosen.length}/${ta.count}${ta.upTo ? 'まで' : ''})` : ''}`, actions, true);
-    };
-    step();
+    });
+    return out;
   }
   function targetActionLabel(ta) {
     const a = ta.action;
@@ -8306,6 +8493,147 @@
       label: `🎯 ${targetActionLabel(ta)}`.slice(0, 40),
       run: () => openTargetPicker(ta, e, holderStack),
     }));
+  }
+  // ---------- キーワード効果の付与(「≪ブロッカー≫を得る」「≪Sアタック-1≫を与える」等) ----------
+  // 効果パネルに「✨ ≪X≫を付与」ボタンを出し、押したら対象のデジモンを選んで付与する(「このデジモン」はそのまま付与)。
+  // 期間(ターン終了まで/相手のターン終了まで)があれば、その時点で自動で外す。対象として正しいかの判定はしない。
+  function parseKeywordGrants(text) {
+    const t = engineStripNotes(text || '').replace(/[＋]/g, '+').replace(/[－]/g, '-');
+    const out = [];
+    t.split('。').forEach(sent => {
+      const re = /((?:≪[^≫]+≫(?:と|、)?)+)を(得|与え)/g;
+      let m;
+      while ((m = re.exec(sent))) {
+        const names = (m[1].match(/≪([^≫]+)≫/g) || []).map(k => k.slice(1, -1).replace(/《[^》]*》/g, ''));
+        const kws = [];
+        names.forEach(n => {
+          const sa = /^(?:Sアタック|セキュリティアタック|セキリィティアタック)([+\-]\d+)$/.exec(n);
+          if (sa) { kws.push({ type: 'sa', amount: parseInt(sa[1], 10), label: `Sアタック${sa[1]}` }); return; }
+          const def = KEYWORD_TOGGLE_DEFS.find(d => d.label === n);
+          if (def) kws.push({ type: 'kw', label: n, def });
+        });
+        if (!kws.length) continue;
+        const before = sent.slice(0, m.index);
+        const until = /相手のターン終了まで/.test(before) ? 'oppTurnEnd' : (/(ターン|アタック)終了まで/.test(before) ? 'turnEnd' : 'manual');
+        const clause = before.slice(Math.max(before.lastIndexOf('、'), 0));
+        const self = /この(デジモン|テイマー)/.test(before.slice(-30)) && !/他の/.test(before.slice(-30));
+        const subj = self ? null : parseGrantSubject(before);
+        out.push({
+          kws, until,
+          target: self ? 'self' : (subj && subj.all ? 'all' : 'pick'),
+          side: subj ? subj.side : null,
+          ta: subj, // 対象の条件(targetCandidatesで判定する形)。読み取れなければnull=判定しない
+          clause,
+        });
+      }
+    });
+    return out;
+  }
+  // 「〜を得る/与える」の直前から対象(主語)を読み取る。例:「名称に「デビモン」を含む自分のデジモン1体は」「相手のデジモン2体に」
+  // 「自分の「大門大」1体は」「特徴「TS」を持つ黄/紫の自分のデジモン全ては」「デジモン1体に」
+  function parseGrantSubject(before) {
+    const re = /(?:(自分|相手)の)?((?:「[^」]+」(?:\/|か(?=「))?)*)(デジモン|テイマー)?(?:(\d+)体(まで)?|(全て))?(?:は|に|を)/g;
+    let m, last = null;
+    while ((m = re.exec(before))) {
+      if (m[0].length === 0) { re.lastIndex++; continue; }
+      // 「デジモン」「テイマー」か名称の指定、かつ「N体/全て」か「自分/相手の」が付いているものだけを主語とみなす
+      if (!(m[2] || m[3])) continue;
+      if (!(m[1] || m[4] || m[6])) continue;
+      if (m[3] && /カード$/.test(before.slice(m.index, m.index + m[0].length + 2))) continue;
+      last = m;
+    }
+    if (!last) return null;
+    // 条件部分は、その主語の直前の区切り(、。】］)からの文
+    const head = before.slice(0, last.index);
+    const cut = Math.max(head.lastIndexOf('、'), head.lastIndexOf('】'), head.lastIndexOf('］'));
+    const prefix = head.slice(cut + 1) + (last[2] || '');
+    const kinds = last[3] ? [last[3] === 'デジモン' ? 'digimon' : 'tamer'] : ['digimon', 'tamer'];
+    return {
+      side: last[1] ? (last[1] === '相手' ? 'opp' : 'own') : null,
+      kinds, prefix,
+      count: last[4] ? parseInt(last[4], 10) : (last[6] ? Infinity : 1),
+      upTo: !!last[5],
+      all: !!last[6],
+    };
+  }
+  function grantKeywordsTo(stack, g, ownerIndex) {
+    if (!stack) return;
+    if (!stack.kwGrants) stack.kwGrants = [];
+    g.kws.forEach(k => {
+      if (k.type === 'sa') {
+        const wasAuto = stack.sAttackBonus === undefined && !stack.kwGrants.some(x => x.type === 'sa');
+        stack.sAttackBonus = effectiveSAttackBonus(stack) + k.amount;
+        stack.kwGrants.push({ type: 'sa', amount: k.amount, until: g.until, owner: ownerIndex, wasAuto });
+        return;
+      }
+      if (k.def.has(stack)) return; // 元々持っている
+      const before = Object.assign({}, stack);
+      k.def.toggle(stack);
+      const key = Object.keys(stack).find(x => before[x] !== stack[x]);
+      stack.kwGrants.push({ type: 'kw', label: k.label, key, until: g.until, owner: ownerIndex });
+    });
+  }
+  // ターン終了時、期限の来た付与キーワードを外す(endingPlayerIndex = 今終わったターンのプレイヤー)
+  function clearExpiredKeywordGrants(endingPlayerIndex) {
+    if (!practiceState) return;
+    practiceState.players.forEach(p => {
+      [p.raising, ...p.battle].forEach(st => {
+        if (!st || !st.kwGrants || !st.kwGrants.length) return;
+        st.kwGrants = st.kwGrants.filter(g => {
+          const expired = g.until === 'turnEnd' || (g.until === 'oppTurnEnd' && endingPlayerIndex !== g.owner);
+          if (!expired) return true;
+          if (g.type === 'sa') {
+            if (st.sAttackBonus !== undefined) st.sAttackBonus -= g.amount;
+            // 付与前が自動判定のままだったなら、最後の付与が外れた時点で自動判定に戻す(進化後のカードの≪Sアタック≫を隠さないため)
+            if (g.wasAuto && !st.kwGrants.some(x => x !== g && x.type === 'sa')) delete st.sAttackBonus;
+          }
+          else if (g.key) delete st[g.key];
+          return false;
+        });
+      });
+    });
+  }
+  function keywordGrantHandlersFor(e, holderStack) {
+    return parseKeywordGrants(e.text).map(g => {
+      const names = g.kws.map(k => `≪${k.label}≫`).join('');
+      const durLabel = g.until === 'turnEnd' ? '(ターン終了まで)' : g.until === 'oppTurnEnd' ? '(相手のターン終了まで)' : '';
+      return {
+        label: `✨ ${names}を付与${g.target === 'all' ? '(全て)' : ''}`,
+        run: () => {
+          const apply = (targets) => {
+            if (!targets.length) { showToast('対象にできるデジモンがいません', true); return; }
+            snapshotPracticeState();
+            targets.forEach(st => grantKeywordsTo(st, g, e.ownerIndex));
+            renderPracticeBoard();
+            showToast(`✨ ${targets.map(stackLabel).join('、')} に${names}を付与しました${durLabel}`);
+          };
+          if (g.target === 'self' && holderStack && findStackOwnerAndZone(holderStack)) { apply([holderStack]); return; }
+          const sides = g.side === 'opp' ? [1 - e.ownerIndex] : g.side === 'own' ? [e.ownerIndex] : [e.ownerIndex, 1 - e.ownerIndex];
+          const kinds = g.ta ? g.ta.kinds : ['digimon'];
+          // 種類(デジモン/テイマー)だけ合う全員。対象の条件が読み取れたら、そのうち条件に合うものを候補にする
+          const pool = targetPoolAll({ side: g.side, kinds }, e.ownerIndex).filter(st => sides.includes(practiceState.players.indexOf(findStackOwnerAndZone(st).player)));
+          const cands = g.ta ? targetCandidates(g.ta, e.ownerIndex, holderStack) : pool;
+          if (g.target === 'all') {
+            if (!cands.length) { showToast('条件に合うデジモンがいません(条件の一部は自動判定していません)', true); return; }
+            apply(cands);
+            return;
+          }
+          const everyone = targetPoolAll({ side: null, kinds: ['digimon', 'tamer'] }, e.ownerIndex);
+          const extra = everyone.filter(st => !cands.includes(st));
+          if (!cands.length && !extra.length) { showToast('対象にできるデジモンがいません', true); return; }
+          if (cands.length === 1 && !extra.length) { apply(cands); return; }
+          const count = g.ta && Number.isFinite(g.ta.count) ? g.ta.count : 1;
+          startFieldPick({
+            title: `${names}を付与するカードをタップ${durLabel}`,
+            sub: g.ta ? `条件: ${(g.ta.prefix || '').trim() || '指定なし'}${g.ta.side === 'opp' ? '相手の' : g.ta.side === 'own' ? '自分の' : ''}${g.ta.kinds.length === 1 ? (g.ta.kinds[0] === 'tamer' ? 'テイマー' : 'デジモン') : ''}${count > 1 ? count + '体' + (g.ta.upTo ? 'まで' : '') : ''}` : '対象の条件は判定していません',
+            candidates: cands, extra,
+            extraLabel: '条件外も選ぶ',
+            max: count, upTo: g.ta ? g.ta.upTo : false,
+            onDone: (sel) => apply(sel),
+          });
+        },
+      };
+    });
   }
   // 効果1行に対して用意できる「⚡自動処理」(既に自動化済みの処理)を列挙する
   function getEffectHandlers(e) {
@@ -8322,7 +8650,7 @@
     }
     const f = findStackByUid(e.stackUid);
     // 進化元効果・リンク効果・消滅時(場を離れた後)・手札の効果などでも、ドローだけは使えるようにする
-    if (!f || e.field !== 'effect') return [...targetHandlersFor(e, f && f.stack), ...retargetHandlersFor(e, f && f.stack), ...memoryHandlersFor(e), ...drawHandlersFor(e)];
+    if (!f || e.field !== 'effect') return [...keywordGrantHandlersFor(e, f && f.stack), ...effectRefHandlersFor(e), ...targetHandlersFor(e, f && f.stack), ...retargetHandlersFor(e, f && f.stack), ...memoryHandlersFor(e), ...drawHandlersFor(e)];
     const stack = f.stack;
     const line = e.text;
     const list = [];
@@ -8348,7 +8676,11 @@
         } });
       }
     }
-    list.push(...targetHandlersFor(e, stack), ...retargetHandlersFor(e, stack), ...memoryHandlersFor(e), ...drawHandlersFor(e));
+    const tts = parseTopToSecurity(line);
+    if (tts && stack.cards.length > tts.n) {
+      list.push({ label: `⚡ 一番上${tts.n > 1 ? tts.n + '枚' : ''}をセキュリティの${tts.dest === 'secTop' ? '上' : '下'}へ`, run: () => moveTopCardsOnly(stack, tts.n, tts.dest, tts.faceUp, { keepOne: true }) });
+    }
+    list.push(...keywordGrantHandlersFor(e, stack), ...effectRefHandlersFor(e), ...targetHandlersFor(e, stack), ...retargetHandlersFor(e, stack), ...memoryHandlersFor(e), ...drawHandlersFor(e));
     if (checkAutoSelfEvolveDPTrigger(stack, e.timing, line, true)) {
       list.push({ label: '⚡ このデジモンのDP増減', run: () => { checkAutoSelfEvolveDPTrigger(stack, e.timing, line); renderPracticeBoard(); } });
     }
@@ -8404,10 +8736,11 @@
             const cands = ownerP.battle.filter(s => isDigimonLikeStack(s));
             if (!cands.length) { showToast('対象にできる自分のデジモンがいません', true); return; }
             if (g.target === 'allOwn') { apply(cands); return; }
-            openZonePopup(centerPoint(), '耐性を付与するデジモンを選んでください', [
-              ...cands.map(s => ({ label: `${(getStackTopCard(s) || {}).name || '?'}(DP${getEffectiveDP(s)})`, onClick: () => apply([s]) })),
-              { label: 'キャンセル', onClick: () => {} },
-            ], true);
+            startFieldPick({
+              title: `耐性(${names})を付与するデジモンをタップ`,
+              candidates: cands,
+              onDone: (sel) => { if (sel[0]) apply([sel[0]]); },
+            });
           },
         });
       }
@@ -8423,21 +8756,22 @@
   // 手動で誘発を追加する(検出から漏れた「〜したとき」系など)
   function openManualTriggerPicker(ev) {
     if (!practiceState) return;
-    const order = [practiceState.viewingIndex, 1 - practiceState.viewingIndex];
-    const actions = [];
-    order.forEach(pi => {
-      const p = practiceState.players[pi];
-      const side = pi === practiceState.viewingIndex ? '自分' : '相手';
-      const stacks = [...(p.raising ? [[p.raising, 'raising']] : []), ...p.battle.map(s => [s, 'battle'])];
-      stacks.forEach(([s, zone]) => {
-        const top = getStackTopCard(s);
-        if (!top) return;
-        actions.push({ label: `${side}: ${top.name}${zone === 'raising' ? '(育成)' : ''}`, onClick: () => openManualTriggerLinePicker(s, pi, zone) });
-      });
+    const cands = [];
+    practiceState.players.forEach(p => {
+      [p.raising, ...p.battle].forEach(s => { if (s && getStackTopCard(s)) cands.push(s); });
     });
-    if (!actions.length) { showToast('場にカードがありません', true); return; }
-    actions.push({ label: 'キャンセル', onClick: () => {} });
-    openZonePopup(ev || centerPoint(), '誘発した効果を持つカードを選んでください', actions, true);
+    if (!cands.length) { showToast('場にカードがありません', true); return; }
+    startFieldPick({
+      title: '誘発した効果を持つ場のカードをタップ',
+      candidates: cands,
+      onDone: (sel) => {
+        const s = sel[0];
+        if (!s) return;
+        const f = findStackOwnerAndZone(s);
+        if (!f) return;
+        openManualTriggerLinePicker(s, practiceState.players.indexOf(f.player), f.player.raising === s ? 'raising' : 'battle');
+      },
+    });
   }
   function openManualTriggerLinePicker(stack, pi, zone) {
     const actions = [];
@@ -8492,6 +8826,7 @@
           <div class="ep-main">
             <div class="ep-meta">${metaOf(e)}<span class="ep-name">${escapeHtml(e.cardName)}</span></div>
             <div class="ep-text">${escapeHtml(e.text)}</div>
+            ${parseEffectRefs(e.text).some(r => r.self) ? `<div class="ep-ref-note">🔗 処理完了にすると、呼び出される【${escapeHtml(parseEffectRefs(e.text).filter(r => r.self).map(r => r.labels.join('】【')).join('】【'))}】効果が出ます</div>` : ''}
             <div class="ep-actions">
               <span class="ep-auto-wrap"></span>
               <button type="button" class="ep-btn done" data-act="done">✔ 処理完了</button>
@@ -8575,6 +8910,8 @@
 
   function renderPracticeBoard() {
     if (!practiceState) return;
+    // 1手戻す等で盤面が丸ごと差し替わったら、古い盤面を参照している選択モードは破棄する
+    if (fieldPickMode && (fieldPickMode.stateRef !== practiceState || (fieldPickMode.attackStep && attackState !== fieldPickMode.attackRef))) fieldPickMode = null;
     const self = practiceState.players[practiceState.viewingIndex];
     const oppIndex = 1 - practiceState.viewingIndex;
     const opp = practiceState.players[oppIndex];
@@ -8636,9 +8973,10 @@
     // 他の操作(進化・DP増減・カード移動など)によってゾーンポップアップが閉じても、
     // アタック処理中であれば直前のステップ表示を自動的に復帰させる。個別の操作すべてに
     // 復帰処理を書く代わりに、描画のたびにここでまとめて面倒を見る。
-    if (attackState && lastAttackStepFn && !zonePopupEl.classList.contains('open')) {
+    if (attackState && lastAttackStepFn && !fieldPickMode && !zonePopupEl.classList.contains('open')) {
       lastAttackStepFn();
     }
+    renderFieldPickBanner();
     arenaFxAfterRender();
     effectEngineAfterRender();
     autoEndAfterRender();
@@ -8690,6 +9028,7 @@
   function autoEndBusy() {
     if (attackState) return true;
     if (hasUnresolvedEffects()) return true;
+    if (fieldPickMode) return true;
     if (activeRevealSession || evolveMode || materialTargetMode || multiEvolveMode || linkTargetMode || artsEvolveMode || assemblyMode || deckToTamerMode) return true;
     if (zonePopupEl.classList.contains('open') || cardDetailModal.classList.contains('open')) return true;
     if (document.querySelector('#evolveRouteModal.open, #fieldEffectsModal.open, #imageLightbox.open')) return true;
@@ -9239,6 +9578,131 @@
     specialRoutes.forEach(r => routes.push(r));
 
     return routes;
+  }
+
+  // ---------- 場のカードを選ぶモード(一覧ポップアップの代わりに、盤面のカード自体をタップして選ぶ) ----------
+  // 進化先を選ぶときと同じように、選べるカードを光らせ、それ以外を暗くする。画面下のバナーに
+  // 説明・決定/キャンセル・追加の選択肢(「相手プレイヤーへ」等)を出す。
+  // opts: {
+  //   title, sub,              バナーの説明文(subは小さい補足)
+  //   candidates: stack[],     選べるカード(条件に合うもの)
+  //   extra: stack[],          条件外だが選べるようにできるカード(「条件外も選ぶ」で表示)
+  //   extraLabel, showExtra,   条件外ボタンの文言・最初から表示するか
+  //   max (既定1), upTo,       選ぶ数(1なら1回タップで確定。複数なら max に達したら確定、または「決定」)
+  //   initialSelected: stack[],
+  //   canFinish(sel),          「決定」を押せるか(既定: 1体以上)
+  //   onDone(stacks), onCancel(),
+  //   buttons: [{ label, onClick(selected), primary }],  バナーに出す追加ボタン(押すと選択モードを抜けてから実行)
+  //   cancelLabel, noCancel,
+  // }
+  let fieldPickMode = null;
+  function startFieldPick(opts) {
+    if (!practiceState) return;
+    closeZonePopup();
+    cardDetailModal.classList.remove('open');
+    const alive = (list) => (list || []).filter(st => st && findStackOwnerAndZone(st));
+    const candidates = alive(opts.candidates);
+    const extra = alive(opts.extra).filter(st => !candidates.includes(st));
+    fieldPickMode = Object.assign({ max: 1, buttons: [] }, opts, {
+      candidates, extra,
+      selected: alive(opts.initialSelected),
+      // 条件に合うものが1つもないときは、最初から条件外も選べる状態にする(showExtraを明示したときはそれに従う)
+      showExtra: opts.showExtra !== undefined ? !!opts.showExtra : (candidates.length === 0 && extra.length > 0),
+      stateRef: practiceState,
+      attackRef: opts.attackStep ? attackState : undefined,
+    });
+    renderPracticeBoard();
+    // 選べるカードが画面外(スマホで自分の場が下にある等)なら、そこまでスクロールする
+    requestAnimationFrame(() => {
+      if (!fieldPickMode) return;
+      const els = [...document.querySelectorAll('#practiceBoardPanel .stack-tile.target-pick')];
+      if (!els.length) return;
+      const vh = window.innerHeight;
+      const visible = els.some(el => { const r = el.getBoundingClientRect(); return r.bottom > 40 && r.top < vh - 130; });
+      if (!visible) els[0].scrollIntoView({ block: 'center', behavior: 'smooth' });
+    });
+  }
+  function fieldPickTileState(stack) {
+    const fp = fieldPickMode;
+    if (!fp) return null;
+    const isCand = fp.candidates.includes(stack);
+    const isExtra = !isCand && fp.showExtra && fp.extra.includes(stack);
+    return { selectable: isCand || isExtra, extra: isExtra, selected: fp.selected.includes(stack) };
+  }
+  function fieldPickClick(stack) {
+    const fp = fieldPickMode;
+    if (!fp) return;
+    const i = fp.selected.indexOf(stack);
+    if (i >= 0) fp.selected.splice(i, 1);
+    else fp.selected.push(stack);
+    if (i < 0 && (fp.max === 1 || fp.selected.length >= fp.max)) { finishFieldPick(); return; }
+    renderPracticeBoard();
+  }
+  function finishFieldPick() {
+    const fp = fieldPickMode;
+    if (!fp) return;
+    fieldPickMode = null;
+    const sel = fp.selected.filter(st => findStackOwnerAndZone(st));
+    if (fp.onDone) fp.onDone(sel);
+    if (!fieldPickMode && practiceState) renderPracticeBoard();
+  }
+  function cancelFieldPick() {
+    const fp = fieldPickMode;
+    if (!fp) return;
+    fieldPickMode = null;
+    if (fp.onCancel) fp.onCancel();
+    if (!fieldPickMode && practiceState) renderPracticeBoard();
+  }
+  function renderFieldPickBanner() {
+    const banner = document.getElementById('fieldPickBanner');
+    if (!banner) return;
+    const fp = fieldPickMode;
+    document.body.classList.toggle('field-picking', !!fp);
+    if (!fp) { banner.hidden = true; return; }
+    banner.hidden = false;
+    const textEl = document.getElementById('fieldPickText');
+    const multi = fp.max !== 1;
+    const countLabel = multi ? `(${fp.selected.length}${Number.isFinite(fp.max) ? '/' + fp.max + (fp.upTo ? 'まで' : '') : '体選択中'})` : '';
+    const noneMsg = fp.candidates.length === 0
+      ? (fp.emptyMsg || (fp.extra.length ? '条件に合うカードが見つかりませんでした(条件外から選べます)' : '選べるカードがありません'))
+      : '';
+    textEl.innerHTML = `👆 ${escapeHtml(fp.title || '対象のカードをタップして選んでください')}<span class="fpb-count">${countLabel}</span>` +
+      ((fp.sub || noneMsg) ? `<span class="fpb-sub">${escapeHtml([noneMsg, fp.sub].filter(Boolean).join(' / '))}</span>` : '');
+    const btns = document.getElementById('fieldPickBtns');
+    btns.innerHTML = '';
+    const add = (label, cls, fn) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = label;
+      if (cls) b.className = cls;
+      b.addEventListener('click', (ev) => { ev.stopPropagation(); fn(); });
+      btns.appendChild(b);
+    };
+    const canFinish = fp.canFinish ? fp.canFinish(fp.selected) : fp.selected.length >= 1;
+    if (multi && canFinish) add(`✅ 決定(${fp.selected.length}体)`, 'primary', () => finishFieldPick());
+    (fp.buttons || []).forEach(bt => add(bt.label, bt.primary ? 'primary' : '', () => {
+      const sel = fp.selected.slice();
+      fieldPickMode = null;
+      bt.onClick(sel);
+      if (!fieldPickMode && practiceState) renderPracticeBoard();
+    }));
+    if (fp.extra.length) {
+      add(fp.showExtra ? `${fp.extraLabel || '条件外も選ぶ'} ✓` : (fp.extraLabel || '条件外も選ぶ'), 'toggle' + (fp.showExtra ? ' on' : ''), () => {
+        fp.showExtra = !fp.showExtra;
+        if (!fp.showExtra) fp.selected = fp.selected.filter(st => fp.candidates.includes(st));
+        renderPracticeBoard();
+      });
+    }
+    if (!fp.noCancel) add(fp.cancelLabel || 'キャンセル', 'cancel', () => cancelFieldPick());
+    document.body.style.setProperty('--fpb-h', `${(banner.offsetHeight || 90) + 26}px`);
+  }
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && fieldPickMode && !fieldPickMode.noCancel) cancelFieldPick();
+  });
+  // スタックの表示名(バナーやトースト用)
+  function stackLabel(st) {
+    const c = getStackTopCard(st);
+    return c ? c.name : '?';
   }
 
   // ---------- Evolve / add-material target-picking mode ----------
@@ -10048,45 +10512,41 @@
 
   function showMultiEvolvePicker() {
     const self = practiceState.players[practiceState.viewingIndex];
-    const pool = [...self.battle, ...(self.raising ? [self.raising] : [])]
-      .filter(s => !multiEvolveMode.selected.includes(s) && isDigimonLikeStack(s));
+    const pool = [...self.battle, ...(self.raising ? [self.raising] : [])].filter(s => isDigimonLikeStack(s));
     const isJogress = multiEvolveMode.mode === 'jogress';
-    const totalCount = multiEvolveMode.selected.length + multiEvolveMode.handMaterials.length;
-    const actions = pool.map(s => {
-      const c = getStackTopCard(s);
-      return {
-        label: `${c ? c.name : '?'}(DP${getEffectiveDP(s)})を材料に選ぶ(場)`,
-        onClick: () => {
-          multiEvolveMode.selected.push(s);
-          if (isJogress && multiEvolveMode.selected.length + multiEvolveMode.handMaterials.length >= 2) {
-            finalizeMultiEvolveTargetSelection();
-          } else {
-            showMultiEvolvePicker();
-          }
-        },
-      };
-    });
+    const handN = multiEvolveMode.handMaterials.length;
+    const buttons = [];
     // デジクロスは手札のデジモンも材料にできる(ジョグレスは場のデジモン限定)
     if (!isJogress && self.hand.length > 0) {
-      actions.push({
-        label: '手札から材料を選ぶ',
-        onClick: () => openCardListPicker('手札から選択', self.hand, (idx) => {
-          const [num] = self.hand.splice(idx, 1);
-          multiEvolveMode.handMaterials.push(num);
-          renderPracticeBoard();
-          showMultiEvolvePicker();
-        }),
+      buttons.push({
+        label: `🃏 手札から材料を選ぶ${handN ? `(手札${handN}枚選択中)` : ''}`,
+        onClick: (sel) => {
+          multiEvolveMode.selected = sel;
+          openCardListPicker('手札から選択', self.hand, (idx) => {
+            const [num] = self.hand.splice(idx, 1);
+            multiEvolveMode.handMaterials.push(num);
+            renderPracticeBoard();
+            showMultiEvolvePicker();
+          });
+        },
       });
     }
-    const footer = [];
-    if (!isJogress && totalCount >= 1) {
-      footer.push({ label: `✅ この${totalCount}体で確定`, onClick: () => finalizeMultiEvolveTargetSelection() });
-    }
-    footer.push({ label: 'キャンセル', onClick: () => cancelMultiEvolve() });
-    const title = isJogress
-      ? `ジョグレス進化「${multiEvolveMode.card.name}」: 材料を2体選択(${totalCount}/2)`
-      : `デジクロス「${multiEvolveMode.card.name}」: 材料を選択(現在${totalCount}体)`;
-    openZonePopup(centerPoint(), title, [...actions, ...footer], true);
+    startFieldPick({
+      title: isJogress
+        ? `ジョグレス進化「${multiEvolveMode.card.name}」: 材料にするデジモンを2体タップ`
+        : `デジクロス「${multiEvolveMode.card.name}」: 材料にするデジモンをタップして「決定」`,
+      sub: !isJogress && handN ? `手札から${handN}枚を材料に選択中` : '',
+      candidates: pool,
+      initialSelected: multiEvolveMode.selected,
+      max: isJogress ? Math.max(1, 2 - handN) : Infinity,
+      canFinish: (sel) => !isJogress && sel.length + handN >= 1,
+      buttons,
+      onDone: (sel) => {
+        multiEvolveMode.selected = sel;
+        finalizeMultiEvolveTargetSelection();
+      },
+      onCancel: () => cancelMultiEvolve(),
+    });
   }
 
   function finalizeMultiEvolveTargetSelection() {
@@ -10167,23 +10627,24 @@
       const c = getStackTopCard(s);
       return c && c.category === 'tamer' && s !== stack;
     });
-    const actions = tamers.map(s => {
-      const c = getStackTopCard(s);
-      return {
-        label: `「${c.name}」を手札に戻す`,
-        onClick: () => {
-          snapshotPracticeState();
-          const idx = self.battle.indexOf(s);
-          const topNum = cardEntryNum(s.cards.pop());
-          self.hand.push(topNum);
-          if (s.cards.length === 0 && idx >= 0) self.battle.splice(idx, 1);
-          renderPracticeBoard();
-          showToast(`「${c.name}」を手札に戻しました`);
-        },
-      };
+    if (!tamers.length) return;
+    startFieldPick({
+      title: 'バースト進化: 手札に戻すテイマーをタップ',
+      candidates: tamers,
+      cancelLabel: 'テイマーを戻さない',
+      onDone: (sel) => {
+        const s = sel[0];
+        if (!s) return;
+        const c = getStackTopCard(s);
+        snapshotPracticeState();
+        const idx = self.battle.indexOf(s);
+        const topNum = cardEntryNum(s.cards.pop());
+        self.hand.push(topNum);
+        if (s.cards.length === 0 && idx >= 0) self.battle.splice(idx, 1);
+        renderPracticeBoard();
+        showToast(`「${c ? c.name : '?'}」を手札に戻しました`);
+      },
     });
-    actions.push({ label: 'テイマーを戻さない', onClick: () => {} });
-    openZonePopup(centerPoint(), 'バースト進化: 手札に戻すテイマーを選択(不要ならスキップ)', actions);
   }
 
   // ---------- 進化/登場のサブメニュー ----------
@@ -10377,18 +10838,13 @@
     const primary = evolveRouteTarget;
     const pool = [...self.battle, ...(self.raising ? [self.raising] : [])]
       .filter(s => s !== primary && isDigimonLikeStack(s));
-    const actions = pool.map(s => {
-      const c = getStackTopCard(s);
-      return {
-        label: `${c ? c.name : '?'}(DP${getEffectiveDP(s)})を材料に選ぶ`,
-        onClick: () => finalizeJogressFromEvolve(cost, s),
-      };
+    startFieldPick({
+      title: 'ジョグレス進化: もう1体の進化元(材料)をタップ',
+      candidates: pool,
+      emptyMsg: '他に選べる進化元がありません',
+      onDone: (sel) => { if (sel[0]) finalizeJogressFromEvolve(cost, sel[0]); },
+      onCancel: () => { cancelTargetModes(); },
     });
-    if (pool.length === 0) {
-      actions.push({ label: '他に選べる進化元がありません', onClick: () => {}, disabled: true });
-    }
-    actions.push({ label: 'キャンセル', onClick: () => { cancelTargetModes(); renderPracticeBoard(); } });
-    openZonePopup(centerPoint(), 'ジョグレス進化: もう1つの進化元を選択', actions, true);
   }
 
   function finalizeJogressFromEvolve(cost, secondStack) {
@@ -11477,6 +11933,56 @@
   };
   const ALL_DESTINATIONS = ['hand', 'trash', 'deckTop', 'deckBottom', 'secTop', 'secBottom', 'battle'];
 
+  // 「重ねられているカードを上からN枚◯◯に置く」: 一番上のカードだけを動かし、残りのカード(進化元)はそのまま場に残す。
+  // 退化と同じ動きで、行き先だけが違う(セキュリティ・手札・デッキなど)。最後の1枚まで動かした場合はスタック自体がなくなる。
+  function moveTopCardsOnly(stack, n, destination, faceUp, opts) {
+    const owner = findStackOwnerAndZone(stack);
+    if (!owner) return 0;
+    const keepOne = !!(opts && opts.keepOne);
+    snapshotPracticeState();
+    let moved = 0;
+    const names = [];
+    for (let i = 0; i < n; i++) {
+      if (!stack.cards.length) break;
+      if (keepOne && stack.cards.length <= 1) break;
+      const entry = stack.cards.pop();
+      const num = cardEntryNum(entry);
+      const c = cardIndexByNumber.get(num);
+      names.push(c ? c.name : num);
+      sendCardToDestination(owner.player, num, destination, faceUp);
+      moved++;
+    }
+    if (!stack.cards.length) {
+      if (stack.links && stack.links.length) stack.links.forEach(num => { owner.player.trash.push(num); checkOverflow(num, owner.player); });
+      if (owner.zone === 'raising') owner.player.raising = null;
+      else { const idx = owner.player.battle.indexOf(stack); if (idx >= 0) owner.player.battle.splice(idx, 1); }
+    }
+    cardDetailModal.classList.remove('open');
+    renderPracticeBoard();
+    if (moved) showToast(`一番上の${names.join('、')}を${DESTINATION_LABEL[destination] || destination}置きました(残りはそのまま)`);
+    if (stack.cards.length) checkStackRuleViolation(stack, () => {});
+    return moved;
+  }
+  function openMoveTopOnlyPicker(e, stack) {
+    const dests = ['secTop', 'secBottom', 'hand', 'deckTop', 'deckBottom', 'trash'];
+    openZonePopup(e || centerPoint(), '一番上のカードだけを移動(進化元はそのまま残す)', [
+      ...dests.map(d => ({
+        label: DESTINATION_LABEL[d],
+        onClick: () => {
+          if (d === 'secTop' || d === 'secBottom') askFaceOrientation((faceDown) => moveTopCardsOnly(stack, 1, d, !faceDown));
+          else moveTopCardsOnly(stack, 1, d, false);
+        },
+      })),
+      { label: 'キャンセル', onClick: () => resumeAttackStepIfAny() },
+    ], true);
+  }
+  // 効果文の「このデジモンに重ねられているカードを上からN枚(を)セキュリティの上/下に置く」を読み取る
+  function parseTopToSecurity(text) {
+    const m = /このデジモンに重ねられているカードを上から(\d+)枚(?:を)?(?:(表向き)で)?セキュリティの(上|下)に(?:(表向き)で)?置/.exec(engineStripNotes(text || ''));
+    if (!m) return null;
+    return { n: parseInt(m[1], 10), dest: m[3] === '上' ? 'secTop' : 'secBottom', faceUp: !!(m[2] || m[4]) };
+  }
+
   // 使用感向上のため、送り先ポップアップを「手札/デッキ/セキュリティ/バトルエリア」の
   // 大分類→(デッキ/セキュリティなら)上下→の階層構造にする。トラッシュへ送る操作は
   // 「退化」として別ボタンに独立させたため、ここには含めない。
@@ -11513,10 +12019,11 @@
       if (tamerStacks.length === 1) {
         actions.push({ label: '🎙 テイマーの下へ(≪セーブ≫)', onClick: () => { pendingTamerSaveTarget = tamerStacks[0]; onDestination('tamerSave'); } });
       } else if (tamerStacks.length > 1) {
-        actions.push({ label: '🎙 テイマーの下へ(≪セーブ≫)▾', onClick: (e) => openZonePopup(e, 'どのテイマーの下に置きますか?', tamerStacks.map(s => {
-          const c = getStackTopCard(s);
-          return { label: c ? c.name : '?', onClick: () => { pendingTamerSaveTarget = s; onDestination('tamerSave'); } };
-        })) });
+        actions.push({ label: '🎙 テイマーの下へ(≪セーブ≫)…', onClick: () => startFieldPick({
+          title: '≪セーブ≫: 下に置くテイマーをタップ',
+          candidates: tamerStacks,
+          onDone: (sel) => { if (sel[0]) { pendingTamerSaveTarget = sel[0]; onDestination('tamerSave'); } },
+        }) });
       }
     }
     openZonePopup(anchorEvent, title, actions);
@@ -11544,26 +12051,26 @@
     const returnAttackState = attackState;
     const returnStepFn = lastAttackStepFn;
     const myName = getStackTopCard(stack)?.name || '?';
-    openZonePopup(centerPoint(), `「${myName}」とバトルする相手のデジモンを選んでください(DPが低い方が消滅)`, candidates.map(s => {
-      const c = getStackTopCard(s);
-      return {
-        label: `${c ? c.name : '?'}(DP${getEffectiveDP(s)}${s.rested ? '・レスト' : ''})`,
-        onClick: () => {
-          cardDetailModal.classList.remove('open');
-          resolveBattle(stack, s, {
-            isMainAttackBattle: false,
-            onComplete: () => {
-              if (returnAttackState && attackState === returnAttackState && returnStepFn) {
-                lastAttackStepFn = returnStepFn;
-                resumeAttackStepIfAny();
-              } else {
-                renderPracticeBoard();
-              }
-            },
-          });
-        },
-      };
-    }), true);
+    startFieldPick({
+      title: `「${myName}」とバトルする相手のデジモンをタップ(DPが低い方が消滅)`,
+      candidates,
+      onDone: (sel) => {
+        const s = sel[0];
+        if (!s) return;
+        cardDetailModal.classList.remove('open');
+        resolveBattle(stack, s, {
+          isMainAttackBattle: false,
+          onComplete: () => {
+            if (returnAttackState && attackState === returnAttackState && returnStepFn) {
+              lastAttackStepFn = returnStepFn;
+              resumeAttackStepIfAny();
+            } else {
+              renderPracticeBoard();
+            }
+          },
+        });
+      },
+    });
   }
 
   function checkGuardianBeforeLeaving(stack, onProceed) {
@@ -11726,7 +12233,15 @@
     fn();
   }
   // 「離れない」系の即時型効果を使う: 割り込んで即座に発揮する(15-8-5)。コストや条件は手動で処理する。
-  function engineUseLeavePreventer(pv) {
+  function engineUseLeavePreventer(pv, leavingStack) {
+    // 「このデジモンに重ねられているカードを上からN枚セキュリティの上に置くことで、離れない」は、そのコストまで自動で払う
+    const cost = parseTopToSecurity(pv.text);
+    if (cost && leavingStack && findStackOwnerAndZone(leavingStack)) {
+      moveTopCardsOnly(leavingStack, cost.n, cost.dest, cost.faceUp, { keepOne: true });
+      markOnceUsed(pv);
+      showToast(`🛡 「${pv.cardName}」の効果: 一番上をセキュリティの${cost.dest === 'secTop' ? '上' : '下'}に置いて、場に残しました`);
+      return;
+    }
     if (effectPanelEnabled && practiceState) {
       enqueueEffects([], [pv]);
       renderEffectPanel();
@@ -11764,38 +12279,33 @@
     const enemyDigimon = attackState.defenderOwner.battle.filter(s => isDigimonLikeStack(s));
     const restedTargets = enemyDigimon.filter(s => s.rested);
     const activeTargets = enemyDigimon.filter(s => !s.rested);
-    const actions = [
-      { label: `相手プレイヤーへ(セキュリティ${attackState.defenderOwner.security.length}枚)`, onClick: () => {
-        attackState.targetType = 'player';
-        attackState.targetStack = null;
-        showAttackTriggerStep();
-      } },
-    ];
-    restedTargets.forEach(s => {
-      const c = getStackTopCard(s);
-      actions.push({
-        label: `${c ? c.name : '?'}(DP${getEffectiveDP(s)})へ`,
+    const toTarget = (s) => {
+      attackState.targetType = 'digimon';
+      attackState.targetStack = s;
+      showAttackTriggerStep();
+    };
+    // 通常はレスト状態のデジモンのみ対象にできるが、「衝突」等アクティブなデジモンを対象にする効果も
+    // あるため、「アクティブも対象にする(効果)」で選べるようにしておく(判定はプレイヤーに委ねる)。
+    startFieldPick({
+      title: `「${stackLabel(attackState.attackerStack)}」のアタック対象: レスト状態の相手デジモンをタップ、またはプレイヤーへ`,
+      candidates: restedTargets,
+      extra: activeTargets,
+      extraLabel: 'アクティブも対象にする(効果)',
+      showExtra: false,
+      emptyMsg: 'レスト状態の相手デジモンはいません',
+      attackStep: true,
+      noCancel: true,
+      buttons: [{
+        label: `🛡 相手プレイヤーへ(セキュリティ${attackState.defenderOwner.security.length}枚)`,
+        primary: true,
         onClick: () => {
-          attackState.targetType = 'digimon';
-          attackState.targetStack = s;
+          attackState.targetType = 'player';
+          attackState.targetStack = null;
           showAttackTriggerStep();
         },
-      });
+      }],
+      onDone: (sel) => { if (sel[0]) toTarget(sel[0]); },
     });
-    // 通常は対象にできないが、「衝突」等アクティブなデジモンを対象にする効果もあるため、
-    // 効果用の選択肢として別枠で用意しておく(判定はプレイヤーに委ねる)。
-    activeTargets.forEach(s => {
-      const c = getStackTopCard(s);
-      actions.push({
-        label: `(効果)${c ? c.name : '?'}(DP${getEffectiveDP(s)})へ`,
-        onClick: () => {
-          attackState.targetType = 'digimon';
-          attackState.targetStack = s;
-          showAttackTriggerStep();
-        },
-      });
-    });
-    openZonePopup(centerPoint(), 'アタック対象を選択(通常はレスト状態のデジモンのみ。(効果)はアクティブなデジモンを対象にする効果用)', actions, true);
   }
 
   // 宣言直後、カウンタータイミングより前に「アタック時」「デジモンがアタックしたとき」の
@@ -11840,10 +12350,12 @@
       resumeAttackStepIfAny();
     };
     if (candidates.length === 1) { applyTarget(candidates[0]); return; }
-    openZonePopup(centerPoint(), `最もDP(${maxDP})が高いアクティブな相手デジモンが複数います。対象を選んでください`, candidates.map(s => {
-      const c = getStackTopCard(s);
-      return { label: `${c ? c.name : '?'}(DP${maxDP})`, onClick: () => applyTarget(s) };
-    }), true);
+    startFieldPick({
+      title: `≪突進≫: 最もDP(${maxDP})が高いアクティブな相手デジモンが複数います。対象をタップ`,
+      attackStep: true,
+      candidates,
+      onDone: (sel) => { if (sel[0]) applyTarget(sel[0]); },
+    });
   }
 
   // ---------- Sアタック±(連携とは別に、効果でセキュリティチェック枚数が増減するケース) ----------
@@ -11903,27 +12415,27 @@
     const candidates = self.battle.filter(s =>
       !s.rested && s !== attackState.attackerStack && isDigimonLikeStack(s) && !hasLock(s, 'noRest')
     );
-    const actions = candidates.map(s => {
-      const c = getStackTopCard(s);
-      const dp = getEffectiveDP(s);
-      return {
-        label: `${c ? c.name : '?'}(DP${dp})をレストして連携`,
-        onClick: () => {
-          snapshotPracticeState();
-          s.rested = true;
-          attackState.renkeiCount = (attackState.renkeiCount || 0) + 1;
-          attackState.renkeiBonusDP = (attackState.renkeiBonusDP || 0) + dp;
-          renderPracticeBoard();
-          showToast(`連携: 「${c ? c.name : '?'}」をレスト(合計+${attackState.renkeiBonusDP}DP、セキュリティチェック+${attackState.renkeiCount}枚)`);
-          resumeAttackStepIfAny();
-        },
-      };
+    if (candidates.length === 0) { showToast('連携でレストできるデジモンがいません', true); resumeAttackStepIfAny(); return; }
+    startFieldPick({
+      title: '≪連携≫: レストさせるデジモンをタップ',
+      attackStep: true,
+      sub: 'そのデジモンのDPがアタック中のデジモンにプラスされ、セキュリティチェック+1枚',
+      candidates,
+      onDone: (sel) => {
+        const s = sel[0];
+        if (!s) return;
+        const c = getStackTopCard(s);
+        const dp = getEffectiveDP(s);
+        snapshotPracticeState();
+        s.rested = true;
+        attackState.renkeiCount = (attackState.renkeiCount || 0) + 1;
+        attackState.renkeiBonusDP = (attackState.renkeiBonusDP || 0) + dp;
+        renderPracticeBoard();
+        showToast(`連携: 「${c ? c.name : '?'}」をレスト(合計+${attackState.renkeiBonusDP}DP、セキュリティチェック+${attackState.renkeiCount}枚)`);
+        resumeAttackStepIfAny();
+      },
+      onCancel: () => resumeAttackStepIfAny(),
     });
-    if (candidates.length === 0) {
-      actions.push({ label: 'レストできるデジモンがいません', onClick: () => resumeAttackStepIfAny() });
-    }
-    actions.push({ label: 'キャンセル', onClick: () => resumeAttackStepIfAny() });
-    openZonePopup(centerPoint(), '連携: レストするデジモンを選択', actions, true);
   }
 
   function showAttackTriggerStep() {
@@ -11985,33 +12497,43 @@
       !s.rested && s !== attackState.attackerStack && isDigimonLikeStack(s) &&
       (collision || hasBlockerKeyword(s)) && !hasLock(s, 'noRest')
     );
-    const actions = [];
+    const buttons = [];
     // ≪衝突≫は「可能ならブロックさせる」強制のため、ブロック可能な相手が1体でも
     // いる場合は「ブロックしない」を選ばせない。誰もブロックできない場合は通常通り
     // (「可能なら」の条件を満たさないため)。
     if (!collision || blockers.length === 0) {
-      actions.push({ label: 'ブロックしない', onClick: () => guardEffectsThen(() => resolveAttack()) });
+      buttons.push({ label: 'ブロックしない', primary: true, onClick: () => guardEffectsThen(() => resolveAttack()) });
     }
-    actions.push(...renkeiActionItems(), ...sAttackActionItems());
-    blockers.forEach(s => {
-      const c = getStackTopCard(s);
-      actions.push({
-        label: `${c ? c.name : '?'}でブロック`,
-        onClick: () => {
-          snapshotPracticeState();
-          s.rested = true;
-          attackState.targetType = 'digimon';
-          attackState.targetStack = s;
-          attackState.blockerUid = ensureStackUid(s);
-          renderPracticeBoard();
-          showBlockTriggerStep();
-        },
-      });
-    });
+    [...renkeiActionItems(), ...sAttackActionItems()].forEach(a => buttons.push({ label: a.label, onClick: () => a.onClick() }));
+    const doBlock = (s) => {
+      snapshotPracticeState();
+      s.rested = true;
+      attackState.targetType = 'digimon';
+      attackState.targetStack = s;
+      attackState.blockerUid = ensureStackUid(s);
+      renderPracticeBoard();
+      showBlockTriggerStep();
+    };
+    // 効果で≪ブロッカー≫を得ている等、自動判定できないケースのために、他のアクティブなデジモンも選べるようにする
+    const others = attackState.defenderOwner.battle.filter(s =>
+      !s.rested && s !== attackState.attackerStack && isDigimonLikeStack(s) && !blockers.includes(s)
+    );
     const title = collision && blockers.length > 0
-      ? '≪衝突≫: 相手のデジモン全てにブロッカーが付与され、可能ならブロックしなければなりません(視点を切り替えて相手側を操作できます)'
-      : 'ブロックタイミング(≪ブロッカー≫を持つアクティブなデジモンのみ。視点を切り替えて相手側を操作できます)';
-    openZonePopup(centerPoint(), title, actions, true);
+      ? '≪衝突≫: 相手のデジモン全てにブロッカーが付与され、可能ならブロックしなければなりません。ブロックするデジモンをタップ'
+      : 'ブロックタイミング: ブロックするデジモン(≪ブロッカー≫を持つアクティブなデジモン)をタップ';
+    startFieldPick({
+      title,
+      sub: '視点を切り替えて相手側を操作することもできます',
+      candidates: blockers,
+      extra: others,
+      extraLabel: 'ブロッカー以外も選ぶ(効果)',
+      showExtra: false,
+      emptyMsg: 'ブロックできるデジモンはいません',
+      attackStep: true,
+      noCancel: true,
+      buttons,
+      onDone: (sel) => { if (sel[0]) doBlock(sel[0]); },
+    });
   }
 
   // ブロック成立後、「ブロックしたとき」「レストしたとき」等の効果が誘発しうるため、
@@ -12084,7 +12606,10 @@
         }
         // 「バトルエリアを離れるとき、…ことで、離れない」系(即時型)。条件・コストは手動で処理する。
         collectLeavePreventers(stack).forEach(pv => {
-          actions.push({ label: `🛡 「${pv.cardName}」の効果で離れない`, onClick: () => { engineUseLeavePreventer(pv); next(); } });
+          const cost = parseTopToSecurity(pv.text);
+          const canPay = !cost || (pv.stackUid === ensureStackUid(stack) && stack.cards.length > cost.n);
+          if (!canPay) return; // 重ねられているカードが足りない(1枚だけ)なら、置いた時点で離れてしまうので出さない
+          actions.push({ label: `🛡 「${pv.cardName}」の効果で離れない${cost ? `(一番上をセキュリティの${cost.dest === 'secTop' ? '上' : '下'}へ)` : ''}`, onClick: () => { engineUseLeavePreventer(pv, stack); next(); } });
         });
       }
       const promptText = allowEvasion
@@ -12634,6 +13159,7 @@
     }
     mk('一番上を移動▾', (e) => openHierarchicalDestinationPicker(e, '一番上のカードを送る', (dest) => { warnIfResistant(stack, ['noReturn'], '移動'); removeCardFromStackAt(stack, topIndex, dest); }, { excludeBattle: true, excludeTrash: true, ownerPlayer: (findStackOwnerAndZone(stack) || {}).player }));
     mk('消滅', () => { warnIfResistant(stack, ['noDestroyByEffect'], '消滅'); resolveDestructionQueue([stack], () => {}); });
+    if (stack.cards.length > 1) mk('一番上だけ移動▾', (e) => openMoveTopOnlyPicker(e, stack));
     if (isDigimonLikeStack(stack) || (oppTopCardObj && oppTopCardObj.category === 'tamer')) {
       mk('🔒 ロック', (e) => openLockMenu(e, stack));
       mk('耐性', (e) => openResistMenu(e, stack));
@@ -12831,6 +13357,7 @@
       mk('🎨 アーツ進化させる(破棄せず進化元にする)', () => enterArtsEvolveMode(stack));
     }
     mk('一番上を移動▾', (e) => openHierarchicalDestinationPicker(e, '一番上のカードを送る', (dest) => removeCardFromStackAt(stack, topIndex, dest), { excludeBattle: true, excludeTrash: true, ownerPlayer: (findStackOwnerAndZone(stack) || {}).player }));
+    if (stack.cards.length > 1) mk('一番上だけ移動▾', (e) => openMoveTopOnlyPicker(e, stack));
     if (cardHasLinkEffect(topCardObj)) {
       mk('🔗 他のデジモンにリンク', () => {
         cardDetailModal.classList.remove('open');
@@ -13005,6 +13532,7 @@
       });
       // 耐性の期限切れ解除(今終わったのは turnPlayer のターン)
       clearExpiredResists(practiceState.players.indexOf(endingPlayer));
+      clearExpiredKeywordGrants(practiceState.players.indexOf(endingPlayer));
       // ≪再起動≫(16-11): 相手(=このアクティブフェイズの持ち主ではない側)のデジモンも、
       // ≪再起動≫を持っていればこのアクティブフェイズで強制的にアクティブになる。
       // ≪ロック≫(アクティブにならない)の方が優先されるため、そちらは除外する。
@@ -13073,6 +13601,8 @@
     revealSessionReopen = null;
     activeRevealSession = null;
     cancelTargetModes();
+    fieldPickMode = null;
+    renderFieldPickBanner();
     practiceState = null;
     practiceSetup = null;
     practiceHistory.length = 0;
