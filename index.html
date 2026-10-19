@@ -1458,6 +1458,8 @@
     filter: drop-shadow(0 1px 2px rgba(0,0,0,0.7));
   }
   .st-resist { color: #fbbf24; display: inline-flex; align-items: center; }
+  .st-main-usable { animation: mainUsablePulse 1.6s ease-in-out infinite; }
+  @keyframes mainUsablePulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
   .dkb-icon .resist-ico { color: #fbbf24; }
   .mat-side-col {
     display: flex;
@@ -2818,7 +2820,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.37.4</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.38.1</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -4507,7 +4509,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.37.4`);
+    log(`DigiCA Tool build v0.38.1`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -6407,12 +6409,15 @@
     // (タイルのサイズを安定させるため)。
     const kwVisible = kwBadgeList.slice(0, 3);
     const kwRest = kwBadgeList.slice(3);
-    const badgesHtml = (kwBadgeList.length > 0 || hasAnyLock(stack) || hasAnyResist(stack))
+    const mainOwner = findStackOwnerAndZone(stack);
+    const mainUsable = !!mainOwner && practiceState && stackHasUsableMainEffect(stack, practiceState.players.indexOf(mainOwner.player), mainOwner.zone);
+    const badgesHtml = (kwBadgeList.length > 0 || hasAnyLock(stack) || hasAnyResist(stack) || mainUsable)
       ? `<div class="status-badges-row">
           ${kwVisible.map(def => `<span class="kw-pill" title="${escapeHtml(def.label)}">${def.icon}</span>`).join('')}
           ${kwRest.length > 0 ? `<span class="kw-pill kw-pill-more">+${kwRest.length}</span>` : ''}
           ${hasAnyLock(stack) ? `<span class="st-lock" title="ロック: ${escapeHtml(Object.keys(LOCK_LABELS).filter(k => hasLock(stack, k)).map(k => LOCK_LABELS[k]).join('/'))}">🔒</span>` : ''}
           ${hasAnyResist(stack) ? `<span class="st-lock st-resist" title="耐性: ${escapeHtml(resistSummary(stack))}">${RESIST_ICON_HTML}</span>` : ''}
+          ${mainUsable ? '<span class="st-lock st-main-usable" title="【メイン】効果を使えます(タップして詳細から)">⚡</span>' : ''}
         </div>`
       : '';
     el.innerHTML = `
@@ -7646,6 +7651,46 @@
     const own = collectStackTriggers(info.pseudo, info.pi, 'battle', ['消滅時'], { event: '消滅' }).map(e => Object.assign(e, { lki: true, lkiUid: info.uid, stackUid: null }));
     engineFireEvents([info.event], own, { extraHolders: [{ stack: info.pseudo, pi: info.pi, uid: info.uid }] });
   }
+  // ---------- 【メイン】(起動型)効果: 自分のメインフェイズ中に任意で使える ----------
+  // 場のデジモン/テイマー(バトルエリア)・育成エリア({育成}【メイン】)・手札(［手札］【メイン】)のものを対象にする。
+  // オプションの【メイン】は「使用」の効果なので対象外(使用時に自動で出る)。≪ディレイ≫の行もディレイボタンで扱う。
+  function canUseMainEffectsNow(pi) {
+    return !!practiceState && practiceState.turn.phase === 'main' && practiceState.turn.playerIndex === pi && !attackState;
+  }
+  function getStackMainEffects(stack, pi, zone) {
+    const top = getStackTopCard(stack);
+    if (!top || top.category === 'option' || stack.dualAsOption) return [];
+    return collectStackTriggers(stack, pi, zone, ['メイン'], { event: '起動' })
+      .filter(e => !e.text.includes('≪ディレイ≫'))
+      .map(e => Object.assign(e, { eventLabel: '起動' }))
+      .filter(e => !isOnceUsed(e));
+  }
+  function getHandMainEffects(card, pi) {
+    if (!card || !card.effect) return [];
+    const res = [];
+    card.effect.split('\n').forEach((line, lineIndex) => {
+      const parsed = parseEffectLine(line);
+      if (!/手札/.test(parsed.prefix) || !parsed.labels.includes('メイン')) return;
+      const e = { ownerIndex: pi, stackUid: null, zone: 'hand', cardNumber: card.number, cardName: card.name, field: 'effect', sourceLabel: '手札', lineIndex, text: parsed.text, timing: 'メイン', event: '起動', eventLabel: '起動' };
+      if (!isOnceUsed(e)) res.push(e);
+    });
+    return res;
+  }
+  function useMainEffect(entry) {
+    if (!practiceState) return;
+    cardDetailModal.classList.remove('open');
+    if (!effectPanelEnabled) {
+      showToast('効果パネルがOFFのため、効果は手動で処理してください', true);
+      return;
+    }
+    enqueueEffects([], [Object.assign({}, entry)]);
+    effectPanelCollapsed = false;
+    renderPracticeBoard();
+    showToast(`⚡「${entry.cardName}」の【メイン】効果を使います`);
+  }
+  function stackHasUsableMainEffect(stack, pi, zone) {
+    return canUseMainEffectsNow(pi) && getStackMainEffects(stack, pi, zone).length > 0;
+  }
   // 手札のカードが、そのデジモンの上に進化できるか(進化画面と同じ判定: 基本条件のLv/色と、判定できる特殊条件)
   function canEvolveOntoStack(card, stack) {
     if (!card || !stack || !isDigimonLikeStack(stack)) return false;
@@ -7802,8 +7847,12 @@
         // 自分のメインフェイズに「【メイン】このデジモン/テイマーをレストさせることで、…」を持つカードを
         // レストした = その起動型効果を使った、とみなして本人の効果を出す
         if (effectPanelEnabled && cur.rested && !deferredByAttack && !attackState && snap.phase === 'main' && cur.pi === tp) {
+          const q0 = getEffectQueue();
+          const sameAs = (a, b) => a && b && a.stackUid === b.stackUid && a.field === b.field && a.lineIndex === b.lineIndex && a.cardNumber === b.cardNumber;
           collectStackTriggers(cur.stack, cur.pi, 'battle', ['メイン'], { fields: ['effect'], event: '起動' })
             .filter(e => /この(デジモン|テイマー)をレストさせることで/.test(e.text))
+            // ⚡ボタンから既に使っている(処理中/発揮待ち)ものは重ねて出さない
+            .filter(e => !sameAs(q0.current, e) && !q0.pending.some(p => sameAs(p, e)))
             .forEach(e => found.push(Object.assign(e, { eventLabel: '起動(レスト)' })));
         }
       }
@@ -8047,6 +8096,51 @@
       { label: 'キャンセル', onClick: () => resumeAttackStepIfAny() },
     ], true);
   }
+  // ---------- アタック対象の変更(効果用) ----------
+  function retargetAttack(target) {
+    if (!attackState) { showToast('アタック中ではありません', true); return; }
+    snapshotPracticeState();
+    if (target === 'player') {
+      attackState.targetType = 'player';
+      attackState.targetStack = null;
+      showToast('🎯 アタックの対象を相手プレイヤーに変更しました');
+    } else {
+      attackState.targetType = 'digimon';
+      attackState.targetStack = target;
+      const c = getStackTopCard(target);
+      showToast(`🎯 アタックの対象を「${c ? c.name : '?'}」に変更しました`);
+    }
+    renderPracticeBoard();
+  }
+  // sidePi: 対象にするデジモンの持ち主(通常はアタックされている側)。includePlayer: 相手プレイヤーも選べるようにする
+  function openRetargetPicker(sidePi, includePlayer, onDone) {
+    if (!attackState) { showToast('アタック中ではありません', true); return; }
+    const side = practiceState.players[sidePi];
+    const cands = side.battle.filter(s => isDigimonLikeStack(s) && s !== attackState.attackerStack);
+    const cur = attackState.targetType === 'digimon' ? attackState.targetStack : 'player';
+    const done = onDone || (() => resumeAttackStepIfAny());
+    const actions = cands.map(s => {
+      const c = getStackTopCard(s);
+      return { label: `${cur === s ? '✅ ' : ''}${c ? c.name : '?'}(DP${getEffectiveDP(s)}${s.rested ? '・レスト' : ''})`, onClick: () => { retargetAttack(s); done(); } };
+    });
+    if (includePlayer && side === attackState.defenderOwner) {
+      actions.unshift({ label: `${cur === 'player' ? '✅ ' : ''}相手プレイヤー(セキュリティ${side.security.length}枚)`, onClick: () => { retargetAttack('player'); done(); } });
+    }
+    if (!actions.length) { showToast('対象にできるデジモンがいません', true); done(); return; }
+    actions.push({ label: 'キャンセル', onClick: () => done() });
+    openZonePopup(centerPoint(), 'アタックの対象をどれに変更しますか?', actions, true);
+  }
+  // 効果テキストの「アタックの対象を〜に変更」からボタンを作る(アタック中のみ)
+  function retargetHandlersFor(e, stack) {
+    if (!attackState) return [];
+    const m = /アタックの対象を([^。]*?)に変更/.exec(engineStripNotes(e.text || ''));
+    if (!m) return [];
+    const desc = m[1];
+    if (/このデジモン/.test(desc) && stack && findStackOwnerAndZone(stack)) {
+      return [{ label: '🎯 アタックの対象をこのデジモンに変更', run: () => retargetAttack(stack) }];
+    }
+    return [{ label: '🎯 アタックの対象を変更', run: () => openRetargetPicker(e.ownerIndex, /プレイヤー/.test(desc), () => {}) }];
+  }
   // 効果1行に対して用意できる「⚡自動処理」(既に自動化済みの処理)を列挙する
   function getEffectHandlers(e) {
     if (e.timing === 'ディレイ') {
@@ -8062,7 +8156,7 @@
     }
     const f = findStackByUid(e.stackUid);
     // 進化元効果・リンク効果・消滅時(場を離れた後)・手札の効果などでも、ドローだけは使えるようにする
-    if (!f || e.field !== 'effect') return [...memoryHandlersFor(e), ...drawHandlersFor(e)];
+    if (!f || e.field !== 'effect') return [...retargetHandlersFor(e, f && f.stack), ...memoryHandlersFor(e), ...drawHandlersFor(e)];
     const stack = f.stack;
     const line = e.text;
     const list = [];
@@ -8088,7 +8182,7 @@
         } });
       }
     }
-    list.push(...memoryHandlersFor(e), ...drawHandlersFor(e));
+    list.push(...retargetHandlersFor(e, stack), ...memoryHandlersFor(e), ...drawHandlersFor(e));
     if (checkAutoSelfEvolveDPTrigger(stack, e.timing, line, true)) {
       list.push({ label: '⚡ このデジモンのDP増減', run: () => { checkAutoSelfEvolveDPTrigger(stack, e.timing, line); renderPracticeBoard(); } });
     }
@@ -8524,6 +8618,11 @@
       if (cardHasLinkEffect(card)) {
         actionDefs.push({ label: '🔗 リンク', onClick: () => enterLinkTargetMode('hand', index, number) });
       }
+      const pi = practiceState.players.indexOf(self);
+      getHandMainEffects(card, pi).forEach((m, i, arr) => {
+        if (!canUseMainEffectsNow(pi)) return;
+        actionDefs.push({ label: arr.length > 1 ? `⚡ 効果${i + 1}` : '⚡ 効果', cls: 'primary', onClick: () => useMainEffect(m) });
+      });
       actionDefs.push({ label: '破棄', cls: 'danger', onClick: () => trashFromHand(index) });
       actionDefs.forEach(def => {
         const b = document.createElement('button');
@@ -11598,6 +11697,12 @@
   function sAttackActionItems() {
     return [{ label: sAttackActionLabel(), onClick: () => showSAttackModifyPopup() }];
   }
+  // 効果でアタックの対象を変更する(ブロッカーでないデジモンへの変更など)
+  function retargetActionItems() {
+    if (!attackState) return [];
+    const defPi = practiceState.players.indexOf(attackState.defenderOwner);
+    return [{ label: '🎯 アタック対象を変更(効果)', onClick: () => openRetargetPicker(defPi, true) }];
+  }
   function showSAttackModifyPopup() {
     openZonePopup(centerPoint(), 'セキュリティチェック枚数を増減', [
       {
@@ -11672,6 +11777,7 @@
       ...renkeiActionItems(),
       ...sAttackActionItems(),
       ...chargeActionItems(),
+      ...retargetActionItems(),
     ], true);
   }
 
@@ -11696,6 +11802,7 @@
       ...renkeiActionItems(),
       ...sAttackActionItems(),
       ...chargeActionItems(),
+      ...retargetActionItems(),
     ], true);
   }
 
@@ -11750,6 +11857,7 @@
       { label: '次へ(バトル解決へ)', onClick: () => guardEffectsThen(() => resolveAttack()) },
       ...renkeiActionItems(),
       ...sAttackActionItems(),
+      ...retargetActionItems(),
     ], true);
   }
 
@@ -12564,6 +12672,33 @@
       });
     }
     wrap.appendChild(row);
+    // 【メイン】効果(自分のメインフェイズ中のみ)
+    const ownerZone = findStackOwnerAndZone(stack);
+    if (ownerZone && practiceState) {
+      const pi = practiceState.players.indexOf(ownerZone.player);
+      const mains = getStackMainEffects(stack, pi, ownerZone.zone);
+      if (mains.length) {
+        const mainWrap = document.createElement('div');
+        mainWrap.style.cssText = 'display:flex;flex-direction:column;gap:6px;margin-top:4px;';
+        const ok = canUseMainEffectsNow(pi);
+        const head = document.createElement('div');
+        head.style.cssText = 'font-size:11px;color:var(--text-dim);';
+        head.textContent = ok ? '⚡ 【メイン】効果(任意で使えます)' : '⚡ 【メイン】効果(自分のメインフェイズ中に使えます)';
+        mainWrap.appendChild(head);
+        mains.forEach(m => {
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'btn';
+          b.style.cssText = 'font-size:11px;text-align:left;white-space:normal;line-height:1.4;';
+          const short = m.text.length > 60 ? m.text.slice(0, 60) + '…' : m.text;
+          b.textContent = `${m.sourceLabel ? `[${m.sourceLabel}] ` : ''}${short}`;
+          b.disabled = !ok;
+          b.addEventListener('click', (ev) => { ev.stopPropagation(); useMainEffect(m); });
+          mainWrap.appendChild(b);
+        });
+        wrap.appendChild(mainWrap);
+      }
+    }
     return wrap;
   }
 
