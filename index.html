@@ -2867,7 +2867,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.40.0</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.40.2</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -4562,7 +4562,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.40.0`);
+    log(`DigiCA Tool build v0.40.2`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -5291,6 +5291,16 @@
     delete stack.jammingOverride;
     delete stack.sAttackBonus;
     delete stack.linkLimitBonus;
+    // 効果で付与されたキーワード(✨付与)は、進化しても同じデジモンへの効果として残る。
+    // 手動の上書き(○○Override)を消した後に、付与分だけ掛け直す。
+    if (stack.kwGrants && stack.kwGrants.length) {
+      stack.kwGrants.forEach(g => { if (g.type === 'kw' && g.key) stack[g.key] = true; });
+      const saSum = stack.kwGrants.filter(g => g.type === 'sa').reduce((a, g) => a + g.amount, 0);
+      if (stack.kwGrants.some(g => g.type === 'sa')) {
+        stack.sAttackBonus = effectiveSAttackBonus(stack) + saSum;
+        stack.kwGrants.forEach(g => { if (g.type === 'sa') g.wasAuto = true; });
+      }
+    }
     // 4-8-6: リンクカードを持つカードが新しいカードになる場合、そのカードが持つ
     // リンクカードは同時に破棄される(アプ合体は例外的にリンクをこの時点までに
     // 吸収済みなので、ここでは既に空になっている)。
@@ -8518,8 +8528,12 @@
         const clause = before.slice(Math.max(before.lastIndexOf('、'), 0));
         const self = /この(デジモン|テイマー)/.test(before.slice(-30)) && !/他の/.test(before.slice(-30));
         const subj = self ? null : parseGrantSubject(before);
+        // 「≪突進≫を得て、DP+3000」のように、同じ対象へのDP増減が続く場合は一緒に処理する
+        const after = sent.slice(m.index + m[0].length);
+        const dm = /^(?:て|る)?[、,\s]*(?:DP|ＤＰ)([+\-]\d+)/.exec(after);
         out.push({
           kws, until,
+          dp: dm ? parseInt(dm[1], 10) : 0,
           target: self ? 'self' : (subj && subj.all ? 'all' : 'pick'),
           side: subj ? subj.side : null,
           ta: subj, // 対象の条件(targetCandidatesで判定する形)。読み取れなければnull=判定しない
@@ -8598,14 +8612,19 @@
       const names = g.kws.map(k => `≪${k.label}≫`).join('');
       const durLabel = g.until === 'turnEnd' ? '(ターン終了まで)' : g.until === 'oppTurnEnd' ? '(相手のターン終了まで)' : '';
       return {
-        label: `✨ ${names}を付与${g.target === 'all' ? '(全て)' : ''}`,
+        label: `✨ ${names}を付与${g.dp ? `・DP${g.dp > 0 ? '+' : ''}${g.dp}` : ''}${g.target === 'all' ? '(全て)' : ''}`,
         run: () => {
           const apply = (targets) => {
             if (!targets.length) { showToast('対象にできるデジモンがいません', true); return; }
             snapshotPracticeState();
             targets.forEach(st => grantKeywordsTo(st, g, e.ownerIndex));
+            if (g.dp) {
+              const dur = g.until === 'turnEnd' ? 'thisTurn' : g.until === 'oppTurnEnd' ? 'untilOpponentTurnEnd' : 'permanent';
+              targets.forEach(st => applyEffectDP(st, g.dp, dur, e.ownerIndex));
+            }
             renderPracticeBoard();
-            showToast(`✨ ${targets.map(stackLabel).join('、')} に${names}を付与しました${durLabel}`);
+            showToast(`✨ ${targets.map(stackLabel).join('、')} に${names}を付与${g.dp ? `・DP${g.dp > 0 ? '+' : ''}${g.dp}` : ''}しました${durLabel}`);
+            if (g.dp < 0 && targets.some(st => findStackOwnerAndZone(st) && getEffectiveDP(st) <= 0)) checkAllBattleAreaRuleViolations();
           };
           if (g.target === 'self' && holderStack && findStackOwnerAndZone(holderStack)) { apply([holderStack]); return; }
           const sides = g.side === 'opp' ? [1 - e.ownerIndex] : g.side === 'own' ? [e.ownerIndex] : [e.ownerIndex, 1 - e.ownerIndex];
@@ -8624,7 +8643,7 @@
           if (cands.length === 1 && !extra.length) { apply(cands); return; }
           const count = g.ta && Number.isFinite(g.ta.count) ? g.ta.count : 1;
           startFieldPick({
-            title: `${names}を付与するカードをタップ${durLabel}`,
+            title: `${names}${g.dp ? `・DP${g.dp > 0 ? '+' : ''}${g.dp}` : ''}を与えるカードをタップ${durLabel}`,
             sub: g.ta ? `条件: ${(g.ta.prefix || '').trim() || '指定なし'}${g.ta.side === 'opp' ? '相手の' : g.ta.side === 'own' ? '自分の' : ''}${g.ta.kinds.length === 1 ? (g.ta.kinds[0] === 'tamer' ? 'テイマー' : 'デジモン') : ''}${count > 1 ? count + '体' + (g.ta.upTo ? 'まで' : '') : ''}` : '対象の条件は判定していません',
             candidates: cands, extra,
             extraLabel: '条件外も選ぶ',
