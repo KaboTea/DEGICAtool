@@ -2923,12 +2923,38 @@
       background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15);
     }
     body.ls-mode #practiceBoardPanel .ls-dock-toggle[hidden] { display: none; }
-    body.ls-mode.ls-dock-min #practiceBoardPanel.panel { grid-template-columns: var(--ls-l) minmax(0, 1fr) 40px; }
-    body.ls-mode.ls-dock-min #practiceBoardPanel .ls-dock { padding: 6px 4px; }
-    body.ls-mode.ls-dock-min #practiceBoardPanel .ls-dock > :not(.ls-dock-toggle) { display: none !important; }
-    body.ls-mode.ls-dock-min #practiceBoardPanel .ls-dock-toggle {
+    /* 盤面は常に同じ幅(右端に40pxの帯)。右の列は開いたときだけ盤面の上に重ねて出す */
+    body.ls-mode #practiceBoardPanel.panel { grid-template-columns: var(--ls-l) minmax(0, 1fr) 40px; position: relative; }
+    body.ls-mode:not(.ls-dock-open) #practiceBoardPanel .ls-dock { padding: 6px 4px; }
+    body.ls-mode:not(.ls-dock-open) #practiceBoardPanel .ls-dock > :not(.ls-dock-toggle) { display: none !important; }
+    body.ls-mode:not(.ls-dock-open) #practiceBoardPanel .ls-dock-toggle {
       flex: 1; writing-mode: vertical-rl; letter-spacing: 0.15em; padding: 8px 0; min-height: 0;
     }
+    body.ls-mode #practiceBoardPanel .ls-dock-toggle.has-items { color: #1a1204; background: linear-gradient(180deg, #ffe08a, var(--gold)); border-color: transparent; }
+    body.ls-mode.ls-dock-open #practiceBoardPanel .ls-dock {
+      position: absolute; top: 0; bottom: 0; right: env(safe-area-inset-right, 0px);
+      width: var(--ls-r); z-index: 80; padding-left: 6px;
+      box-shadow: -14px 0 30px rgba(0,0,0,0.65);
+    }
+    /* 右の列に入れたポップアップ・カード選択の案内(画面に浮かせず、列の中に並べる) */
+    body.ls-mode #practiceBoardPanel .ls-dock .zone-popup { position: static; max-width: none; min-width: 0; max-height: none; width: auto; box-sizing: border-box;
+      border: 1px solid rgba(var(--gold-rgb),0.8); border-radius: 10px; box-shadow: 0 0 16px rgba(var(--gold-rgb),0.25); }
+    body.ls-mode #practiceBoardPanel .ls-dock .zone-popup.open { display: block; }
+    body.ls-mode #practiceBoardPanel .ls-dock .zone-popup.peeking { opacity: 1; pointer-events: auto; }
+    body.ls-mode #practiceBoardPanel .ls-dock #zonePopupPeekBtn { display: none; }
+    body.ls-mode #practiceBoardPanel .ls-dock .zone-popup button { min-height: 40px; }
+    body.ls-mode #practiceBoardPanel .ls-dock-popup:empty { display: none; }
+    /* カード選択の案内は、盤面の上(相手側を選ぶときは下)に細い帯で出す。右の列はその間たたむ */
+    body.ls-mode #practiceBoardPanel .field-pick-banner {
+      position: absolute; left: calc(var(--ls-l) + 10px + env(safe-area-inset-left, 0px)); right: calc(48px + env(safe-area-inset-right, 0px));
+      width: auto; transform: none; animation: none; z-index: 90;
+      top: 4px; bottom: auto; flex-direction: row; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 10px;
+    }
+    body.ls-mode.ls-pick-opp #practiceBoardPanel .field-pick-banner { top: auto; bottom: 4px; }
+    body.ls-mode #practiceBoardPanel .field-pick-banner .fpb-text { flex: 1; min-width: 0; font-size: 11.5px; line-height: 1.35; }
+    body.ls-mode #practiceBoardPanel .field-pick-banner .fpb-text .fpb-sub { font-size: 10px; }
+    body.ls-mode #practiceBoardPanel .field-pick-banner .fpb-btns { flex: none; flex-wrap: nowrap; max-width: 60%; overflow-x: auto; }
+    body.ls-mode #practiceBoardPanel .field-pick-banner .fpb-btns button { min-height: 36px; white-space: nowrap; }
     /* メモリー: マスを大きめにし、左右に1つずつ動かすボタンを付ける */
     body.ls-mode #practiceBoardPanel .ls-mem-btn {
       display: block; flex: none; width: 40px; height: 30px; border-radius: 7px; cursor: pointer;
@@ -2982,9 +3008,17 @@
     body.ls-mode #practiceBoardPanel .mat-side-col,
     body.ls-mode #practiceBoardPanel .mat-side-col-right,
     body.ls-mode #practiceBoardPanel #selfEggCluster,
-    body.ls-mode #practiceBoardPanel #opponentEggCluster,
-    body.ls-mode #practiceBoardPanel .raising-sub-area,
-    body.ls-mode #practiceBoardPanel #raisingPhaseActions { zoom: var(--ls-zp); }
+    body.ls-mode #practiceBoardPanel #opponentEggCluster { zoom: var(--ls-zp); }
+    /* 育成エリアはバトルエリアと同じ大きさで表示する。自分側はセキュリティ・デジタマの下に置く */
+    body.ls-mode #practiceBoardPanel .raising-sub-area { zoom: var(--ls-z); }
+    body.ls-mode #practiceBoardPanel .mat-block .raising-sub-area .stack-tile { width: 76px; }
+    body.ls-mode #practiceBoardPanel #selfMatBlock .mat-row {
+      grid-template-columns: auto auto minmax(0, 1fr) auto;
+      grid-template-areas: "security egg battle decktrash" "raising raising battle decktrash";
+      grid-template-rows: auto 1fr;
+      row-gap: 4px;
+    }
+    body.ls-mode #practiceBoardPanel #selfMatBlock .raising-sub-area { justify-self: start; }
     body.ls-mode #practiceBoardPanel .mat-side-col { flex-direction: row; }
     body.ls-mode #practiceBoardPanel .mat-side-col-right { flex-direction: row; align-items: flex-start; padding-top: 0; margin-left: 0; }
     body.ls-mode #practiceBoardPanel .battle-sub-area { margin-left: 0; min-height: 0; min-width: 0; overflow-x: auto; overflow-y: visible; scrollbar-width: none; }
@@ -3023,28 +3057,12 @@
     }
     body.ls-mode #practiceBoardPanel .hand-action-bar .hab-btn { min-height: 36px; font-size: 12.5px; padding: 6px 12px; }
     body.ls-mode #practiceBoardPanel .ls-hand-tab {
-      display: block; position: absolute; right: 6px; bottom: 5px; z-index: 41;
+      display: block; position: absolute; left: 6px; bottom: 5px; z-index: 41; /* 右の列を開いても隠れないよう左下に置く */
       font-size: 11px; font-weight: 800; color: #fff; border: none; cursor: pointer;
       background: rgba(var(--self-rgb),0.9); padding: 6px 12px; border-radius: 14px;
     }
     /* ---- ポップアップ・案内・カード詳細は右の列に出す ---- */
-    body.ls-mode .zone-popup.open {
-      left: auto !important; top: auto !important;
-      right: env(safe-area-inset-right, 0px) !important; bottom: 0 !important;
-      width: var(--ls-r); max-width: none; min-width: 0; box-sizing: border-box;
-      max-height: calc(var(--ls-h) * 0.72);
-      border-radius: 12px 0 0 0;
-      border-color: rgba(var(--gold-rgb, 234,179,8),0.8);
-      padding-bottom: max(10px, env(safe-area-inset-bottom, 0px));
-    }
-    body.ls-mode .zone-popup button { min-height: 36px; }
-    body.ls-mode #practiceBoardPanel .field-pick-banner {
-      left: auto; right: env(safe-area-inset-right, 0px); bottom: 0; transform: none;
-      width: var(--ls-r); border-radius: 12px 0 0 0; animation: none;
-      padding-bottom: max(9px, env(safe-area-inset-bottom, 0px));
-    }
-    body.ls-mode #practiceBoardPanel .fpb-btns button { min-height: 34px; }
-    body.ls-mode.field-picking .toast { bottom: 24px; }
+    body.ls-mode.field-picking .toast { bottom: 70px; }
     body.ls-mode #practiceBoardPanel .evolve-mode-banner.active {
       position: fixed; top: 6px; left: calc(var(--ls-l) + 12px + env(safe-area-inset-left, 0px)); right: calc(var(--ls-r) + 12px + env(safe-area-inset-right, 0px));
       z-index: 120; margin: 0; font-size: 11px; padding: 6px 10px;
@@ -3065,9 +3083,15 @@
     body.ls-mode .modal-backdrop:not(.detail-modal) .modal { max-height: calc(var(--ls-h) - 16px); max-width: calc(100% - 24px); overflow-y: auto; box-sizing: border-box; }
     body.ls-mode .detail-modal .modal-actions { margin-top: 10px; }
     /* カード一覧(公開したカード・トラッシュ等)の行は、ボタンを名前の下の段に回して押しやすくする */
-    body.ls-mode .detail-modal .deck-list-item { flex-wrap: wrap; row-gap: 5px; }
-    body.ls-mode .detail-modal .deck-list-item .dli-stepper { flex-basis: 100%; justify-content: flex-end; flex-wrap: wrap; }
-    body.ls-mode .detail-modal .deck-list-item .dli-stepper .btn { width: auto; height: auto; font-size: 11px !important; padding: 6px 9px !important; min-height: 32px; white-space: nowrap; }
+    /* カード一覧(公開したカード等): 横幅が広いので、画像・名前・ボタンを1行に並べ、ボタンを大きくする */
+    body.ls-mode .detail-modal .deck-list-item { flex-wrap: wrap; row-gap: 6px; padding: 8px 10px; }
+    body.ls-mode .detail-modal .deck-list-item > img { width: 50px !important; }
+    body.ls-mode .detail-modal .deck-list-item .dli-name { font-size: 14px; }
+    body.ls-mode .detail-modal .deck-list-item .dli-stepper { margin-left: auto; justify-content: flex-end; flex-wrap: wrap; gap: 6px !important; }
+    body.ls-mode .detail-modal .deck-list-item .dli-stepper .btn,
+    body.ls-mode .detail-modal .deck-list-item .dli-stepper button {
+      width: auto; height: auto; min-width: 46px; min-height: 44px; font-size: 14px !important; padding: 8px 12px !important; white-space: nowrap; border-radius: 8px;
+    }
     /* 画面の狭いスマホ(iPhone SE等)では場のカードを一回り小さくする */
     body.ls-mode.ls-narrow { --ls-l: 76px; --ls-r: 196px; }
     body.ls-mode.ls-narrow #practiceBoardPanel .mat-block { --ls-z: 0.64; --ls-zp: 0.48; }
@@ -3128,7 +3152,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.41.3</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.41.4</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -3306,6 +3330,7 @@
       <div class="ls-dock" id="lsDock">
         <button type="button" class="ls-dock-toggle" id="lsDockToggle"></button>
         <div class="ls-dock-phase" id="lsDockPhase"></div>
+        <div class="ls-dock-popup" id="lsDockPopup"></div>
         <div id="lsDockMain"></div>
         <div class="ls-dock-empty">処理中・発揮待ちの効果はありません。<br>場のカード・デッキ・セキュリティをタップすると、操作がこの列に出ます。</div>
         <div class="ls-dock-util" id="lsDockUtil"></div>
@@ -3949,7 +3974,8 @@
     e.stopPropagation();
     enterPeek(zonePopupEl);
   });
-  peekRestoreBtn.addEventListener('click', () => exitPeek());
+  // 押したクリックが「ポップアップの外側クリックで閉じる」処理に届くと、戻した直後に閉じてしまうため止める
+  peekRestoreBtn.addEventListener('click', (e) => { e.stopPropagation(); exitPeek(); });
 
   function escapeHtml(str) {
     const div = document.createElement('div');
@@ -4844,7 +4870,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.41.3`);
+    log(`DigiCA Tool build v0.41.4`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -9332,6 +9358,8 @@
       ['practiceNextPhaseBtn', 'practicePassBtn', 'practiceUndoBtn', 'practiceSwitchViewBtn', 'fieldEffectsBtn']
         .forEach(id => lsMove(document.getElementById(id), btns));
       lsMove(document.getElementById('raisingPhaseActions'), document.getElementById('lsDockPhase'));
+      // ポップアップも右の列(効果のところ)に入れる
+      lsMove(zonePopupEl, document.getElementById('lsDockPopup'));
       lsMove(document.getElementById('effectPanel'), document.getElementById('lsDockMain'));
       lsMove(document.getElementById('utilityActions'), document.getElementById('lsDockUtil'));
     } else {
@@ -9340,7 +9368,8 @@
         if (m.parent) m.parent.insertBefore(m.node, m.next && m.next.parentNode === m.parent ? m.next : null);
       }
       lsMoved.length = 0;
-      document.body.classList.remove('ls-hand-up', 'ls-pick-opp', 'ls-dock-min');
+      document.body.classList.remove('ls-hand-up', 'ls-pick-opp', 'ls-dock-open');
+      lsDockSig = ''; lsDockOpen = false; lsDockPinned = false; lsPickSaved = null;
     }
   }
   if (window.matchMedia) {
@@ -9355,24 +9384,42 @@
     lsResizeTimer = setTimeout(() => { const was = lsActive; lsUpdate(); if (practiceState && (was !== lsActive || lsForce)) renderPracticeBoard(); }, 150);
   });
   document.getElementById('lsForceBtn').addEventListener('click', () => setLsForce(true));
-  // 右の列(効果パネル)は、処理中・発揮待ちの効果も育成フェイズのボタンも無いときは細い帯に畳み、盤面を広く使う。
-  // 帯を押すと開いたままにできる(「たたむ」で戻す)。
-  let lsDockPinned = false;
+  // 右の列(効果パネル)は普段は細い帯にたたみ、盤面は常に同じ広さで使う。効果・ポップアップ・カード選択・
+  // 育成フェイズのボタンが出たら、盤面の上に一時的に重ねて開く(盤面は縮めない)。
+  // 開いているときに「たたむ」で隠せる(次に新しい効果やポップアップが出たら、また自動で開く)。
+  let lsDockOpen = false;
+  let lsDockSig = '';
+  let lsDockPinned = false; // 何も無いときに手動で開いた
+  let lsPickSaved = null;   // カード選択の前の開閉状態
   function lsUpdateDock() {
-    if (!lsActive) { document.body.classList.remove('ls-dock-min'); return; }
+    if (!lsActive) { document.body.classList.remove('ls-dock-open'); return; }
     const ep = document.getElementById('effectPanel');
     const phase = document.getElementById('raisingPhaseActions');
-    const busy = (ep && !ep.hidden) || (phase && phase.children.length > 0);
-    const min = !busy && !lsDockPinned;
-    document.body.classList.toggle('ls-dock-min', min);
+    const q = practiceState && practiceState.effectQueue;
+    const parts = [];
+    if (ep && !ep.hidden) parts.push('e' + (q ? (q.current ? q.current.id : '') + ':' + q.pending.length : ''));
+    if (zonePopupEl.classList.contains('open')) parts.push('p' + (document.getElementById('zonePopupTitle').textContent || ''));
+    if (phase && phase.children.length) parts.push('r');
+    const sig = parts.join('|');
+    // カードを選ぶ間は、右の列を一時的にたたんで盤面を全部見せる(選び終わったら元に戻す)
+    if (fieldPickMode && !lsPickSaved) { lsPickSaved = { open: lsDockOpen }; lsDockOpen = false; }
+    else if (!fieldPickMode && lsPickSaved) { lsDockOpen = lsPickSaved.open || (!!sig && sig !== lsDockSig); lsPickSaved = null; lsDockSig = sig; }
+    if (sig !== lsDockSig) {
+      if (sig && !fieldPickMode) lsDockOpen = true;
+      else if (!sig && !lsDockPinned) lsDockOpen = false;
+      lsDockSig = sig;
+    }
+    document.body.classList.toggle('ls-dock-open', lsDockOpen);
     const t = document.getElementById('lsDockToggle');
-    t.hidden = busy;
-    t.textContent = min ? '◀ 効果パネル' : '▶ たたむ';
-    t.title = min ? '右の列を開く(フィールド外の操作「孵化(効果)」等もここ)' : '右の列を細くたたんで盤面を広くする';
+    t.hidden = false;
+    t.classList.toggle('has-items', !!sig);
+    t.textContent = lsDockOpen ? '▶ たたむ' : (sig ? '◀ 効果・操作あり' : '◀ 効果パネル');
+    t.title = lsDockOpen ? '右の列をたたんで盤面を見る' : '右の列を開く(フィールド外の操作「孵化(効果)」等もここ)';
   }
   document.getElementById('lsDockToggle').addEventListener('click', (e) => {
     e.stopPropagation();
-    lsDockPinned = document.body.classList.contains('ls-dock-min');
+    lsDockOpen = !lsDockOpen;
+    lsDockPinned = lsDockOpen && !lsDockSig;
     lsUpdateDock();
   });
   // メモリーを1つずつ動かすボタン(横画面のみ表示)。◀=自分側へ、▶=相手側へ(見ている側から見た向き)
@@ -11504,7 +11551,7 @@
   // ---------- Zone action popup ----------
   const zonePopupEl = document.getElementById('zonePopup');
   let zonePopupPersistent = false;
-  function closeZonePopup() { zonePopupEl.classList.remove('open', 'peeking'); zonePopupPersistent = false; }
+  function closeZonePopup() { zonePopupEl.classList.remove('open', 'peeking'); zonePopupPersistent = false; if (lsActive) lsUpdateDock(); }
   function openZonePopup(e, title, actions, persistent) {
     document.getElementById('zonePopupTitle').textContent = title;
     const actionsEl = document.getElementById('zonePopupActions');
@@ -11525,6 +11572,8 @@
     });
     zonePopupPersistent = !!persistent;
     zonePopupEl.classList.add('open');
+    // 横画面では右の列(効果のところ)に出す。開いて先頭までスクロールする
+    if (lsActive) { lsUpdateDock(); const dock = document.getElementById('lsDock'); if (dock) dock.scrollTop = 0; return; }
     // 項目数によって実際の高さが大きく変わる(キーワード効果一覧など)ため、
     // 固定値でクランプせず、描画後の実測サイズを使って画面内に収める。
     // タップ位置の近くに出すと、画面の端や他の要素に被って押せなくなることが
