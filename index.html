@@ -2848,6 +2848,220 @@
     .fx-float { font-size: 17px; }
     .fx-slash { font-size: 22px; }
   }
+
+  /* ========================================================================
+     スマホ横向きレイアウト(高さ500px以下の横向き + 練習画面表示中 = body.ls-mode)
+     左=操作列(ターン/フェイズ/次へ・パス・戻す等) / 中央=相手の場・メモリー・自分の場・手札 /
+     右=効果パネル(ポップアップ・カード詳細・カード選択の案内もこの列に出す)。
+     縦向き・PCには影響しない(ls-modeはJSが横向き判定のときだけ付ける)。
+     ======================================================================== */
+  .ls-hud, .ls-dock, .ls-hand-tab { display: none; }
+    body.ls-mode { --ls-l: 82px; --ls-r: clamp(200px, 28vw, 240px); --ls-h: 100vh; --ls-h: 100dvh; overflow: hidden; min-height: 0; }
+    html.ls-rot body.ls-mode { --ls-r: clamp(200px, 28vh, 240px); --ls-h: 100vw; }
+    body.ls-mode > header, body.ls-mode > nav.tabs, body.ls-mode > footer { display: none; }
+    body.ls-mode > main { padding: 0; max-width: none; margin: 0; }
+    body.ls-mode #practiceBoardPanel.panel {
+      display: grid;
+      grid-template-columns: var(--ls-l) minmax(0, 1fr) var(--ls-r);
+      grid-template-rows: auto auto minmax(0, 1fr);
+      column-gap: 6px;
+      height: var(--ls-h);
+      box-sizing: border-box;
+      padding: 0 env(safe-area-inset-right, 0px) 0 env(safe-area-inset-left, 0px);
+      margin: 0;
+      border: none;
+      border-radius: 0;
+      overflow: hidden;
+    }
+    body.ls-mode #practiceBoardPanel > .practice-topbar.arena-topbar { display: none; }
+    /* ---- 左の操作列 ---- */
+    body.ls-mode #practiceBoardPanel .ls-hud {
+      grid-column: 1; grid-row: 1 / -1;
+      display: flex; flex-direction: column; gap: 4px;
+      padding: 5px 6px max(5px, env(safe-area-inset-bottom, 0px));
+      min-height: 0; overflow-y: auto; scrollbar-width: none;
+      background: linear-gradient(180deg, #121729, #0a0e19);
+      border-right: 1px solid rgba(255,255,255,0.1);
+    }
+    body.ls-mode #practiceBoardPanel .ls-hud-top { display: flex; flex-direction: column; gap: 5px; }
+    body.ls-mode #practiceBoardPanel .ls-sp { flex: 1; min-height: 4px; }
+    body.ls-mode #practiceBoardPanel .ls-hud-btns { display: flex; flex-direction: column; gap: 5px; }
+    body.ls-mode #practiceBoardPanel #arenaTurnChip { font-size: 11px; padding: 3px 4px; text-align: center; margin: 0; }
+    body.ls-mode #practiceBoardPanel #phasePips { display: flex; flex-direction: column; gap: 1px; margin: 0; }
+    body.ls-mode #practiceBoardPanel #phasePips .phase-pip { font-size: 7.5px; padding: 1px 0; text-align: center; margin: 0; }
+    body.ls-mode #practiceBoardPanel .ls-hud button.btn {
+      width: 100%; min-height: 37px; padding: 2px 3px; margin: 0;
+      font-size: 11px; line-height: 1.2; white-space: normal; border-radius: 8px; clip-path: none;
+    }
+    body.ls-mode #practiceBoardPanel .ls-hud #practiceNextPhaseBtn { min-height: 48px; font-size: 12.5px; font-weight: 800; }
+    body.ls-mode #practiceBoardPanel .ls-hud .ls-menu-btn { min-height: 32px; font-size: 10.5px; opacity: 0.85; }
+    /* ---- 右の効果パネル列 ---- */
+    body.ls-mode #practiceBoardPanel .ls-dock {
+      grid-column: 3; grid-row: 1 / -1;
+      display: flex; flex-direction: column; gap: 6px;
+      min-height: 0; overflow-y: auto; overflow-x: hidden;
+      padding: 6px 4px max(6px, env(safe-area-inset-bottom, 0px)) 0;
+      border-left: 1px solid rgba(var(--gold-rgb),0.45);
+      background: linear-gradient(180deg, rgba(16,19,32,0.98), rgba(8,10,18,0.98));
+    }
+    body.ls-mode #practiceBoardPanel .ls-dock .effect-panel { position: static; margin: 0; border-radius: 10px; }
+    body.ls-mode #practiceBoardPanel .ls-dock-empty { display: none; font-size: 11px; line-height: 1.6; color: rgba(255,255,255,0.55); padding: 8px 6px; }
+    body.ls-mode #practiceBoardPanel #lsDockMain:has(#effectPanel[hidden]) + .ls-dock-empty { display: block; }
+    body.ls-mode #practiceBoardPanel .ls-dock-util { margin-top: auto; }
+    body.ls-mode #practiceBoardPanel .ls-dock-util .db-actions { margin: 0; gap: 5px; }
+    body.ls-mode #practiceBoardPanel .ls-dock-util button.btn { font-size: 11px; padding: 6px 10px; }
+    /* ---- 中央: 相手の場・メモリー・自分の場 ---- */
+    body.ls-mode #practiceBoardPanel #oppMatBlock { grid-column: 2; grid-row: 1; }
+    body.ls-mode #practiceBoardPanel .arena-hud { grid-column: 2; grid-row: 2; padding: 3px 0; margin: 0; background: none; border: none; box-shadow: none; }
+    body.ls-mode #practiceBoardPanel #selfMatBlock { grid-column: 2; grid-row: 3; }
+    body.ls-mode #practiceBoardPanel .arena-phasebar,
+    body.ls-mode #practiceBoardPanel #turnIndicatorLabel { display: none; }
+    body.ls-mode #practiceBoardPanel .turn-memory-row { justify-content: center; }
+    body.ls-mode #practiceBoardPanel #memoryLine { flex: 0 1 auto !important; display: flex; flex-direction: row; flex-wrap: nowrap; justify-content: center; gap: 2px; padding: 2px 0; overflow: visible; }
+    body.ls-mode #practiceBoardPanel #memoryLine .ml-row { display: contents; }
+    body.ls-mode #practiceBoardPanel .turn-memory-row { width: 100%; }
+    body.ls-mode #practiceBoardPanel #memoryLine { width: 100%; }
+    body.ls-mode #practiceBoardPanel #memoryLine .ml-slot { flex: 1 1 0; min-width: 0; max-width: 20px; width: auto; height: 19px; font-size: 9px; margin: 0; padding: 0; }
+    body.ls-mode #practiceBoardPanel .mat-block {
+      margin: 0; padding: 2px 6px 4px; border-radius: 8px; min-height: 0; animation: none;
+      --ls-z: 0.74; --ls-zp: 0.56;
+    }
+    body.ls-mode #practiceBoardPanel #oppMatBlock { --ls-z: 0.53; --ls-zp: 0.42; margin-top: 4px; }
+    body.ls-mode.ls-pick-opp #practiceBoardPanel #oppMatBlock { --ls-z: 0.74; --ls-zp: 0.5; }
+    body.ls-mode.ls-pick-opp #practiceBoardPanel #selfMatBlock { --ls-z: 0.5; --ls-zp: 0.42; opacity: 0.45; }
+    body.ls-mode.ls-pick-opp #practiceBoardPanel .arena-hud { opacity: 0.4; }
+    body.ls-mode #practiceBoardPanel .arena-plate { margin: -2px -6px 2px; font-size: 10px; min-height: 0; gap: 6px; }
+    body.ls-mode #practiceBoardPanel .arena-plate .ap-tag { font-size: 8px; padding: 2px 12px 2px 7px; }
+    body.ls-mode #practiceBoardPanel .arena-plate .ap-sub,
+    body.ls-mode #practiceBoardPanel .arena-compact-toggle { display: none; }
+    body.ls-mode #practiceBoardPanel .arena-plate .ap-turn { font-size: 8px; padding: 1px 6px; margin-right: 6px; }
+    body.ls-mode #practiceBoardPanel #selfMatBlock { display: flex; flex-direction: column; position: relative; padding-bottom: 36px; }
+    body.ls-mode #practiceBoardPanel #selfMatBlock > .arena-plate { order: -1; margin: -2px -6px 2px; }
+    body.ls-mode #practiceBoardPanel #selfMatBlock > .mat-label:not(.arena-plate) { display: none; }
+    body.ls-mode #practiceBoardPanel .mat-block .mat-row,
+    body.ls-mode #practiceBoardPanel .mat-block.is-compact .mat-row {
+      zoom: 1;
+      display: grid;
+      grid-template-columns: auto auto auto auto minmax(0, 1fr) auto;
+      grid-template-areas: "security egg raising actions battle decktrash";
+      grid-template-rows: auto;
+      column-gap: 10px;
+      align-items: start;
+    }
+    /* バトルエリアは --ls-z、山札・セキュリティ・育成などはそれより小さい --ls-zp で縮める(バトルエリアを広く使うため) */
+    body.ls-mode #practiceBoardPanel .battle-sub-area { zoom: var(--ls-z); }
+    body.ls-mode #practiceBoardPanel .mat-side-col,
+    body.ls-mode #practiceBoardPanel .mat-side-col-right,
+    body.ls-mode #practiceBoardPanel #selfEggCluster,
+    body.ls-mode #practiceBoardPanel #opponentEggCluster,
+    body.ls-mode #practiceBoardPanel .raising-sub-area,
+    body.ls-mode #practiceBoardPanel #raisingPhaseActions { zoom: var(--ls-zp); }
+    body.ls-mode #practiceBoardPanel .mat-side-col { flex-direction: row; }
+    body.ls-mode #practiceBoardPanel .mat-side-col-right { flex-direction: row; align-items: flex-start; padding-top: 0; margin-left: 0; }
+    body.ls-mode #practiceBoardPanel .battle-sub-area { margin-left: 0; min-height: 0; min-width: 0; overflow-x: auto; overflow-y: visible; scrollbar-width: none; }
+    body.ls-mode #practiceBoardPanel .raising-sub-area { min-height: 0; }
+    body.ls-mode #practiceBoardPanel .sub-area .sa-label { display: none; }
+    body.ls-mode #practiceBoardPanel .battle-groups-wrap { flex-direction: row; flex-wrap: nowrap; justify-content: flex-start; column-gap: 22px; }
+    body.ls-mode #practiceBoardPanel .battle-top-group,
+    body.ls-mode #practiceBoardPanel .battle-bottom-group { flex-wrap: nowrap; padding-top: 36px; }
+    body.ls-mode #practiceBoardPanel .battle-top-group:empty,
+    body.ls-mode #practiceBoardPanel .battle-bottom-group:empty { display: none; }
+    body.ls-mode #practiceBoardPanel .mat-block .empty-state { padding: 6px 0 !important; }
+    /* ---- 手札: 下から少しだけ見せ、タブかカードの選択でせり上がる ---- */
+    body.ls-mode #practiceBoardPanel .hand-row.hand-fan {
+      position: absolute; left: 0; right: 0; bottom: 0; z-index: 40;
+      padding: 12px 8px 8px; margin: 0;
+      transform: translateY(calc(100% - 34px));
+      transition: transform .25s ease;
+      border-radius: 10px 10px 0 0;
+      background: linear-gradient(180deg, rgba(14,20,40,0.97), rgba(6,9,18,0.98));
+    }
+    body.ls-mode.ls-hand-up #practiceBoardPanel .hand-row.hand-fan,
+    body.ls-mode #practiceBoardPanel .hand-row.hand-fan.has-selection { transform: none; }
+    body.ls-mode #practiceBoardPanel .hand-fan .hand-card { width: 62px; }
+    body.ls-mode #practiceBoardPanel .ls-hand-tab {
+      display: block; position: absolute; right: 6px; bottom: 5px; z-index: 41;
+      font-size: 11px; font-weight: 800; color: #fff; border: none; cursor: pointer;
+      background: rgba(var(--self-rgb),0.9); padding: 6px 12px; border-radius: 14px;
+    }
+    /* ---- ポップアップ・案内・カード詳細は右の列に出す ---- */
+    body.ls-mode .zone-popup.open {
+      left: auto !important; top: auto !important;
+      right: env(safe-area-inset-right, 0px) !important; bottom: 0 !important;
+      width: var(--ls-r); max-width: none; min-width: 0; box-sizing: border-box;
+      max-height: calc(var(--ls-h) * 0.72);
+      border-radius: 12px 0 0 0;
+      border-color: rgba(var(--gold-rgb, 234,179,8),0.8);
+      padding-bottom: max(10px, env(safe-area-inset-bottom, 0px));
+    }
+    body.ls-mode .zone-popup button { min-height: 36px; }
+    body.ls-mode #practiceBoardPanel .field-pick-banner {
+      left: auto; right: env(safe-area-inset-right, 0px); bottom: 0; transform: none;
+      width: var(--ls-r); border-radius: 12px 0 0 0; animation: none;
+      padding-bottom: max(9px, env(safe-area-inset-bottom, 0px));
+    }
+    body.ls-mode #practiceBoardPanel .fpb-btns button { min-height: 34px; }
+    body.ls-mode.field-picking .toast { bottom: 24px; }
+    body.ls-mode #practiceBoardPanel .evolve-mode-banner.active {
+      position: fixed; top: 6px; left: calc(var(--ls-l) + 12px + env(safe-area-inset-left, 0px)); right: calc(var(--ls-r) + 12px + env(safe-area-inset-right, 0px));
+      z-index: 120; margin: 0; font-size: 11px; padding: 6px 10px;
+    }
+    body.ls-mode .modal-backdrop.detail-modal { justify-content: flex-end; align-items: stretch; background: transparent; }
+    body.ls-mode .detail-modal .modal {
+      width: min(420px, 54vw); max-height: none; height: 100%; box-sizing: border-box;
+      border-radius: 12px 0 0 12px; padding: 10px 12px;
+      padding-right: max(12px, env(safe-area-inset-right, 0px));
+      overflow-y: auto; box-shadow: -10px 0 30px rgba(0,0,0,0.6);
+    }
+    body.ls-mode .detail-body { flex-direction: row; gap: 10px; }
+    body.ls-mode .detail-img-col { width: 110px; }
+    body.ls-mode .detail-body img { width: 110px; margin: 0; }
+    body.ls-mode .detail-modal .modal-actions { margin-top: 10px; }
+    /* カード一覧(公開したカード・トラッシュ等)の行は、ボタンを名前の下の段に回して押しやすくする */
+    body.ls-mode .detail-modal .deck-list-item { flex-wrap: wrap; row-gap: 5px; }
+    body.ls-mode .detail-modal .deck-list-item .dli-stepper { flex-basis: 100%; justify-content: flex-end; flex-wrap: wrap; }
+    body.ls-mode .detail-modal .deck-list-item .dli-stepper .btn { width: auto; height: auto; font-size: 11px !important; padding: 6px 9px !important; min-height: 32px; white-space: nowrap; }
+    /* 画面の狭いスマホ(iPhone SE等)では場のカードを一回り小さくする */
+    body.ls-mode.ls-narrow { --ls-l: 76px; --ls-r: 196px; }
+    body.ls-mode.ls-narrow #practiceBoardPanel .mat-block { --ls-z: 0.64; --ls-zp: 0.48; }
+    body.ls-mode.ls-narrow #practiceBoardPanel #oppMatBlock { --ls-z: 0.47; --ls-zp: 0.38; }
+    body.ls-mode.ls-narrow.ls-pick-opp #practiceBoardPanel #oppMatBlock { --ls-z: 0.64; --ls-zp: 0.44; }
+    body.ls-mode.ls-narrow.ls-pick-opp #practiceBoardPanel #selfMatBlock { --ls-z: 0.45; --ls-zp: 0.38; }
+    /* 左の列のボタンは対戦アリーナ風の装飾(斜めカット等)を外して、押しやすい四角に揃える */
+    body.ls-mode #practiceBoardPanel #practiceNextPhaseBtn {
+      clip-path: none; border-radius: 8px; padding: 2px 3px; letter-spacing: 0; min-height: 46px; font-size: 12px;
+    }
+    body.ls-mode #practiceBoardPanel #phasePips .phase-pip { transform: none; letter-spacing: 0.04em; line-height: 1.25; }
+    /* 効果パネル(右の列)を細い幅に合わせて詰める */
+    body.ls-mode #practiceBoardPanel .ls-dock .ep-head { flex-wrap: wrap; gap: 4px 6px; padding: 5px 6px; }
+    body.ls-mode #practiceBoardPanel .ls-dock .ep-sub { flex-basis: 100%; order: 3; font-size: 10.5px; }
+    body.ls-mode #practiceBoardPanel .ls-dock .ep-head .ep-btn { padding: 3px 7px; font-size: 10px; }
+    body.ls-mode #practiceBoardPanel .ls-dock .ep-body { max-height: none; padding: 6px; }
+    body.ls-mode #practiceBoardPanel .ls-dock .ep-current,
+    body.ls-mode #practiceBoardPanel .ls-dock .ep-choice { gap: 6px; padding: 6px; flex-wrap: wrap; }
+    body.ls-mode #practiceBoardPanel .ls-dock .ep-thumb { width: 34px; }
+    body.ls-mode #practiceBoardPanel .ls-dock .ep-text { font-size: 11.5px; line-height: 1.5; }
+    body.ls-mode #practiceBoardPanel .ls-dock .ep-actions { gap: 5px; }
+    body.ls-mode #practiceBoardPanel .ls-dock .ep-btn { white-space: normal; text-align: left; min-height: 32px; font-size: 11px; padding: 5px 9px; line-height: 1.25; }
+    body.ls-mode #practiceBoardPanel .ls-dock .ep-btn.done { flex: 1 1 55%; min-height: 36px; text-align: center; font-size: 12px; }
+    body.ls-mode #practiceBoardPanel .ls-dock .ep-choice-btns { flex-direction: row; flex-basis: 100%; }
+    body.ls-mode #practiceBoardPanel .ls-dock .ep-choice-btns .ep-btn { flex: 1; text-align: center; }
+
+  /* ---- 横画面固定: 縦持ちのままbody全体を90度回す(端末の画面回転ロック中でも横画面で遊べる) ---- */
+  html.ls-rot, html.ls-rot body { overflow: hidden; }
+  html.ls-rot body {
+    position: fixed; top: 0; left: 0; margin: 0; min-height: 0;
+    width: 100vh; width: 100dvh; height: 100vw;
+    transform-origin: top left;
+    transform: translateX(100vw) rotate(90deg);
+  }
+  html.ls-rot.ls-rot-rev body { transform: translateY(100vh) rotate(-90deg); transform: translateY(100dvh) rotate(-90deg); }
+  /* 盤面の位置に合わせて出す演出は回転した画面では位置がずれるため出さない */
+  html.ls-rot #arenaFxLayer { display: none; }
+  .ls-force-btn { display: none; }
+  @media (max-width: 900px) and (orientation: portrait) {
+    #practiceBoardPanel .ls-force-btn { display: inline-block; }
+  }
 </style>
 <!-- タッチ端末でもHTML5ドラッグ&ドロップがそのまま動くようにするポリフィル。
      長押し(press-hold)でドラッグ開始するモードで有効化する。 -->
@@ -2867,7 +3081,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.40.2</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.41.1</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -3017,6 +3231,7 @@
         <button class="btn" id="effectPanelToggle" title="登場・進化・ターン開始などで誘発した効果を、効果処理パネルで1つずつ処理します(OFFで従来の手動進行)">⚡ 効果パネル ON</button>
         <button class="btn" id="autoEndToggle" title="メインフェイズでメモリーが相手側に移り、効果処理・アタックが全て終わったら自動でエンドフェイズへ進みます">⏭ 自動エンド ON</button>
         <button class="btn" id="arenaFxToggle" title="登場・進化・消滅・フェイズ切替などの演出を切り替えます">✨ 演出 ON</button>
+        <button class="btn ls-force-btn" id="lsForceBtn" title="スマホを縦に持ったまま、画面を横向きのレイアウトにします(端末を横に倒して使います)">📱 横画面で遊ぶ</button>
         <button class="btn" id="practiceEndGameBtn">練習を終了</button>
       </div>
 
@@ -3032,6 +3247,19 @@
       <div class="field-pick-banner" id="fieldPickBanner" hidden>
         <div class="fpb-text" id="fieldPickText"></div>
         <div class="fpb-btns" id="fieldPickBtns"></div>
+      </div>
+
+      <!-- スマホ横向き用: 左の操作列と右の効果パネル列(横向きのときだけ表示し、既存のボタン等をここへ移す) -->
+      <div class="ls-hud" id="lsHud">
+        <div class="ls-hud-top" id="lsHudTop"></div>
+        <div class="ls-sp"></div>
+        <div class="ls-hud-btns" id="lsHudBtns"></div>
+        <button type="button" class="btn ls-menu-btn" id="lsMenuBtn">⚙ メニュー</button>
+      </div>
+      <div class="ls-dock" id="lsDock">
+        <div id="lsDockMain"></div>
+        <div class="ls-dock-empty">処理中・発揮待ちの効果はありません。<br>場のカード・デッキ・セキュリティをタップすると、操作がこの列に出ます。</div>
+        <div class="ls-dock-util" id="lsDockUtil"></div>
       </div>
 
       <!-- 相手側(奥) -->
@@ -3084,6 +3312,7 @@
         </div>
         <div class="mat-label arena-plate"><span class="ap-tag">YOU</span><span class="ap-name" id="selfNameLabel"></span><span class="ap-sub">手札</span><span class="ap-turn">YOUR TURN</span></div>
         <div class="hand-row" id="selfHandRow"></div>
+        <button type="button" class="ls-hand-tab" id="lsHandTab">手札 ▲</button>
 
         <div class="mat-label" style="margin-top:16px;">効果による操作(いつでも使用可)</div>
         <div class="db-actions" id="utilityActions"></div>
@@ -3296,6 +3525,8 @@
     Object.entries(tabPanels).forEach(([key, el]) => {
       el.style.display = (key === tabKey) ? '' : 'none';
     });
+    // 練習画面の横向きレイアウトの切り替え(スクリプトの後半で定義されるため、読み込み完了後に呼ぶ)
+    setTimeout(() => { if (typeof lsUpdate === 'function') lsUpdate(); }, 0);
   }
 
   tabButtons.forEach(btn => {
@@ -4562,7 +4793,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.40.2`);
+    log(`DigiCA Tool build v0.41.1`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -8931,6 +9162,7 @@
     if (!practiceState) return;
     // 1手戻す等で盤面が丸ごと差し替わったら、古い盤面を参照している選択モードは破棄する
     if (fieldPickMode && (fieldPickMode.stateRef !== practiceState || (fieldPickMode.attackStep && attackState !== fieldPickMode.attackRef))) fieldPickMode = null;
+    lsUpdate();
     const self = practiceState.players[practiceState.viewingIndex];
     const oppIndex = 1 - practiceState.viewingIndex;
     const opp = practiceState.players[oppIndex];
@@ -8996,10 +9228,107 @@
       lastAttackStepFn();
     }
     renderFieldPickBanner();
+    renderLsHandTab();
     arenaFxAfterRender();
     effectEngineAfterRender();
     autoEndAfterRender();
   }
+
+  // ---------- スマホ横向きレイアウト ----------
+  // 横向き(高さ500px以下)で練習画面を開いているときだけ、3列(左=操作 / 中央=盤面 / 右=効果パネル)にする。
+  // ボタン等は作り直さず、既存の要素を左右の列へ移動する(イベントはそのまま)。縦向きに戻したら元の場所へ戻す。
+  const lsMoved = []; // { node, parent, next }
+  let lsActive = false;
+  // 横画面固定(縦持ちのまま画面を90度回す)。端末ごとに覚えておく
+  let lsForce = (() => { try { return localStorage.getItem('digica_ls_force') === '1'; } catch (e) { return false; } })();
+  let lsForceRev = (() => { try { return localStorage.getItem('digica_ls_force_rev') === '1'; } catch (e) { return false; } })();
+  function setLsForce(on, rev) {
+    lsForce = !!on;
+    if (rev !== undefined) lsForceRev = !!rev;
+    try { localStorage.setItem('digica_ls_force', lsForce ? '1' : '0'); localStorage.setItem('digica_ls_force_rev', lsForceRev ? '1' : '0'); } catch (e) {}
+    lsUpdate();
+    if (practiceState) renderPracticeBoard();
+    window.scrollTo(0, 0);
+  }
+  function lsMediaMatches() {
+    return window.matchMedia && window.matchMedia('(orientation: landscape) and (max-height: 500px)').matches;
+  }
+  function lsMove(node, target) {
+    if (!node || !target) return;
+    lsMoved.push({ node, parent: node.parentNode, next: node.nextSibling });
+    target.appendChild(node);
+  }
+  function lsUpdate() {
+    const boardOn = !!practiceState && practiceBoardPanel.style.display !== 'none' && document.getElementById('tab-practice').style.display !== 'none';
+    const portrait = window.innerHeight > window.innerWidth;
+    const rot = boardOn && lsForce && portrait;
+    const on = boardOn && (lsMediaMatches() || rot);
+    document.documentElement.classList.toggle('ls-rot', rot);
+    document.documentElement.classList.toggle('ls-rot-rev', rot && lsForceRev);
+    const effW = rot ? window.innerHeight : window.innerWidth;
+    document.body.classList.toggle('ls-narrow', on && effW <= 740);
+    if (on === lsActive) return;
+    lsActive = on;
+    document.body.classList.toggle('ls-mode', on);
+    if (on) {
+      const top = document.getElementById('lsHudTop');
+      const btns = document.getElementById('lsHudBtns');
+      lsMove(document.getElementById('arenaTurnChip'), top);
+      lsMove(document.getElementById('phasePips'), top);
+      ['practiceNextPhaseBtn', 'practicePassBtn', 'practiceUndoBtn', 'practiceSwitchViewBtn', 'fieldEffectsBtn']
+        .forEach(id => lsMove(document.getElementById(id), btns));
+      lsMove(document.getElementById('effectPanel'), document.getElementById('lsDockMain'));
+      lsMove(document.getElementById('utilityActions'), document.getElementById('lsDockUtil'));
+    } else {
+      for (let i = lsMoved.length - 1; i >= 0; i--) {
+        const m = lsMoved[i];
+        if (m.parent) m.parent.insertBefore(m.node, m.next && m.next.parentNode === m.parent ? m.next : null);
+      }
+      lsMoved.length = 0;
+      document.body.classList.remove('ls-hand-up', 'ls-pick-opp');
+    }
+  }
+  if (window.matchMedia) {
+    const mq = window.matchMedia('(orientation: landscape) and (max-height: 500px)');
+    const onChange = () => { lsUpdate(); if (practiceState) renderPracticeBoard(); };
+    if (mq.addEventListener) mq.addEventListener('change', onChange); else if (mq.addListener) mq.addListener(onChange);
+  }
+  // 横画面固定中に端末の向きが変わったとき(縦⇔横)にも切り替える
+  let lsResizeTimer = null;
+  window.addEventListener('resize', () => {
+    clearTimeout(lsResizeTimer);
+    lsResizeTimer = setTimeout(() => { const was = lsActive; lsUpdate(); if (practiceState && (was !== lsActive || lsForce)) renderPracticeBoard(); }, 150);
+  });
+  document.getElementById('lsForceBtn').addEventListener('click', () => setLsForce(true));
+  document.getElementById('lsHandTab').addEventListener('click', (e) => {
+    e.stopPropagation();
+    document.body.classList.toggle('ls-hand-up');
+    renderLsHandTab();
+  });
+  function renderLsHandTab() {
+    const b = document.getElementById('lsHandTab');
+    if (!b || !practiceState) return;
+    const n = practiceState.players[practiceState.viewingIndex].hand.length;
+    b.textContent = `手札 ${n} ${document.body.classList.contains('ls-hand-up') ? '▼' : '▲'}`;
+  }
+  // 横向きでは画面上部のボタン(効果パネル/自動エンド/演出/練習を終了)とタブを隠すため、メニューから使えるようにする
+  document.getElementById('lsMenuBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    const label = (id) => (document.getElementById(id) || {}).textContent || '';
+    openZonePopup(centerPoint(), 'メニュー', [
+      { label: label('effectPanelToggle'), onClick: () => document.getElementById('effectPanelToggle').click() },
+      { label: label('autoEndToggle'), onClick: () => document.getElementById('autoEndToggle').click() },
+      { label: label('arenaFxToggle'), onClick: () => document.getElementById('arenaFxToggle').click() },
+      { label: '🔍 カード検索タブへ', onClick: () => document.querySelector('.tab-btn[data-tab="search"]').click() },
+      { label: '🃏 デッキ構築タブへ', onClick: () => document.querySelector('.tab-btn[data-tab="deck"]').click() },
+      ...(lsForce ? [
+        { label: '📱 縦画面に戻す', onClick: () => setLsForce(false) },
+        { label: '🔄 画面の向きを反転', onClick: () => setLsForce(true, !lsForceRev) },
+      ] : []),
+      { label: '練習を終了', onClick: () => document.getElementById('practiceEndGameBtn').click() },
+      { label: '閉じる', onClick: () => {} },
+    ]);
+  });
 
   // ---------- 自動エンドフェイズ ----------
   // メインフェイズ中にメモリーが相手側(1以上)へ移ったら「待機」状態にし、
@@ -9173,7 +9502,7 @@
   // はみ出さないよう重なりを深くする)。
   function layoutHandFan(handRow, cardsWrap, cardEls) {
     if (cardEls.length === 0) return;
-    const cardW = cardEls[0].getBoundingClientRect().width || 90;
+    const cardW = cardEls[0].offsetWidth || 90;
     const style = getComputedStyle(handRow);
     const avail = handRow.clientWidth - parseFloat(style.paddingLeft || 0) - parseFloat(style.paddingRight || 0);
     const n = cardEls.length;
@@ -9184,10 +9513,12 @@
   }
   function positionHandActionBar(handRow, cardEl, bar) {
     if (!cardEl) return;
-    const rowRect = handRow.getBoundingClientRect();
-    const cardRect = cardEl.getBoundingClientRect();
-    const barW = bar.getBoundingClientRect().width;
-    const center = cardRect.left + cardRect.width / 2 - rowRect.left;
+    // 画面を回転して表示しているとき(横画面固定)でも位置がずれないよう、見た目の座標ではなくレイアウト上の位置で計算する
+    let x = cardEl.offsetLeft, el = cardEl.offsetParent;
+    while (el && el !== handRow) { x += el.offsetLeft; el = el.offsetParent; }
+    if (el !== handRow) x = cardEl.getBoundingClientRect().left - handRow.getBoundingClientRect().left;
+    const barW = bar.offsetWidth;
+    const center = x + cardEl.offsetWidth / 2;
     const maxLeft = handRow.clientWidth - barW - 4;
     const left = Math.max(4, Math.min(maxLeft, center - barW / 2));
     bar.style.left = `${Math.round(left)}px`;
@@ -9677,6 +10008,11 @@
     if (!banner) return;
     const fp = fieldPickMode;
     document.body.classList.toggle('field-picking', !!fp);
+    // 横向きレイアウト: 相手側のカードを選ぶときは相手の場を大きくする
+    const oppP = practiceState ? practiceState.players[1 - practiceState.viewingIndex] : null;
+    const pickOnOpp = !!fp && !!oppP && [...fp.candidates, ...(fp.showExtra ? fp.extra : [])]
+      .some(st => { const f = findStackOwnerAndZone(st); return f && f.player === oppP; });
+    document.body.classList.toggle('ls-pick-opp', pickOnOpp);
     if (!fp) { banner.hidden = true; return; }
     banner.hidden = false;
     const textEl = document.getElementById('fieldPickText');
@@ -13631,6 +13967,7 @@
     cardDetailModal.classList.remove('open');
     practiceBoardPanel.style.display = 'none';
     practiceSetupPanel.style.display = '';
+    lsUpdate();
     practiceMulliganArea.innerHTML = '';
   });
 
