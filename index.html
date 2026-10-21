@@ -2855,7 +2855,7 @@
      右=効果パネル(ポップアップ・カード詳細・カード選択の案内もこの列に出す)。
      縦向き・PCには影響しない(ls-modeはJSが横向き判定のときだけ付ける)。
      ======================================================================== */
-  .ls-hud, .ls-dock, .ls-hand-tab { display: none; }
+  .ls-hud, .ls-dock, .ls-hand-tab, .ls-mem-btn { display: none; }
     body.ls-mode { --ls-l: 82px; --ls-r: clamp(200px, 28vw, 240px); --ls-h: 100vh; --ls-h: 100dvh; overflow: hidden; min-height: 0; }
     html.ls-rot body.ls-mode { --ls-r: clamp(200px, 28vh, 240px); --ls-h: 100vw; }
     body.ls-mode > header, body.ls-mode > nav.tabs, body.ls-mode > footer { display: none; }
@@ -2908,6 +2908,35 @@
     body.ls-mode #practiceBoardPanel .ls-dock-empty { display: none; font-size: 11px; line-height: 1.6; color: rgba(255,255,255,0.55); padding: 8px 6px; }
     body.ls-mode #practiceBoardPanel #lsDockMain:has(#effectPanel[hidden]) + .ls-dock-empty { display: block; }
     body.ls-mode #practiceBoardPanel .ls-dock-util { margin-top: auto; }
+    /* 育成フェイズの「孵化」「移動」は右の列の一番上に大きく出す */
+    body.ls-mode #practiceBoardPanel .ls-dock-phase #raisingPhaseActions { zoom: 1; display: flex; flex-direction: column; gap: 6px; margin: 0; }
+    body.ls-mode #practiceBoardPanel .ls-dock-phase #raisingPhaseActions:empty { display: none; }
+    body.ls-mode #practiceBoardPanel .ls-dock-phase #raisingPhaseActions button.btn {
+      width: 100%; min-height: 44px; font-size: 14px; font-weight: 800; border-radius: 8px;
+      background: linear-gradient(180deg, var(--self-light), var(--self)); color: var(--self-ink); border: none;
+    }
+    body.ls-mode #practiceBoardPanel .ls-dock-phase #raisingPhaseActions button.btn:disabled { background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.4); border: 1px solid rgba(255,255,255,0.15); }
+    /* 右の列の開閉 */
+    body.ls-mode #practiceBoardPanel .ls-dock-toggle {
+      display: block; flex: none; min-height: 32px; border-radius: 8px; cursor: pointer;
+      font-size: 11px; font-weight: 700; color: rgba(255,255,255,0.75);
+      background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15);
+    }
+    body.ls-mode #practiceBoardPanel .ls-dock-toggle[hidden] { display: none; }
+    body.ls-mode.ls-dock-min #practiceBoardPanel.panel { grid-template-columns: var(--ls-l) minmax(0, 1fr) 40px; }
+    body.ls-mode.ls-dock-min #practiceBoardPanel .ls-dock { padding: 6px 4px; }
+    body.ls-mode.ls-dock-min #practiceBoardPanel .ls-dock > :not(.ls-dock-toggle) { display: none !important; }
+    body.ls-mode.ls-dock-min #practiceBoardPanel .ls-dock-toggle {
+      flex: 1; writing-mode: vertical-rl; letter-spacing: 0.15em; padding: 8px 0; min-height: 0;
+    }
+    /* メモリー: マスを大きめにし、左右に1つずつ動かすボタンを付ける */
+    body.ls-mode #practiceBoardPanel .ls-mem-btn {
+      display: block; flex: none; width: 40px; height: 30px; border-radius: 7px; cursor: pointer;
+      font-size: 13px; font-weight: 900; color: #fff; border: 1px solid rgba(255,255,255,0.22);
+    }
+    body.ls-mode #practiceBoardPanel #lsMemLeft { background: rgba(var(--self-rgb),0.45); }
+    body.ls-mode #practiceBoardPanel #lsMemRight { background: rgba(var(--opp-rgb),0.45); }
+    body.ls-mode #practiceBoardPanel .turn-memory-row { gap: 6px; }
     body.ls-mode #practiceBoardPanel .ls-dock-util .db-actions { margin: 0; gap: 5px; }
     body.ls-mode #practiceBoardPanel .ls-dock-util button.btn { font-size: 11px; padding: 6px 10px; }
     /* ---- 中央: 相手の場・メモリー・自分の場 ---- */
@@ -2917,11 +2946,11 @@
     body.ls-mode #practiceBoardPanel .arena-phasebar,
     body.ls-mode #practiceBoardPanel #turnIndicatorLabel { display: none; }
     body.ls-mode #practiceBoardPanel .turn-memory-row { justify-content: center; }
-    body.ls-mode #practiceBoardPanel #memoryLine { flex: 0 1 auto !important; display: flex; flex-direction: row; flex-wrap: nowrap; justify-content: center; gap: 2px; padding: 2px 0; overflow: visible; }
+    body.ls-mode #practiceBoardPanel #memoryLine { flex: 1 1 0 !important; min-width: 0; display: flex; flex-direction: row; flex-wrap: nowrap; justify-content: center; gap: 2px; padding: 2px 0; overflow: visible; }
     body.ls-mode #practiceBoardPanel #memoryLine .ml-row { display: contents; }
     body.ls-mode #practiceBoardPanel .turn-memory-row { width: 100%; }
     body.ls-mode #practiceBoardPanel #memoryLine { width: 100%; }
-    body.ls-mode #practiceBoardPanel #memoryLine .ml-slot { flex: 1 1 0; min-width: 0; max-width: 20px; width: auto; height: 19px; font-size: 9px; margin: 0; padding: 0; }
+    body.ls-mode #practiceBoardPanel #memoryLine .ml-slot { flex: 1 1 0; min-width: 0; max-width: 26px; width: auto; height: 26px; font-size: 11px; margin: 0; padding: 0; }
     body.ls-mode #practiceBoardPanel .mat-block {
       margin: 0; padding: 2px 6px 4px; border-radius: 8px; min-height: 0; animation: none;
       --ls-z: 0.74; --ls-zp: 0.56;
@@ -2961,7 +2990,14 @@
     body.ls-mode #practiceBoardPanel .battle-sub-area { margin-left: 0; min-height: 0; min-width: 0; overflow-x: auto; overflow-y: visible; scrollbar-width: none; }
     body.ls-mode #practiceBoardPanel .raising-sub-area { min-height: 0; }
     body.ls-mode #practiceBoardPanel .sub-area .sa-label { display: none; }
-    body.ls-mode #practiceBoardPanel .battle-groups-wrap { flex-direction: row; flex-wrap: nowrap; justify-content: flex-start; column-gap: 22px; }
+    body.ls-mode #practiceBoardPanel .mat-block .battle-groups-wrap,
+    body.ls-mode #practiceBoardPanel .mat-block.is-compact .battle-groups-wrap { flex-direction: row; flex-wrap: nowrap; justify-content: flex-start; column-gap: 22px; }
+    /* 縦持ちスマホ用(幅768px以下)の並び替え・最小高さは、横画面では使わない(横画面固定のときも幅768px以下の扱いになるため打ち消す) */
+    body.ls-mode #practiceBoardPanel .mat-block .battle-sub-area,
+    body.ls-mode #practiceBoardPanel .mat-block.is-compact .battle-sub-area { width: auto; flex: none; min-height: 0; }
+    body.ls-mode #practiceBoardPanel .mat-block .raising-sub-area { padding: 0; }
+    body.ls-mode #practiceBoardPanel .mat-block .mat-pile .mp-label,
+    body.ls-mode #practiceBoardPanel .mat-block.is-compact .mat-pile .mp-label { display: none; }
     body.ls-mode #practiceBoardPanel .battle-top-group,
     body.ls-mode #practiceBoardPanel .battle-bottom-group { flex-wrap: nowrap; padding-top: 36px; }
     body.ls-mode #practiceBoardPanel .battle-top-group:empty,
@@ -2979,6 +3015,13 @@
     body.ls-mode.ls-hand-up #practiceBoardPanel .hand-row.hand-fan,
     body.ls-mode #practiceBoardPanel .hand-row.hand-fan.has-selection { transform: none; }
     body.ls-mode #practiceBoardPanel .hand-fan .hand-card { width: 62px; }
+    /* 手札のコマンド(登場・進化など)は、手札に重ならないよう手札の上側に出す */
+    body.ls-mode #practiceBoardPanel .hand-row.hand-fan.has-selection { padding-bottom: 8px; }
+    body.ls-mode #practiceBoardPanel .hand-action-bar { top: auto; bottom: calc(100% + 16px); }
+    body.ls-mode #practiceBoardPanel .hand-action-bar::before {
+      top: auto; bottom: -7px; transform: rotate(225deg);
+    }
+    body.ls-mode #practiceBoardPanel .hand-action-bar .hab-btn { min-height: 36px; font-size: 12.5px; padding: 6px 12px; }
     body.ls-mode #practiceBoardPanel .ls-hand-tab {
       display: block; position: absolute; right: 6px; bottom: 5px; z-index: 41;
       font-size: 11px; font-weight: 800; color: #fff; border: none; cursor: pointer;
@@ -3006,16 +3049,20 @@
       position: fixed; top: 6px; left: calc(var(--ls-l) + 12px + env(safe-area-inset-left, 0px)); right: calc(var(--ls-r) + 12px + env(safe-area-inset-right, 0px));
       z-index: 120; margin: 0; font-size: 11px; padding: 6px 10px;
     }
+    /* カード詳細・カードの操作は、左の操作列より右の横幅を全部使って読みやすく表示する */
     body.ls-mode .modal-backdrop.detail-modal { justify-content: flex-end; align-items: stretch; background: transparent; }
     body.ls-mode .detail-modal .modal {
-      width: min(420px, 54vw); max-height: none; height: 100%; box-sizing: border-box;
-      border-radius: 12px 0 0 12px; padding: 10px 12px;
-      padding-right: max(12px, env(safe-area-inset-right, 0px));
+      width: calc(100% - var(--ls-l)); max-width: none; max-height: none; height: 100%; box-sizing: border-box;
+      border-radius: 12px 0 0 12px; padding: 10px 14px;
+      padding-right: max(14px, env(safe-area-inset-right, 0px));
       overflow-y: auto; box-shadow: -10px 0 30px rgba(0,0,0,0.6);
     }
-    body.ls-mode .detail-body { flex-direction: row; gap: 10px; }
-    body.ls-mode .detail-img-col { width: 110px; }
-    body.ls-mode .detail-body img { width: 110px; margin: 0; }
+    body.ls-mode .detail-body { flex-direction: row; align-items: flex-start; gap: 14px; }
+    body.ls-mode .detail-img-col { width: 150px; }
+    body.ls-mode .detail-body img { width: 150px; margin: 0; }
+    body.ls-mode .detail-body > :not(.detail-img-col):not(img) { flex: 1; min-width: 0; }
+    /* その他のモーダル(進化ルート・フィールド効果など)は画面の高さに収めてスクロールさせる */
+    body.ls-mode .modal-backdrop:not(.detail-modal) .modal { max-height: calc(var(--ls-h) - 16px); max-width: calc(100% - 24px); overflow-y: auto; box-sizing: border-box; }
     body.ls-mode .detail-modal .modal-actions { margin-top: 10px; }
     /* カード一覧(公開したカード・トラッシュ等)の行は、ボタンを名前の下の段に回して押しやすくする */
     body.ls-mode .detail-modal .deck-list-item { flex-wrap: wrap; row-gap: 5px; }
@@ -3081,7 +3128,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.41.1</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.41.3</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -3257,6 +3304,8 @@
         <button type="button" class="btn ls-menu-btn" id="lsMenuBtn">⚙ メニュー</button>
       </div>
       <div class="ls-dock" id="lsDock">
+        <button type="button" class="ls-dock-toggle" id="lsDockToggle"></button>
+        <div class="ls-dock-phase" id="lsDockPhase"></div>
         <div id="lsDockMain"></div>
         <div class="ls-dock-empty">処理中・発揮待ちの効果はありません。<br>場のカード・デッキ・セキュリティをタップすると、操作がこの列に出ます。</div>
         <div class="ls-dock-util" id="lsDockUtil"></div>
@@ -3293,7 +3342,9 @@
         <!-- メモリーゲージ: 左にターン表示、右に1手戻す -->
         <div class="turn-memory-row" style="display:flex;align-items:center;gap:10px;">
           <span class="mono" id="turnIndicatorLabel" style="font-size:12px;color:var(--text-dim);white-space:nowrap;"></span>
+          <button type="button" class="ls-mem-btn" id="lsMemLeft" title="メモリーを自分側へ1つ動かす">◀</button>
           <div class="memory-line" id="memoryLine" style="flex:1;"></div>
+          <button type="button" class="ls-mem-btn" id="lsMemRight" title="メモリーを相手側へ1つ動かす">▶</button>
           <button class="btn" id="practiceUndoBtn" disabled style="white-space:nowrap;">⟲ 1手戻す</button>
         </div>
       </div>
@@ -4793,7 +4844,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.41.1`);
+    log(`DigiCA Tool build v0.41.3`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -9052,6 +9103,8 @@
   function renderEffectPanel() {
     const panel = document.getElementById('effectPanel');
     if (!panel) return;
+    // 横画面: 効果が出た/無くなったときに右の列の開閉を合わせる(描画の後で判定する)
+    Promise.resolve().then(() => lsUpdateDock());
     if (!practiceState || !effectPanelEnabled) { panel.hidden = true; return; }
     const q = getEffectQueue();
     const validPending = q.pending.filter(isEffectEntryValid);
@@ -9229,6 +9282,7 @@
     }
     renderFieldPickBanner();
     renderLsHandTab();
+    lsUpdateDock();
     arenaFxAfterRender();
     effectEngineAfterRender();
     autoEndAfterRender();
@@ -9277,6 +9331,7 @@
       lsMove(document.getElementById('phasePips'), top);
       ['practiceNextPhaseBtn', 'practicePassBtn', 'practiceUndoBtn', 'practiceSwitchViewBtn', 'fieldEffectsBtn']
         .forEach(id => lsMove(document.getElementById(id), btns));
+      lsMove(document.getElementById('raisingPhaseActions'), document.getElementById('lsDockPhase'));
       lsMove(document.getElementById('effectPanel'), document.getElementById('lsDockMain'));
       lsMove(document.getElementById('utilityActions'), document.getElementById('lsDockUtil'));
     } else {
@@ -9285,7 +9340,7 @@
         if (m.parent) m.parent.insertBefore(m.node, m.next && m.next.parentNode === m.parent ? m.next : null);
       }
       lsMoved.length = 0;
-      document.body.classList.remove('ls-hand-up', 'ls-pick-opp');
+      document.body.classList.remove('ls-hand-up', 'ls-pick-opp', 'ls-dock-min');
     }
   }
   if (window.matchMedia) {
@@ -9300,6 +9355,38 @@
     lsResizeTimer = setTimeout(() => { const was = lsActive; lsUpdate(); if (practiceState && (was !== lsActive || lsForce)) renderPracticeBoard(); }, 150);
   });
   document.getElementById('lsForceBtn').addEventListener('click', () => setLsForce(true));
+  // 右の列(効果パネル)は、処理中・発揮待ちの効果も育成フェイズのボタンも無いときは細い帯に畳み、盤面を広く使う。
+  // 帯を押すと開いたままにできる(「たたむ」で戻す)。
+  let lsDockPinned = false;
+  function lsUpdateDock() {
+    if (!lsActive) { document.body.classList.remove('ls-dock-min'); return; }
+    const ep = document.getElementById('effectPanel');
+    const phase = document.getElementById('raisingPhaseActions');
+    const busy = (ep && !ep.hidden) || (phase && phase.children.length > 0);
+    const min = !busy && !lsDockPinned;
+    document.body.classList.toggle('ls-dock-min', min);
+    const t = document.getElementById('lsDockToggle');
+    t.hidden = busy;
+    t.textContent = min ? '◀ 効果パネル' : '▶ たたむ';
+    t.title = min ? '右の列を開く(フィールド外の操作「孵化(効果)」等もここ)' : '右の列を細くたたんで盤面を広くする';
+  }
+  document.getElementById('lsDockToggle').addEventListener('click', (e) => {
+    e.stopPropagation();
+    lsDockPinned = document.body.classList.contains('ls-dock-min');
+    lsUpdateDock();
+  });
+  // メモリーを1つずつ動かすボタン(横画面のみ表示)。◀=自分側へ、▶=相手側へ(見ている側から見た向き)
+  function lsShiftMemory(dir) {
+    if (!practiceState) return;
+    const viewSign = practiceState.viewingIndex === 0 ? 1 : -1;
+    const fromView = practiceState.memory * viewSign;
+    const next = Math.max(-10, Math.min(10, fromView + dir));
+    if (next === fromView) return;
+    practiceState.memory = next * viewSign;
+    renderPracticeBoard();
+  }
+  document.getElementById('lsMemLeft').addEventListener('click', (e) => { e.stopPropagation(); lsShiftMemory(-1); });
+  document.getElementById('lsMemRight').addEventListener('click', (e) => { e.stopPropagation(); lsShiftMemory(1); });
   document.getElementById('lsHandTab').addEventListener('click', (e) => {
     e.stopPropagation();
     document.body.classList.toggle('ls-hand-up');
