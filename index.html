@@ -868,6 +868,15 @@
   }
   .deck-list-item .dli-stepper button:hover { border-color: var(--accent-dim); }
   .deck-list-item .dli-stepper .dli-count { font-family: 'JetBrains Mono', monospace; width: 14px; text-align: center; }
+  /* 「公開したカード」の振り分け: 押しやすいよう大きいボタンにする(入りきらないときはボタンを次の段に回す) */
+  .deck-list-item.reveal-row { flex-wrap: wrap; row-gap: 6px; padding: 8px 10px; }
+  .deck-list-item.reveal-row > img { width: 46px !important; }
+  .deck-list-item.reveal-row .dli-name { font-size: 14px; }
+  .deck-list-item.reveal-row .dli-stepper { margin-left: auto; max-width: 100%; flex-wrap: wrap; justify-content: flex-end; gap: 6px !important; }
+  .deck-list-item.reveal-row .dli-stepper button {
+    width: auto; height: auto; min-width: 44px; min-height: 44px; font-size: 14px !important; padding: 8px 10px !important;
+    white-space: nowrap; border-radius: 8px; line-height: 1.2;
+  }
 
   .deck-actions-row {
     display: flex;
@@ -3119,7 +3128,14 @@
     body.ls-mode #practiceBoardPanel .ls-dock .ep-choice-btns .ep-btn { flex: 1; text-align: center; }
 
   /* ---- 横画面固定: 縦持ちのままbody全体を90度回す(端末の画面回転ロック中でも横画面で遊べる) ---- */
-  html.ls-rot, html.ls-rot body { overflow: hidden; }
+  html.ls-rot body { overflow: hidden; }
+  /* ---- Safariのツールバーをたためるようにする ----
+     Safariはページがスクロールしたときにツールバーを小さくする。盤面(body)は画面に固定したまま、
+     ページの裏側だけ少しスクロールできるようにして、盤面をスワイプするとツールバーがたたまれるようにする。
+     引っ張って再読み込み(盤面が消える)にならないよう、端での引っ張りは無効にする。 */
+  html.ls-on { height: auto; min-height: calc(100% + 160px); overflow-x: hidden; overflow-y: auto; overscroll-behavior: none; }
+  html.ls-on body { overscroll-behavior: none; }
+  html.ls-on:not(.ls-rot) body { position: fixed; top: 0; left: 0; right: 0; bottom: 0; overflow: hidden; }
   html.ls-rot body {
     position: fixed; top: 0; left: 0; margin: 0; min-height: 0;
     width: 100vh; width: 100dvh; height: 100vw;
@@ -3152,7 +3168,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.41.4</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.42.3</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -4870,7 +4886,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.41.4`);
+    log(`DigiCA Tool build v0.42.3`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -8478,12 +8494,52 @@
     // 発揮できなくなった効果は、ここでまとめて片付ける
     q.pending = q.pending.filter(isEffectEntryValid);
     if (cur) showToast(skipped ? `「${cur.cardName}」の効果を発揮しませんでした` : `「${cur.cardName}」の効果処理が完了しました`);
+    // オプションの使用後の片付け(「バトルエリアに置く」記述がなければ破棄。アーツ進化を持つデュアルカードは選ばせる)
+    if (cur && cur.event === '使用') afterOptionUseResolved(cur);
+    else if (cur && cur.event === 'アーツ進化') afterArtsEvolveChoice(cur);
     if (!q.pending.length && arenaFxEnabled && !skipped) {
       fxSpawn('fx-float up', { left: '50%', top: '30%' }, '効果処理完了', 1300);
     }
     renderEffectPanel();
     if (cur) engineReturnViewIfDone(cur.ownerIndex);
     resumeAttackStepIfAny();
+  }
+  // ---------- オプション使用後の片付け ----------
+  // 使用したオプションの効果処理が終わったら(発揮しなかった場合も)、効果文に「バトルエリアに置く」が
+  // 無ければ自動でトラッシュへ送る。デュアルカード(【アーツ進化】持ち)は、アーツ進化するかを効果パネルで選ばせ、
+  // しなければトラッシュへ送る。
+  function optionUseStack(e) {
+    const f = findStackByUid(e.stackUid);
+    if (!f || f.zone !== 'battle') return null;
+    const top = getStackTopCard(f.stack);
+    if (!top || f.stack.cards.length !== 1) return null;
+    if (!(top.category === 'option' || f.stack.dualAsOption)) return null;
+    return { stack: f.stack, card: top, text: f.stack.dualAsOption && top.dual ? (top.dual.effect || '') : (top.effect || '') };
+  }
+  function trashUsedOption(stack, card) {
+    if (!findStackOwnerAndZone(stack)) return;
+    trashEntireStack(stack);
+    showToast(`🗑 使用した「${card.name}」をトラッシュに送りました`);
+  }
+  function afterOptionUseResolved(cur) {
+    const o = optionUseStack(cur);
+    if (!o) return;
+    if (/バトルエリアに置/.test(o.text)) return; // 場に残すオプション
+    if (o.stack.dualAsOption && /【アーツ進化】/.test(o.text)) {
+      const m = /【アーツ進化】[^\n]*/.exec(o.text);
+      enqueueEffects([], [{
+        ownerIndex: cur.ownerIndex, stackUid: cur.stackUid, cardNumber: cur.cardNumber, cardName: cur.cardName,
+        field: 'effect', lineIndex: 0, text: m ? m[0] : '【アーツ進化】', timing: 'アーツ進化', event: 'アーツ進化',
+      }]);
+      renderEffectPanel();
+      return;
+    }
+    trashUsedOption(o.stack, o.card);
+  }
+  function afterArtsEvolveChoice(cur) {
+    // アーツ進化した場合はカードが場を離れている(進化元になっている)。残っていれば「しない」としてトラッシュへ
+    const o = optionUseStack(cur);
+    if (o) trashUsedOption(o.stack, o.card);
   }
   function hasUnresolvedEffects() {
     if (!practiceState || !practiceState.effectQueue) return false;
@@ -8964,6 +9020,11 @@
   }
   // 効果1行に対して用意できる「⚡自動処理」(既に自動化済みの処理)を列挙する
   function getEffectHandlers(e) {
+    if (e.timing === 'アーツ進化') {
+      const o = optionUseStack(e);
+      if (!o) return [];
+      return [{ label: '🎨 アーツ進化する(進化させるカードを選ぶ)', run: () => enterArtsEvolveMode(o.stack) }];
+    }
     if (e.timing === 'ディレイ') {
       const list = [...memoryHandlersFor(e)];
       const rm = /自分のデッキの上から(\d+)枚オープン/.exec(e.text);
@@ -9303,7 +9364,8 @@
     // 他の操作(進化・DP増減・カード移動など)によってゾーンポップアップが閉じても、
     // アタック処理中であれば直前のステップ表示を自動的に復帰させる。個別の操作すべてに
     // 復帰処理を書く代わりに、描画のたびにここでまとめて面倒を見る。
-    if (attackState && lastAttackStepFn && !fieldPickMode && !zonePopupEl.classList.contains('open')) {
+    // 公開したカードの振り分け中は、アタックの手順を出し直さない(振り分け画面の上に重なって操作できなくなるため。終わったら戻す)
+    if (attackState && lastAttackStepFn && !fieldPickMode && !activeRevealSession && !zonePopupEl.classList.contains('open')) {
       lastAttackStepFn();
     }
     renderFieldPickBanner();
@@ -9330,6 +9392,14 @@
     if (practiceState) renderPracticeBoard();
     window.scrollTo(0, 0);
   }
+  // 横画面になったとき、最初の1回だけツールバーのたたみ方を案内する(タッチ端末のみ)
+  let lsHintShown = false;
+  function lsShowToolbarHint(rot) {
+    if (lsHintShown || !('ontouchstart' in window)) return;
+    lsHintShown = true;
+    const dir = rot ? (lsForceRev ? '右' : '左') : '上';
+    setTimeout(() => showToast(`盤面の空いている所を${dir}へスワイプすると、ブラウザのツールバーをたためます`), 600);
+  }
   function lsMediaMatches() {
     return window.matchMedia && window.matchMedia('(orientation: landscape) and (max-height: 500px)').matches;
   }
@@ -9344,6 +9414,7 @@
     const rot = boardOn && lsForce && portrait;
     const on = boardOn && (lsMediaMatches() || rot);
     document.documentElement.classList.toggle('ls-rot', rot);
+    document.documentElement.classList.toggle('ls-on', on);
     document.documentElement.classList.toggle('ls-rot-rev', rot && lsForceRev);
     const effW = rot ? window.innerHeight : window.innerWidth;
     document.body.classList.toggle('ls-narrow', on && effW <= 740);
@@ -9351,6 +9422,7 @@
     lsActive = on;
     document.body.classList.toggle('ls-mode', on);
     if (on) {
+      lsShowToolbarHint(rot);
       const top = document.getElementById('lsHudTop');
       const btns = document.getElementById('lsHudBtns');
       lsMove(document.getElementById('arenaTurnChip'), top);
@@ -10482,6 +10554,9 @@
     evolveModeBanner.classList.remove('active');
     renderPracticeBoard();
     showToast(`「${card.name}」にアーツ進化しました(コストなし)`);
+    // 効果パネルの「アーツ進化」から進化したなら、そのまま処理完了にする
+    const q = practiceState.effectQueue;
+    if (q && q.current && q.current.event === 'アーツ進化' && q.current.stackUid === sourceStack.uid) finishCurrentEffect(false);
     resumeAttackStepIfAny();
   }
 
@@ -11552,7 +11627,17 @@
   const zonePopupEl = document.getElementById('zonePopup');
   let zonePopupPersistent = false;
   function closeZonePopup() { zonePopupEl.classList.remove('open', 'peeking'); zonePopupPersistent = false; if (lsActive) lsUpdateDock(); }
+  // デジモン(スタック)詳細の中のボタン(進化元の「送る▾」等)からポップアップを開いたときは、詳細を閉じてポップアップを前に出す
+  // (横画面ではポップアップが右の列に出るため、詳細が上に重なって操作できなくなっていた)。
+  // トラッシュ/セキュリティの一覧などは続けて操作するため閉じない。
+  let lastDetailClickAt = 0;
+  document.addEventListener('click', (e) => {
+    if (cardDetailModal.contains(e.target) && e.target.closest && e.target.closest('.stack-row-move, [data-stack-actions]')) lastDetailClickAt = Date.now();
+  }, true);
   function openZonePopup(e, title, actions, persistent) {
+    if (cardDetailModal.classList.contains('open') && Date.now() - lastDetailClickAt < 800) {
+      cardDetailModal.classList.remove('open', 'peeking');
+    }
     document.getElementById('zonePopupTitle').textContent = title;
     const actionsEl = document.getElementById('zonePopupActions');
     actionsEl.innerHTML = '';
@@ -12037,10 +12122,18 @@
     currentDetailCard = null;
     document.getElementById('addToDeckFromDetail').style.display = 'none';
     activeRevealSession = { revealed, self };
+    // 全てのカードを振り分け終えたら、「閉じる」を押さなくても自動で閉じる。戻り値: まだ表示中ならtrue
     function render() {
-      if (revealed.length === 0) activeRevealSession = null; // 全て処理済み
+      if (revealed.length === 0) {
+        activeRevealSession = null; // 全て処理済み
+        cardDetailModal.classList.remove('open', 'peeking');
+        if (typeof exitPeek === 'function') exitPeek();
+        showToast('公開したカードの振り分けが終わりました');
+        resumeAttackStepIfAny();
+        return false;
+      }
       const rows = revealed.map((number, i) => `
-        <div class="deck-list-item" style="cursor:default;">
+        <div class="deck-list-item reveal-row" style="cursor:default;">
           <img src="${escapeHtml(miniCardImg(number))}" alt="" class="reveal-view-row" data-idx="${i}" style="width:34px;border-radius:3px;cursor:pointer;" onerror="this.style.opacity=0">
           <span class="dli-name reveal-view-row" data-idx="${i}" style="cursor:pointer;">${escapeHtml(miniCardName(number))}</span>
           <span class="dli-stepper" style="gap:3px;flex-wrap:wrap;">
@@ -12064,8 +12157,7 @@
           const card = cardIndexByNumber.get(revealed[idx]);
           if (!card) return;
           revealSessionReopen = () => {
-            render();
-            cardDetailModal.classList.add('open');
+            if (render() !== false) cardDetailModal.classList.add('open');
           };
           openCardDetail(card, true);
         });
@@ -12098,15 +12190,13 @@
           // 進化元選択(または途中キャンセル)が終わったら、残りの公開カードを
           // 処理できるようこの画面に戻ってくる。
           revealSessionReopen = () => {
-            render();
-            cardDetailModal.classList.add('open');
+            if (render() !== false) cardDetailModal.classList.add('open');
           };
           enterMaterialTargetMode(number, 'reveal', null);
         });
       });
     }
-    render();
-    cardDetailModal.classList.add('open');
+    if (render() !== false) cardDetailModal.classList.add('open');
   }
 
   function openDeckPopup(e) {
@@ -13627,6 +13717,7 @@
   function renderOpponentStackActions(stack) {
     const wrap = document.createElement('div');
     wrap.style.cssText = 'display:flex;flex-direction:column;gap:6px;margin-top:14px;padding-top:12px;border-top:1px solid var(--border);width:100%;';
+    wrap.dataset.stackActions = '1';
     const title = document.createElement('div');
     title.style.cssText = 'font-size:11px;color:var(--text-dim);';
     title.textContent = '相手のデジモンへの操作(効果用)';
@@ -13640,7 +13731,8 @@
       b.className = 'btn';
       b.style.fontSize = '11px';
       b.textContent = label;
-      b.addEventListener('click', (e) => { e.stopPropagation(); onClick(e); });
+      // 操作を選んだらカード詳細は閉じて、続くポップアップや選択をすぐ操作できるようにする
+      b.addEventListener('click', (e) => { e.stopPropagation(); cardDetailModal.classList.remove('open', 'peeking'); onClick(e); });
       row.appendChild(b);
     };
     const topIndex = stack.cards.length - 1;
@@ -13684,7 +13776,8 @@
       b.style.fontSize = '11px';
       b.textContent = label;
       b.disabled = !!disabled;
-      b.addEventListener('click', (e) => { e.stopPropagation(); onClick(e); });
+      // 操作を選んだらカード詳細は閉じて、続くポップアップや選択をすぐ操作できるようにする
+      b.addEventListener('click', (e) => { e.stopPropagation(); cardDetailModal.classList.remove('open', 'peeking'); onClick(e); });
       row.appendChild(b);
     };
 
