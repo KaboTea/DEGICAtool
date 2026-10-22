@@ -3234,7 +3234,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.45.0</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.45.2</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -4962,7 +4962,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.45.0`);
+    log(`DigiCA Tool build v0.45.2`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -5793,11 +5793,13 @@
   function toggleBarrier(stack) {
     stack.barrierOverride = !hasBarrierKeyword(stack);
   }
-  function barrierDestruction(stack, next) {
+  function barrierDestruction(stack, next, onFail) {
     const owner = findStackOwnerAndZone(stack);
     if (!owner) { next(); return; }
     if (owner.player.security.length === 0) {
       showToast('セキュリティが無いため≪防壁≫は使えません', true);
+      // 消滅の確認に戻す(ここで止めると消滅そのものが無かったことになってしまう)
+      if (onFail) onFail();
       return;
     }
     snapshotPracticeState();
@@ -5831,12 +5833,13 @@
   function toggleFragment(stack) {
     stack.fragmentOverride = !hasFragmentKeyword(stack);
   }
-  function fragmentDestruction(stack, next) {
+  function fragmentDestruction(stack, next, onFail) {
     const owner = findStackOwnerAndZone(stack);
     if (!owner) { next(); return; }
     const materialCount = stack.cards.length - 1;
     if (materialCount <= 0) {
       showToast('進化元が無いため≪フラグメント≫は使えません', true);
+      if (onFail) onFail();
       return;
     }
     const n = Math.min(getFragmentCount(stack) || 1, materialCount);
@@ -5906,12 +5909,13 @@
     owner.battle.forEach(s => { if (s !== stack) list.push(s); });
     return list.filter(s => isDigimonLikeStack(s));
   }
-  function scapegoatDestruction(stack, next) {
+  function scapegoatDestruction(stack, next, onFail) {
     const ownerZone = findStackOwnerAndZone(stack);
     if (!ownerZone) { next(); return; }
     const candidates = otherOwnDigimonStacks(stack, ownerZone.player);
     if (candidates.length === 0) {
       showToast('身代わりにできる他の自分のデジモンがいないため≪スケープゴート≫は使えません', true);
+      if (onFail) onFail();
       return;
     }
     startFieldPick({
@@ -9647,6 +9651,7 @@
       lastAttackStepFn();
     }
     renderAttackBar();
+    scheduleAttackWatchdog();
     renderFieldPickBanner();
     renderLsHandTab();
     lsUpdateDock();
@@ -13200,6 +13205,37 @@
   function resumeAttackStepIfAny() {
     if (attackState && lastAttackStepFn) lastAttackStepFn();
   }
+  // アタック中なのに帯にボタンが何も出ていない(迷子)状態の見張り。
+  // ポップアップを外側タップで閉じた・効果処理の途中で手順の登録が外れた等で、
+  // 次へ進む手段がなくなるのを防ぐ。一連の処理が終わった少し後に確認する。
+  let attackWatchdogTimer = null;
+  function scheduleAttackWatchdog() {
+    if (!attackState) return;
+    clearTimeout(attackWatchdogTimer);
+    attackWatchdogTimer = setTimeout(() => {
+      if (!practiceState || !attackState || attackBarState) return;
+      if (fieldPickMode || activeRevealSession || zonePopupEl.classList.contains('open')) return;
+      if (lastAttackStepFn) { lastAttackStepFn(); return; }
+      showAttackRecoveryStep();
+    }, 200);
+  }
+  document.addEventListener('click', () => { if (attackState) scheduleAttackWatchdog(); });
+  // 手順が分からなくなったときの「続きの操作」。今のステップに合わせて次へ進めるか、アタックを終える
+  function showAttackRecoveryStep() {
+    if (!attackState) return;
+    lastAttackStepFn = showAttackRecoveryStep;
+    const a = attackState;
+    const step = a.stepName || 'trigger';
+    const attackerAlive = !!findStackOwnerAndZone(a.attackerStack);
+    const actions = [];
+    if (['target', 'trigger', 'counter', 'block', 'blockTrigger'].includes(step)) {
+      actions.push({ label: '次へ(バトル/チェックへ)', primary: true, onClick: () => guardEffectsThen(() => resolveAttack()) });
+    } else if (a.targetType === 'player' && attackerAlive && a.defenderOwner.security.length > 0 && (a.securityChecksRemaining || 0) > 0) {
+      actions.push({ label: `セキュリティチェックを続ける(残り${a.securityChecksRemaining}枚)`, primary: true, onClick: () => doSecurityCheckForAttack() });
+    }
+    actions.push({ label: 'アタックを終了する', primary: !actions.length, onClick: () => endAttack() });
+    openStepUi('アタックの続きの操作を選んでください', actions);
+  }
   // アタックの次のステップへ進む前に、発揮待ちの効果が残っていないか確認する(残したまま進むこともできる)
   function guardEffectsThen(fn) {
     if (effectPanelEnabled && hasUnresolvedEffects()) {
@@ -13553,6 +13589,8 @@
       if (!ownerZone) { next(); return; }
       const c = getStackTopCard(stack);
       const name = c ? c.name : '?';
+      // 回避系が使えなかったとき、同じ消滅の確認を出し直す(そのまま消滅を選ぶまで消さない)
+      const reshow = () => { lastAttackStepFn = show; show(); };
       const actions = [
         { label: `「${name}」をそのまま消滅させる`, onClick: () => resolveFinalDestruction(stack, next) },
       ];
@@ -13564,13 +13602,14 @@
           actions.push({ label: '🔨 アーマー解除(進化元1枚破棄で回避)', onClick: () => { armorBreakDestruction(stack); next(); } });
         }
         if (battleContext && hasBarrierKeyword(stack)) {
-          actions.push({ label: '🧱 防壁(セキュリティ1枚破棄で回避)', onClick: () => barrierDestruction(stack, next) });
+          const noSec = ownerZone.player.security.length === 0;
+          actions.push({ label: noSec ? '🧱 防壁(セキュリティが無いため使えません)' : '🧱 防壁(セキュリティ1枚破棄で回避)', onClick: () => barrierDestruction(stack, next, reshow) });
         }
         if (hasFragmentKeyword(stack) && stack.cards.length > 1) {
-          actions.push({ label: `💎 フラグメント(進化元${getFragmentCount(stack) || 1}枚破棄で回避)`, onClick: () => fragmentDestruction(stack, next) });
+          actions.push({ label: `💎 フラグメント(進化元${getFragmentCount(stack) || 1}枚破棄で回避)`, onClick: () => fragmentDestruction(stack, next, reshow) });
         }
         if (hasScapegoatKeyword(stack) && otherOwnDigimonStacks(stack, ownerZone.player).length > 0) {
-          actions.push({ label: '🐐 スケープゴート(他の自分のデジモンを身代わりに)', onClick: () => scapegoatDestruction(stack, next) });
+          actions.push({ label: '🐐 スケープゴート(他の自分のデジモンを身代わりに)', onClick: () => scapegoatDestruction(stack, next, reshow) });
         }
         const decoyHolder = findSubstituteHolder(stack, ownerZone.player, hasDecoyKeyword);
         if (decoyHolder) {
@@ -13806,6 +13845,12 @@
     const defOwner = attackState.defenderOwner;
     const defPi = practiceState.players.indexOf(defOwner);
     const remaining = attackState.securityChecksRemaining || 1;
+    if (!defOwner.security.length) {
+      // 効果でセキュリティが無くなった等: チェックするカードが無いのでアタックを終える
+      endAttack();
+      showToast('チェックするセキュリティが無いため、アタックを終了しました');
+      return;
+    }
     const top = cardEntryNum(defOwner.security[0]);
     const card = cardIndexByNumber.get(top);
     const renkeiBonus = attackState.renkeiBonusDP || 0;
