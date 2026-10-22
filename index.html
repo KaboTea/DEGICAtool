@@ -2296,6 +2296,11 @@
     padding: 8px 12px 9px;
   }
   #practiceBoardPanel .attack-bar[hidden] { display: none; }
+  /* アタック以外の確認(以前は画面中央のポップアップだったもの) */
+  #practiceBoardPanel .attack-bar.ab-plain { background: linear-gradient(90deg, rgba(var(--gold-rgb),0.14), rgba(var(--gold-rgb),0.02) 70%), linear-gradient(180deg, rgba(16,19,32,0.97), rgba(8,10,18,0.97)); }
+  #practiceBoardPanel .attack-bar.ab-plain .ab-head .ab-t { color: rgb(var(--gold-rgb)); }
+  #practiceBoardPanel .attack-bar.ab-plain .ab-steps { display: none; }
+  #practiceBoardPanel .attack-bar.ab-plain .ab-msg { margin-top: 4px; }
   #practiceBoardPanel .fx-stack.has-attack.has-effect .attack-bar { border-radius: 12px 12px 0 0; border-bottom-color: rgba(var(--gold-rgb),0.3); box-shadow: none; }
   #practiceBoardPanel .fx-stack.has-attack.has-effect .effect-panel { border-radius: 0 0 12px 12px; border-top: none; }
   #practiceBoardPanel .ab-head { display: flex; align-items: center; gap: 8px; font-size: 13px; flex-wrap: wrap; }
@@ -3234,7 +3239,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.45.2</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.46.0</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -4962,7 +4967,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.45.2`);
+    log(`DigiCA Tool build v0.46.0`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -5846,7 +5851,7 @@
     // 「選んで」破棄するため、退化(上から破棄)とは異なり、進化元(一番上のカードを除く)
     // の一覧から自由に選ばせる。
     const materials = stack.cards.slice(0, stack.cards.length - 1); // index 0=一番下 ... 末尾=一番上の1つ下
-    openZonePopup(centerPoint(), `進化元から${n}枚選んで破棄してください(≪フラグメント≫)`, [
+    openDecisionUi(`進化元から${n}枚選んで破棄してください(≪フラグメント≫)`, [
       {
         custom: true,
         render: (container) => {
@@ -5889,7 +5894,7 @@
           container.appendChild(confirmBtn);
         },
       },
-    ], true);
+    ]);
   }
 
   // ≪スケープゴート≫(16-32):「このデジモンが自分の効果以外で消滅するとき、他の自分の
@@ -6276,7 +6281,7 @@
       showToast('進化元がないため実行できません', true);
       return;
     }
-    openZonePopup(centerPoint(), title, [
+    openDecisionUi(title, [
       {
         custom: true,
         render: (container) => {
@@ -6309,7 +6314,7 @@
         },
       },
       { label: 'キャンセル', onClick: () => {} },
-    ], true);
+    ]);
   }
 
   // ≪パーティション≫≪デコード≫を選択肢の配列として組み立てる(消滅・場を離れる、両方の
@@ -6374,7 +6379,7 @@
       if (opts.length === 0) { onProceed(); return; } // 全部使い切った/元々ない場合はポップアップを出さない
       opts.push({ label: '完了(これ以上発揮しない)', onClick: () => onProceed() });
       const c = getStackTopCard(stack);
-      openZonePopup(centerPoint(), `「${c ? c.name : '?'}」が場を離れます。≪パーティション≫≪デコード≫があれば選んでください`, opts, true);
+      openDecisionUi(`「${c ? c.name : '?'}」が場を離れます。≪パーティション≫≪デコード≫があれば選んでください`, opts);
     };
     showMenu();
   }
@@ -6438,7 +6443,7 @@
       if (opts.length === 0) { proceedToTrash(); return; } // 全部使い切った/元々ない場合はポップアップを出さない
       opts.push({ label: 'そのまま何もせず消滅させる', onClick: () => proceedToTrash() });
       const c = getStackTopCard(stack);
-      openZonePopup(centerPoint(), `「${c ? c.name : '?'}」消滅時の追加効果を選べます`, opts, true);
+      openDecisionUi(`「${c ? c.name : '?'}」消滅時の追加効果を選べます`, opts);
     };
     offerMaterialSalvage();
   }
@@ -6451,7 +6456,7 @@
     const hadMaterials = stack.cards.length > 1;
     const doAscensionCheck = () => {
       if (hasAscensionKeyword(stack)) {
-        openZonePopup(centerPoint(), `🌅 ≪天昇≫:「${topCard.name}」をセキュリティの上に置きますか?(裏向き)`, [
+        openDecisionUi(`🌅 ≪天昇≫:「${topCard.name}」をセキュリティの上に置きますか?(裏向き)`, [
           {
             label: '置く', onClick: () => {
               const idx = owner.player.trash.lastIndexOf(topNumber);
@@ -6463,7 +6468,7 @@
             },
           },
           { label: '置かない', onClick: () => afterAll() },
-        ], true);
+        ]);
       } else {
         afterAll();
       }
@@ -8702,7 +8707,7 @@
     ns.forEach(n => list.push({ label: `🃏 ${n}枚ドロー`, run: () => drawCardsFor(e.ownerIndex, n) }));
     if (ns.length && /ごとに[^。]*≪[0-9０-９]+ドロー≫/.test(text)) {
       list.push({ label: '🃏 ドロー(枚数を選ぶ)', run: () => {
-        openZonePopup(centerPoint(), '何枚ドローしますか?', [1, 2, 3, 4, 5, 6, 7].map(n => ({ label: `${n}枚`, onClick: () => drawCardsFor(e.ownerIndex, n) })).concat([{ label: 'キャンセル', onClick: () => {} }]), true);
+        openDecisionUi('何枚ドローしますか?', [1, 2, 3, 4, 5, 6, 7].map(n => ({ label: `${n}枚`, onClick: () => drawCardsFor(e.ownerIndex, n) })).concat([{ label: 'キャンセル', onClick: () => {} }]));
       } });
     }
     return list;
@@ -8724,7 +8729,7 @@
     if (amounts.length && /ごとに[^。]*メモリー(?:を)?[+\-]\d+/.test(text)) {
       const sign = amounts[0] > 0 ? 1 : -1;
       list.push({ label: `⚡ メモリー${sign > 0 ? '+' : '-'}(数を選ぶ)`, run: () => {
-        openZonePopup(centerPoint(), `メモリーをいくつ${sign > 0 ? '増やし' : '減らし'}ますか?`, [1, 2, 3, 4, 5, 6].map(n => ({ label: `${sign > 0 ? '+' : '-'}${n}`, onClick: () => changeMemoryFor(e.ownerIndex, sign * n, e.cardName) })).concat([{ label: 'キャンセル', onClick: () => {} }]), true);
+        openDecisionUi(`メモリーをいくつ${sign > 0 ? '増やし' : '減らし'}ますか?`, [1, 2, 3, 4, 5, 6].map(n => ({ label: `${sign > 0 ? '+' : '-'}${n}`, onClick: () => changeMemoryFor(e.ownerIndex, sign * n, e.cardName) })).concat([{ label: 'キャンセル', onClick: () => {} }]));
       } });
     }
     return list;
@@ -9466,7 +9471,7 @@
     });
     if (!actions.length) { showToast('このカードにはタイミング付きの効果がありません', true); return; }
     actions.push({ label: 'キャンセル', onClick: () => {} });
-    openZonePopup(centerPoint(), '誘発した効果を選んでください', actions, true);
+    openDecisionUi('誘発した効果を選んでください', actions);
   }
 
   function renderEffectPanel() {
@@ -9754,7 +9759,7 @@
     const q = practiceState && practiceState.effectQueue;
     const parts = [];
     if (ep && !ep.hidden) parts.push('e' + (q ? (q.current ? q.current.id : '') + ':' + q.pending.length : ''));
-    if (attackState && attackBarState) parts.push('a' + attackBarState.title);
+    if (attackBarState) parts.push('a' + attackBarState.title);
     if (zonePopupEl.classList.contains('open')) parts.push('p' + (document.getElementById('zonePopupTitle').textContent || ''));
     if (phase && phase.children.length) parts.push('r');
     const sig = parts.join('|');
@@ -9867,7 +9872,7 @@
   function autoEndBusy() {
     if (attackState) return true;
     if (hasUnresolvedEffects()) return true;
-    if (fieldPickMode) return true;
+    if (fieldPickMode || attackBarState) return true;
     if (activeRevealSession || evolveMode || materialTargetMode || multiEvolveMode || linkTargetMode || artsEvolveMode || assemblyMode || deckToTamerMode) return true;
     if (zonePopupEl.classList.contains('open') || cardDetailModal.classList.contains('open')) return true;
     if (document.querySelector('#evolveRouteModal.open, #fieldEffectsModal.open, #imageLightbox.open')) return true;
@@ -10137,10 +10142,10 @@
     if (card.category === 'option' || stack.dualAsOption) {
       const sameTurn = stack.enteredTurn === practiceState.turn.count;
       if (!sameTurn) {
-        openZonePopup(centerPoint(), `「${card.name}」をトラッシュへ`, [
+        openDecisionUi(`「${card.name}」をトラッシュへ`, [
           { label: '🕐 ディレイとして破棄する(効果を発揮)', onClick: () => useDelay(stack) },
           { label: '🗑 そのまま破棄する(効果は発揮しない)', onClick: () => { trashEntireStack(stack); showToast(`「${card.name}」を破棄しました`); } },
-        ], true);
+        ]);
       } else {
         trashEntireStack(stack);
         showToast(`「${card.name}」を破棄しました(このターンはディレイ不可のため)`);
@@ -10207,6 +10212,7 @@
     artsEvolveMode = null;
     attackState = null;
     lastAttackStepFn = null;
+    attackBarState = null;
     revealSessionReopen = null;
     activeRevealSession = null;
     closeZonePopup();
@@ -11921,7 +11927,11 @@
   // ---------- Zone action popup ----------
   const zonePopupEl = document.getElementById('zonePopup');
   let zonePopupPersistent = false;
-  function closeZonePopup() { zonePopupEl.classList.remove('open', 'peeking'); zonePopupPersistent = false; if (lsActive) lsUpdateDock(); }
+  function closeZonePopup() {
+    zonePopupEl.classList.remove('open', 'peeking'); zonePopupPersistent = false;
+    if (attackBarState && attackBarState.popupLike) { attackBarState = null; renderAttackBar(); }
+    if (lsActive) lsUpdateDock();
+  }
   // デジモン(スタック)詳細の中のボタン(進化元の「送る▾」等)からポップアップを開いたときは、詳細を閉じてポップアップを前に出す
   // (横画面ではポップアップが右の列に出るため、詳細が上に重なって操作できなくなっていた)。
   // トラッシュ/セキュリティの一覧などは続けて操作するため閉じない。
@@ -12251,7 +12261,7 @@
     if (opt.costType === 'deckMill') {
       if (player.library.length < opt.count) { showToast('デッキの残り枚数が足りません', true); return; }
       const c = getStackTopCard(stack);
-      openZonePopup(centerPoint(), `「${c.name}」: デッキの上から${opt.count}枚破棄して、${opt.durationPhrase}DPを${opt.amount > 0 ? '+' : ''}${opt.amount}しますか？`, [
+      openDecisionUi(`「${c.name}」: デッキの上から${opt.count}枚破棄して、${opt.durationPhrase}DPを${opt.amount > 0 ? '+' : ''}${opt.amount}しますか？`, [
         {
           label: '実行する',
           onClick: () => {
@@ -12265,7 +12275,7 @@
           },
         },
         { label: 'キャンセル', onClick: () => {} },
-      ], true);
+      ]);
       return;
     }
     const eligible = player.hand
@@ -12284,7 +12294,7 @@
       },
     }));
     actions.push({ label: 'キャンセル', onClick: () => {} });
-    openZonePopup(centerPoint(), `破棄するカードを選んでください(${opt.count}枚)`, actions, true);
+    openDecisionUi(`破棄するカードを選んでください(${opt.count}枚)`, actions);
   }
   // ---------- 【メイン】起動型・コスト無しの相手全体DP増減(手動発動ボタン) ----------
   // 「【メイン】[持続期間]、相手のデジモン全てのDPを±Nする。」という、コスト不要の
@@ -12391,17 +12401,17 @@
       applyBonus();
     };
     if (!opt.choosable) {
-      openZonePopup(centerPoint(), `「${card ? card.name : ''}」: セキュリティの一番上を破棄して、${opt.durationPhrase}相手のデジモン全てのDPを${opt.amount > 0 ? '+' : ''}${opt.amount}しますか？`, [
+      openDecisionUi(`「${card ? card.name : ''}」: セキュリティの一番上を破棄して、${opt.durationPhrase}相手のデジモン全てのDPを${opt.amount > 0 ? '+' : ''}${opt.amount}しますか？`, [
         { label: '実行する', onClick: () => discardFrom(true) },
         { label: 'キャンセル', onClick: () => {} },
-      ], true);
+      ]);
       return;
     }
-    openZonePopup(centerPoint(), `「${card ? card.name : ''}」: セキュリティのどちらを破棄しますか？(${opt.durationPhrase}相手のデジモン全てのDPを${opt.amount > 0 ? '+' : ''}${opt.amount})`, [
+    openDecisionUi(`「${card ? card.name : ''}」: セキュリティのどちらを破棄しますか？(${opt.durationPhrase}相手のデジモン全てのDPを${opt.amount > 0 ? '+' : ''}${opt.amount})`, [
       { label: '上から1枚破棄', onClick: () => discardFrom(true) },
       { label: '下から1枚破棄', onClick: () => discardFrom(false) },
       { label: 'キャンセル', onClick: () => {} },
-    ], true);
+    ]);
   }
   function revealTopAndSort(x) {
     const self = practiceState.players[practiceState.viewingIndex];
@@ -12971,10 +12981,10 @@
     if (!holder) { onProceed(); return; }
     const c = getStackTopCard(stack);
     const gc = getStackTopCard(holder);
-    openZonePopup(centerPoint(), `「${c ? c.name : '?'}」が場を離れます。≪守護≫があれば選んでください`, [
+    openDecisionUi(`「${c ? c.name : '?'}」が場を離れます。≪守護≫があれば選んでください`, [
       { label: 'そのまま移動させる', onClick: () => onProceed() },
       { label: `👼 守護(「${gc ? gc.name : '?'}」が代わりに消滅・移動を防ぐ)`, onClick: () => substituteDestruction(holder, '≪守護≫', '👼', () => {}) },
-    ], true);
+    ]);
   }
 
   // faceUp: セキュリティへ置くときの向き。指定すれば表裏の確認を出さない(効果の対象選択から複数体まとめて置く場合など)
@@ -13122,12 +13132,21 @@
   const ATTACK_STEP_LABELS = ['対象', 'アタック時', 'カウンター', 'ブロック', 'バトル / チェック'];
   const ATTACK_STEP_INDEX = { target: 0, trigger: 1, counter: 2, block: 3, blockTrigger: 3, battleResult: 4, securityCheck: 4 };
   // アタック中なら帯に、そうでなければ従来どおり中央のポップアップに出す
+  // 手順・確認の表示。画面中央のポップアップではなく、効果パネルの上の帯に出す
+  // (アタック中はアタックの帯、それ以外は見出しなしの「確認」帯)
   function openStepUi(title, actions) {
-    if (attackState) { openAttackBar(title, actions); return; }
-    openZonePopup(centerPoint(), title, actions, true);
+    openAttackBar(title, actions, false);
   }
-  function openAttackBar(title, actions) {
-    attackBarState = { title, actions };
+  // 以前は画面中央のポップアップだった確認。closeZonePopupでも閉じる(ポップアップと同じ扱い)
+  function openDecisionUi(title, actions) { openAttackBar(title, actions, true); }
+  function closeStepUi() {
+    if (!attackBarState) return;
+    attackBarState = null;
+    renderAttackBar();
+    if (lsActive) lsUpdateDock();
+  }
+  function openAttackBar(title, actions, popupLike) {
+    attackBarState = { title, actions, attack: !!attackState, popupLike: !!popupLike };
     renderAttackBar();
     if (lsActive) lsUpdateDock();
   }
@@ -13140,14 +13159,20 @@
   function renderAttackBar() {
     const bar = document.getElementById('attackBar');
     if (!bar) return;
-    if (!practiceState || !attackState) {
+    if (!practiceState || (!attackState && (!attackBarState || attackBarState.attack))) {
       attackBarState = null;
       bar.hidden = true;
+      bar.classList.remove('ab-plain');
       updateFxStackClasses();
       return;
     }
     bar.hidden = false;
-    const a = attackState;
+    bar.classList.toggle('ab-plain', !attackState);
+    const a = attackState || null;
+    if (!a) {
+      document.getElementById('attackBarHead').innerHTML = '<span class="ab-t">⚡ 確認</span>';
+      document.getElementById('attackBarSteps').innerHTML = '';
+    } else {
     const atkName = stackLabel(a.attackerStack);
     let tgt = '対象を選択中';
     if (a.targetType === 'player') tgt = `相手プレイヤー(セキュリティ${a.defenderOwner.security.length}枚)`;
@@ -13160,6 +13185,7 @@
     const cur = ATTACK_STEP_INDEX[a.stepName] != null ? ATTACK_STEP_INDEX[a.stepName] : 0;
     document.getElementById('attackBarSteps').innerHTML = ATTACK_STEP_LABELS.map((l, i) =>
       `${i ? `<span class="ab-ln${i <= cur ? ' done' : ''}"></span>` : ''}<span class="ab-st${i < cur ? ' done' : i === cur ? ' now' : ''}"><span class="d"></span>${l}</span>`).join('');
+    }
     const msgEl = document.getElementById('attackBarMsg');
     const actsEl = document.getElementById('attackBarActs');
     actsEl.innerHTML = '';
@@ -13396,7 +13422,7 @@
     return [{ label: '🎯 アタック対象を変更(効果)', onClick: () => openRetargetPicker(defPi, true) }];
   }
   function showSAttackModifyPopup() {
-    openZonePopup(centerPoint(), 'セキュリティチェック枚数を増減', [
+    openDecisionUi('セキュリティチェック枚数を増減', [
       {
         custom: true,
         render: (container) => {
@@ -13421,7 +13447,7 @@
           container.querySelector('#sAttackMinus').addEventListener('click', (e) => { e.stopPropagation(); apply(-1); });
         },
       },
-    ], true);
+    ]);
   }
 
   function showRenkeiPicker() {
@@ -14012,8 +14038,7 @@
   let destructionPromptStack = null; // 今表示中の「DP0以下で消滅」確認の対象
   function promptDestructionChoice(stack, afterDone, reason) {
     // 既に場にいなければ何もしない/同じデジモンの確認が今まさに表示中なら二重に出さない
-    if (!findStackOwnerAndZone(stack) || (destructionPromptStack === stack && zonePopupEl.classList.contains('open')) ||
-        (attackState && lastAttackStepFn && lastAttackStepFn.destrStack === stack)) {
+    if (!findStackOwnerAndZone(stack) || (attackBarState && lastAttackStepFn && lastAttackStepFn.destrStack === stack)) {
       (afterDone || resumeAttackStepIfAny)();
       return;
     }
@@ -14022,9 +14047,9 @@
     const centerEvent = { clientX: window.innerWidth / 2 - 130, clientY: 70 };
     const after = afterDone || resumeAttackStepIfAny;
     const message = reason || `「${topCard ? topCard.name : '?'}」がDP0以下になり消滅します`;
-    // アタック中はアタックの帯に出す。帯の中身が他のステップで上書きされないよう、ステップとして登録しておき、
+    // 帯に出す(アタック中はアタックの帯)。帯の中身が他のステップで上書きされないよう、ステップとして登録しておき、
     // ボタンを押したら元のステップに戻す(resolveDestructionQueueと同じ仕組み)。
-    if (attackState) {
+    {
       const prev = lastAttackStepFn;
       const back = (fn) => () => { lastAttackStepFn = prev; fn(); };
       const acts = [
@@ -14038,12 +14063,7 @@
       show.destrStack = stack;
       lastAttackStepFn = show;
       show();
-      return;
     }
-    openZonePopup(centerEvent, message, [
-      { label: 'そのまま消滅させる', onClick: () => resolveDestructionQueue([stack], () => after(), { allowEvasion: false }) },
-      { label: '消滅効果を発揮(トラッシュに送らない)', onClick: () => { showToast('消滅効果の処理は手動で行ってください'); after(); } },
-    ]);
   }
 
   // 恒久的な増減(stack.dpModifier)とは別に、期限付きの増減はstack.tempDPModifiersに
@@ -14659,6 +14679,7 @@
     practiceHistory.length = 0;
     attackState = null;
     lastAttackStepFn = null;
+    attackBarState = null;
     closeZonePopup();
     cardDetailModal.classList.remove('open');
     practiceBoardPanel.style.display = 'none';
