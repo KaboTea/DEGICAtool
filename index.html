@@ -2269,11 +2269,16 @@
   }
 
   /* ---- 効果処理パネル ---- */
-  #practiceBoardPanel .effect-panel {
+  #practiceBoardPanel .fx-stack {
     position: sticky;
     top: 6px;
     z-index: 85;
     margin: 0 0 10px;
+  }
+  #practiceBoardPanel .fx-stack:not(.has-attack):not(.has-effect) { margin: 0; }
+  #practiceBoardPanel .effect-panel {
+    position: relative;
+    margin: 0;
     border-radius: 12px;
     background: linear-gradient(180deg, rgba(16,19,32,0.97), rgba(8,10,18,0.97));
     border: 1px solid rgba(var(--gold-rgb),0.65);
@@ -2282,6 +2287,52 @@
     overflow: hidden;
   }
   #practiceBoardPanel .effect-panel[hidden] { display: none; }
+  /* ---- アタック中の帯(効果処理パネルの上にくっつけて表示) ---- */
+  #practiceBoardPanel .attack-bar {
+    border-radius: 12px;
+    border: 1px solid rgba(var(--gold-rgb),0.65);
+    background: linear-gradient(90deg, rgba(var(--opp-rgb),0.2), rgba(var(--opp-rgb),0.04) 70%), linear-gradient(180deg, rgba(16,19,32,0.97), rgba(8,10,18,0.97));
+    box-shadow: 0 10px 30px rgba(0,0,0,0.6), 0 0 22px rgba(var(--gold-rgb),0.18);
+    padding: 8px 12px 9px;
+  }
+  #practiceBoardPanel .attack-bar[hidden] { display: none; }
+  #practiceBoardPanel .fx-stack.has-attack.has-effect .attack-bar { border-radius: 12px 12px 0 0; border-bottom-color: rgba(var(--gold-rgb),0.3); box-shadow: none; }
+  #practiceBoardPanel .fx-stack.has-attack.has-effect .effect-panel { border-radius: 0 0 12px 12px; border-top: none; }
+  #practiceBoardPanel .ab-head { display: flex; align-items: center; gap: 8px; font-size: 13px; flex-wrap: wrap; }
+  #practiceBoardPanel .ab-head .ab-t { font-weight: 900; color: #ff8fa3; letter-spacing: 0.06em; white-space: nowrap; }
+  #practiceBoardPanel .ab-head .ab-who { font-weight: 700; color: #fff; min-width: 0; }
+  #practiceBoardPanel .ab-head .ab-who i { font-style: normal; color: rgba(255,255,255,0.5); margin: 0 6px; }
+  #practiceBoardPanel .ab-head .ab-chip { margin-left: auto; font-size: 11px; padding: 2px 8px; border-radius: 9px; border: 1px solid rgba(255,255,255,0.2); color: rgba(255,255,255,0.8); white-space: nowrap; }
+  #practiceBoardPanel .ab-steps { display: flex; align-items: center; margin: 7px 0 6px; overflow: hidden; }
+  #practiceBoardPanel .ab-st { display: flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700; color: rgba(255,255,255,0.35); white-space: nowrap; }
+  #practiceBoardPanel .ab-st .d { width: 10px; height: 10px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.3); flex: none; }
+  #practiceBoardPanel .ab-st.done { color: rgba(255,255,255,0.65); }
+  #practiceBoardPanel .ab-st.done .d { background: rgba(var(--gold-rgb),0.55); border-color: rgba(var(--gold-rgb),0.55); }
+  #practiceBoardPanel .ab-st.now { color: #ffe08a; }
+  #practiceBoardPanel .ab-st.now .d { background: var(--gold); border-color: #ffe08a; box-shadow: 0 0 10px rgba(var(--gold-rgb),0.9); }
+  #practiceBoardPanel .ab-ln { flex: 1; height: 2px; min-width: 14px; margin: 0 7px; background: rgba(255,255,255,0.12); }
+  #practiceBoardPanel .ab-ln.done { background: rgba(var(--gold-rgb),0.5); }
+  #practiceBoardPanel .ab-msg { font-size: 12px; line-height: 1.5; color: rgba(255,255,255,0.85); margin-bottom: 6px; }
+  #practiceBoardPanel .ab-msg:empty { display: none; }
+  #practiceBoardPanel .ab-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  #practiceBoardPanel .ab-acts:empty { display: none; }
+  #practiceBoardPanel .ab-btn {
+    font-size: 12px; font-weight: 800; padding: 7px 12px; border-radius: 7px; cursor: pointer;
+    border: 1px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.06); color: #e8eaf2; white-space: nowrap;
+  }
+  #practiceBoardPanel .ab-btn:hover { background: rgba(255,255,255,0.13); }
+  #practiceBoardPanel .ab-btn.primary { background: linear-gradient(180deg, #ffe08a, var(--gold)); color: #1a1204; border-color: transparent; padding: 8px 16px; }
+  #practiceBoardPanel .ab-btn.primary.wait { background: rgba(var(--gold-rgb),0.15); color: #e9d999; border: 1px dashed rgba(var(--gold-rgb),0.65); }
+  #practiceBoardPanel .ab-btn:disabled { opacity: 0.45; cursor: default; }
+  #practiceBoardPanel .ab-wait { font-size: 11px; color: #ffcf6b; }
+  #practiceBoardPanel .ab-custom { flex-basis: 100%; }
+  #practiceBoardPanel .ab-pick:empty { display: none; }
+  /* アタック中のカード選択の案内は帯の中に入れる(画面下に浮かせない) */
+  #practiceBoardPanel .attack-bar .field-pick-banner {
+    position: static; transform: none; width: auto; animation: none; margin-top: 6px;
+    border: 1px solid rgba(var(--gold-rgb),0.4); box-shadow: none; border-radius: 9px;
+    background: rgba(var(--gold-rgb),0.07); padding: 7px 9px;
+  }
   #practiceBoardPanel .effect-panel.ep-flash { animation: epFlash .9s ease-out; }
   @keyframes epFlash {
     0% { box-shadow: 0 0 0 0 rgba(var(--gold-rgb),0.9), 0 0 40px rgba(var(--gold-rgb),0.8); transform: translateY(-6px); }
@@ -2838,7 +2889,7 @@
     #practiceBoardPanel .hand-fan .hand-card { width: 64px; border-radius: 6px; }
     #practiceBoardPanel .hand-fan .hand-card.selected { transform: translateY(-14px) scale(1.1); }
     #practiceBoardPanel .hab-btn { font-size: 12px; padding: 6px 9px; }
-    #practiceBoardPanel .effect-panel { top: 4px; margin-left: -4px; margin-right: -4px; }
+    #practiceBoardPanel .fx-stack { top: 4px; margin-left: -4px; margin-right: -4px; }
     #practiceBoardPanel .ep-body { max-height: 36vh; padding: 8px; }
     #practiceBoardPanel .ep-thumb { width: 42px; }
     #practiceBoardPanel .ep-text { font-size: 12px; }
@@ -2915,7 +2966,12 @@
     }
     body.ls-mode #practiceBoardPanel .ls-dock .effect-panel { position: static; margin: 0; border-radius: 10px; }
     body.ls-mode #practiceBoardPanel .ls-dock-empty { display: none; font-size: 11px; line-height: 1.6; color: rgba(255,255,255,0.55); padding: 8px 6px; }
-    body.ls-mode #practiceBoardPanel #lsDockMain:has(#effectPanel[hidden]) + .ls-dock-empty { display: block; }
+    body.ls-mode #practiceBoardPanel #lsDockMain:has(#effectPanel[hidden]):has(#attackBar[hidden]) + .ls-dock-empty { display: block; }
+    body.ls-mode #practiceBoardPanel .ls-dock .fx-stack { position: static; margin: 0; }
+    body.ls-mode #practiceBoardPanel .ls-dock .ab-steps { flex-wrap: wrap; row-gap: 4px; }
+    body.ls-mode #practiceBoardPanel .ls-dock .ab-ln { min-width: 6px; margin: 0 4px; }
+    body.ls-mode #practiceBoardPanel .ls-dock .ab-btn { white-space: normal; text-align: left; min-height: 36px; }
+    body.ls-mode #practiceBoardPanel .ls-dock .ab-btn.primary { flex: 1 1 100%; text-align: center; }
     body.ls-mode #practiceBoardPanel .ls-dock-util { margin-top: auto; }
     /* 育成フェイズの「孵化」「移動」は右の列の一番上に大きく出す */
     body.ls-mode #practiceBoardPanel .ls-dock-phase #raisingPhaseActions { zoom: 1; display: flex; flex-direction: column; gap: 6px; margin: 0; }
@@ -3168,7 +3224,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.42.3</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.43.1</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -3323,7 +3379,17 @@
       </div>
 
       <!-- 効果処理パネル: 誘発した効果を1つずつ選んで処理する(盤面上部に追従表示) -->
-      <div class="effect-panel" id="effectPanel" hidden></div>
+      <!-- アタック中の手順(⚔️の帯)と効果処理パネルを1つにまとめて、盤面上部に追従表示する -->
+      <div class="fx-stack" id="fxStack">
+        <div class="attack-bar" id="attackBar" hidden>
+          <div class="ab-head" id="attackBarHead"></div>
+          <div class="ab-steps" id="attackBarSteps"></div>
+          <div class="ab-msg" id="attackBarMsg"></div>
+          <div class="ab-acts" id="attackBarActs"></div>
+          <div class="ab-pick" id="attackBarPick"></div>
+        </div>
+        <div class="effect-panel" id="effectPanel" hidden></div>
+      </div>
 
       <div class="evolve-mode-banner" id="evolveModeBanner">
         <span id="evolveModeText"></span>
@@ -4886,7 +4952,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.42.3`);
+    log(`DigiCA Tool build v0.43.1`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -9190,8 +9256,8 @@
   function renderEffectPanel() {
     const panel = document.getElementById('effectPanel');
     if (!panel) return;
-    // 横画面: 効果が出た/無くなったときに右の列の開閉を合わせる(描画の後で判定する)
-    Promise.resolve().then(() => lsUpdateDock());
+    // 横画面: 効果が出た/無くなったときに右の列の開閉を合わせる(描画の後で判定する)。アタックの帯とのつなぎ目も合わせる
+    Promise.resolve().then(() => { updateFxStackClasses(); lsUpdateDock(); if (attackState && attackBarState) renderAttackBar(); });
     if (!practiceState || !effectPanelEnabled) { panel.hidden = true; return; }
     const q = getEffectQueue();
     const validPending = q.pending.filter(isEffectEntryValid);
@@ -9365,9 +9431,10 @@
     // アタック処理中であれば直前のステップ表示を自動的に復帰させる。個別の操作すべてに
     // 復帰処理を書く代わりに、描画のたびにここでまとめて面倒を見る。
     // 公開したカードの振り分け中は、アタックの手順を出し直さない(振り分け画面の上に重なって操作できなくなるため。終わったら戻す)
-    if (attackState && lastAttackStepFn && !fieldPickMode && !activeRevealSession && !zonePopupEl.classList.contains('open')) {
+    if (attackState && lastAttackStepFn && !fieldPickMode && !activeRevealSession && !attackBarState && !zonePopupEl.classList.contains('open')) {
       lastAttackStepFn();
     }
+    renderAttackBar();
     renderFieldPickBanner();
     renderLsHandTab();
     lsUpdateDock();
@@ -9432,7 +9499,7 @@
       lsMove(document.getElementById('raisingPhaseActions'), document.getElementById('lsDockPhase'));
       // ポップアップも右の列(効果のところ)に入れる
       lsMove(zonePopupEl, document.getElementById('lsDockPopup'));
-      lsMove(document.getElementById('effectPanel'), document.getElementById('lsDockMain'));
+      lsMove(document.getElementById('fxStack'), document.getElementById('lsDockMain'));
       lsMove(document.getElementById('utilityActions'), document.getElementById('lsDockUtil'));
     } else {
       for (let i = lsMoved.length - 1; i >= 0; i--) {
@@ -9470,6 +9537,7 @@
     const q = practiceState && practiceState.effectQueue;
     const parts = [];
     if (ep && !ep.hidden) parts.push('e' + (q ? (q.current ? q.current.id : '') + ':' + q.pending.length : ''));
+    if (attackState && attackBarState) parts.push('a' + attackBarState.title);
     if (zonePopupEl.classList.contains('open')) parts.push('p' + (document.getElementById('zonePopupTitle').textContent || ''));
     if (phase && phase.children.length) parts.push('r');
     const sig = parts.join('|');
@@ -10209,9 +10277,19 @@
     if (fp.onCancel) fp.onCancel();
     if (!fieldPickMode && practiceState) renderPracticeBoard();
   }
+  // カード選択の案内の置き場所: アタック中(横画面以外)はアタックの帯の中、それ以外は元の場所(画面下に固定表示)
+  let fieldPickBannerHome = null;
+  function placeFieldPickBanner(banner) {
+    if (!fieldPickBannerHome) fieldPickBannerHome = { parent: banner.parentNode, next: banner.nextSibling };
+    const slot = document.getElementById('attackBarPick');
+    const inBar = !!attackState && !lsActive && !!slot;
+    if (inBar && banner.parentNode !== slot) slot.appendChild(banner);
+    else if (!inBar && banner.parentNode === slot) fieldPickBannerHome.parent.insertBefore(banner, fieldPickBannerHome.next && fieldPickBannerHome.next.parentNode === fieldPickBannerHome.parent ? fieldPickBannerHome.next : null);
+  }
   function renderFieldPickBanner() {
     const banner = document.getElementById('fieldPickBanner');
     if (!banner) return;
+    placeFieldPickBanner(banner);
     const fp = fieldPickMode;
     document.body.classList.toggle('field-picking', !!fp);
     // 横向きレイアウト: 相手側のカードを選ぶときは相手の場を大きくする
@@ -12503,6 +12581,14 @@
       else player.trash.push(number); // 対象を特定できなかった場合の保険(通常発生しない)
       return; // 4-18-4: 重ねられているカードの下に置かれる場合、≪オーバーフロー≫の対象外
     }
+    else if (destination === 'tamerFaceDown') {
+      // ≪セーブ≫以外の効果で、テイマーの下に裏向きで置く
+      const target = pendingTamerSaveTarget;
+      pendingTamerSaveTarget = null;
+      if (target) target.cards.unshift({ n: number, d: true });
+      else player.trash.push(number);
+      return;
+    }
     checkOverflow(number, player);
   }
   const DESTINATION_LABEL = {
@@ -12510,7 +12596,8 @@
     deckTop: 'デッキの上へ', deckBottom: 'デッキの下へ',
     secTop: 'セキュリティの上へ', secBottom: 'セキュリティの下へ',
     battle: 'バトルエリアへ登場(コストなし)',
-    tamerSave: 'テイマーの下へ(≪セーブ≫)',
+    tamerSave: 'テイマーの下へ(表向き・≪セーブ≫)',
+    tamerFaceDown: 'テイマーの下へ(裏向き)',
   };
   const ALL_DESTINATIONS = ['hand', 'trash', 'deckTop', 'deckBottom', 'secTop', 'secBottom', 'battle'];
 
@@ -12597,14 +12684,20 @@
         const c = getStackTopCard(s);
         return c && c.category === 'tamer';
       });
-      if (tamerStacks.length === 1) {
-        actions.push({ label: '🎙 テイマーの下へ(≪セーブ≫)', onClick: () => { pendingTamerSaveTarget = tamerStacks[0]; onDestination('tamerSave'); } });
-      } else if (tamerStacks.length > 1) {
-        actions.push({ label: '🎙 テイマーの下へ(≪セーブ≫)…', onClick: () => startFieldPick({
-          title: '≪セーブ≫: 下に置くテイマーをタップ',
+      // テイマーの下へは、≪セーブ≫(表向き)と、それ以外の効果(裏向き)の両方がある。表裏を選んでから(複数いれば)テイマーを選ぶ
+      const toTamer = (dest) => {
+        if (tamerStacks.length === 1) { pendingTamerSaveTarget = tamerStacks[0]; onDestination(dest); return; }
+        startFieldPick({
+          title: `${dest === 'tamerSave' ? '≪セーブ≫(表向き)' : '裏向き'}: 下に置くテイマーをタップ`,
           candidates: tamerStacks,
-          onDone: (sel) => { if (sel[0]) { pendingTamerSaveTarget = sel[0]; onDestination('tamerSave'); } },
-        }) });
+          onDone: (sel) => { if (sel[0]) { pendingTamerSaveTarget = sel[0]; onDestination(dest); } },
+        });
+      };
+      if (tamerStacks.length > 0) {
+        actions.push({ label: '🎙 テイマーの下へ▾', onClick: (e) => openZonePopup(e, 'テイマーの下にどう置きますか?', [
+          { label: '表向き(≪セーブ≫)', onClick: () => toTamer('tamerSave') },
+          { label: '裏向き', onClick: () => toTamer('tamerFaceDown') },
+        ]) });
       }
     }
     openZonePopup(anchorEvent, title, actions);
@@ -12800,6 +12893,93 @@
   // という素通りステップとして扱う。Sアタック等によるチェック枚数の増減も手動対応(後回し)。
   let attackState = null; // { attackerStack, attackerOwner, defenderOwner, targetType, targetStack }
   let lastAttackStepFn = null; // 直近に表示したアタックステップ(他のポップアップ操作後の復帰用)
+
+  // ---------- アタック中の帯(⚔️ アタック中) ----------
+  // アタックの各ステップ(アタック時/カウンター/ブロック後/バトル結果/消滅の確認)は、画面中央のポップアップではなく
+  // 効果処理パネルの上の帯に表示する。帯のボタンを押すと(ポップアップと同じく)いったん中身を消してから処理する。
+  // 中身が消えた状態で再描画されると、lastAttackStepFn で直前のステップを出し直す(今までのポップアップと同じ仕組み)。
+  let attackBarState = null; // { title, actions }
+  const ATTACK_STEP_LABELS = ['対象', 'アタック時', 'カウンター', 'ブロック', 'バトル / チェック'];
+  const ATTACK_STEP_INDEX = { target: 0, trigger: 1, counter: 2, block: 3, blockTrigger: 3, battleResult: 4, securityCheck: 4 };
+  // アタック中なら帯に、そうでなければ従来どおり中央のポップアップに出す
+  function openStepUi(title, actions) {
+    if (attackState) { openAttackBar(title, actions); return; }
+    openZonePopup(centerPoint(), title, actions, true);
+  }
+  function openAttackBar(title, actions) {
+    attackBarState = { title, actions };
+    renderAttackBar();
+    if (lsActive) lsUpdateDock();
+  }
+  function updateFxStackClasses() {
+    const st = document.getElementById('fxStack');
+    if (!st) return;
+    st.classList.toggle('has-attack', !document.getElementById('attackBar').hidden);
+    st.classList.toggle('has-effect', !document.getElementById('effectPanel').hidden);
+  }
+  function renderAttackBar() {
+    const bar = document.getElementById('attackBar');
+    if (!bar) return;
+    if (!practiceState || !attackState) {
+      attackBarState = null;
+      bar.hidden = true;
+      updateFxStackClasses();
+      return;
+    }
+    bar.hidden = false;
+    const a = attackState;
+    const atkName = stackLabel(a.attackerStack);
+    let tgt = '対象を選択中';
+    if (a.targetType === 'player') tgt = `相手プレイヤー(セキュリティ${a.defenderOwner.security.length}枚)`;
+    else if (a.targetType === 'digimon' && a.targetStack) tgt = `${stackLabel(a.targetStack)}${a.blockerUid ? '(ブロック)' : ''}`;
+    const bonus = a.targetType === 'player' ? currentSAttackBonus() + (a.renkeiCount || 0) : 0;
+    document.getElementById('attackBarHead').innerHTML =
+      `<span class="ab-t">⚔️ アタック中</span><span class="ab-who">${escapeHtml(atkName)}<i>→</i>${escapeHtml(tgt)}</span>` +
+      (bonus ? `<span class="ab-chip">チェック ${bonus > 0 ? '+' : ''}${bonus}枚</span>` : '') +
+      (a.renkeiBonusDP ? `<span class="ab-chip">連携 +${a.renkeiBonusDP}DP</span>` : '');
+    const cur = ATTACK_STEP_INDEX[a.stepName] != null ? ATTACK_STEP_INDEX[a.stepName] : 0;
+    document.getElementById('attackBarSteps').innerHTML = ATTACK_STEP_LABELS.map((l, i) =>
+      `${i ? `<span class="ab-ln${i <= cur ? ' done' : ''}"></span>` : ''}<span class="ab-st${i < cur ? ' done' : i === cur ? ' now' : ''}"><span class="d"></span>${l}</span>`).join('');
+    const msgEl = document.getElementById('attackBarMsg');
+    const actsEl = document.getElementById('attackBarActs');
+    actsEl.innerHTML = '';
+    const st = attackBarState;
+    msgEl.textContent = st ? st.title : '';
+    if (st) {
+      const pending = effectPanelEnabled && hasUnresolvedEffects();
+      st.actions.forEach((act, i) => {
+        if (act.custom) {
+          const c = document.createElement('div');
+          c.className = 'ab-custom';
+          act.render(c);
+          actsEl.appendChild(c);
+          return;
+        }
+        const b = document.createElement('button');
+        b.type = 'button';
+        const isNext = i === 0 && /^(次へ|ブロックしない|「.*」をそのまま消滅)/.test(act.label || '');
+        b.className = 'ab-btn' + (isNext ? ' primary' + (pending && /^次へ/.test(act.label) ? ' wait' : '') : '');
+        b.textContent = isNext && /^次へ/.test(act.label) ? `${act.label} ▶` : act.label;
+        b.disabled = !!act.disabled;
+        b.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          // ポップアップと同じく、押したらいったん中身を消してから処理する
+          attackBarState = null;
+          renderAttackBar();
+          act.onClick(ev);
+          if (practiceState && !attackBarState) renderPracticeBoard();
+        });
+        actsEl.appendChild(b);
+        if (isNext && pending && /^次へ/.test(act.label)) {
+          const w = document.createElement('span');
+          w.className = 'ab-wait';
+          w.textContent = '⚡ 発揮待ち・処理中の効果があります(先に処理してください)';
+          actsEl.appendChild(w);
+        }
+      });
+    }
+    updateFxStackClasses();
+  }
   function resumeAttackStepIfAny() {
     if (attackState && lastAttackStepFn) lastAttackStepFn();
   }
@@ -13031,7 +13211,7 @@
       if (effectPanelEnabled) engineOnAttackDeclared();
       else checkAutoRevealTrigger(attackState.attackerStack, 'アタック時');
     }
-    openZonePopup(centerPoint(), '「アタック時」「アタックしたとき」の効果を処理(ターン保持者→相手の順)', [
+    openStepUi('「アタック時」「アタックしたとき」の効果を処理してください(ターン保持者→相手の順)', [
       { label: '次へ(カウンタータイミングへ)', onClick: () => guardEffectsThen(() => showAttackCounterStep()) },
       ...renkeiActionItems(),
       ...sAttackActionItems(),
@@ -13056,7 +13236,7 @@
       enqueueEffects(cands, []);
       renderEffectPanel();
     }
-    openZonePopup(centerPoint(), 'カウンタータイミング(相手の【カウンター】等があれば先に処理してください。視点を切り替えて相手側を操作できます)', [
+    openStepUi('カウンタータイミング: 相手の【カウンター】等があれば先に処理してください(視点を切り替えて相手側を操作できます)', [
       { label: '次へ(ブロックタイミングへ)', onClick: () => guardEffectsThen(() => showAttackBlockStep()) },
       ...renkeiActionItems(),
       ...sAttackActionItems(),
@@ -13122,7 +13302,7 @@
   function showBlockTriggerStep() {
     lastAttackStepFn = showBlockTriggerStep;
     if (attackState) attackState.stepName = 'blockTrigger';
-    openZonePopup(centerPoint(), '「ブロックしたとき」「レストしたとき」等の効果を処理してください', [
+    openStepUi('「ブロックしたとき」「レストしたとき」等の効果を処理してください', [
       { label: '次へ(バトル解決へ)', onClick: () => guardEffectsThen(() => resolveAttack()) },
       ...renkeiActionItems(),
       ...sAttackActionItems(),
@@ -13200,7 +13380,7 @@
       const show = () => {
         // 既に場を離れていたら(別の処理で消滅済み等)出さずに次へ
         if (!findStackOwnerAndZone(stack)) { lastAttackStepFn = null; next(); return; }
-        openZonePopup(centerPoint(), promptText, wrapped, true);
+        openStepUi(promptText, wrapped);
       };
       lastAttackStepFn = show;
       show();
@@ -13319,7 +13499,7 @@
   function showBattleResultStep(message, onProceed) {
     lastAttackStepFn = () => showBattleResultStep(message, onProceed);
     if (attackState) attackState.stepName = 'battleResult';
-    openZonePopup(centerPoint(), message, [
+    openStepUi(message, [
       { label: '次へ(消滅処理へ)', onClick: () => {
         // 消滅処理中の再描画でこのステップが自動復帰しないよう、先に解除しておく
         lastAttackStepFn = null;
@@ -13378,10 +13558,10 @@
   }
 
   function showTargetLostPopup() {
-    openZonePopup(centerPoint(), '対象にしていたデジモンが場からいなくなりました。どうしますか?', [
+    openStepUi('対象にしていたデジモンが場からいなくなりました。どうしますか?', [
       { label: '対象を選び直す', onClick: () => showAttackTargetStep() },
       { label: 'アタック不成立として終了', onClick: () => endAttack() },
-    ], true);
+    ]);
   }
 
   // セキュリティチェック中に「閉じる」を押した場合、行き先(トラッシュ/手札/登場)を
@@ -13564,7 +13744,8 @@
   let destructionPromptStack = null; // 今表示中の「DP0以下で消滅」確認の対象
   function promptDestructionChoice(stack, afterDone, reason) {
     // 既に場にいなければ何もしない/同じデジモンの確認が今まさに表示中なら二重に出さない
-    if (!findStackOwnerAndZone(stack) || (destructionPromptStack === stack && zonePopupEl.classList.contains('open'))) {
+    if (!findStackOwnerAndZone(stack) || (destructionPromptStack === stack && zonePopupEl.classList.contains('open')) ||
+        (attackState && lastAttackStepFn && lastAttackStepFn.destrStack === stack)) {
       (afterDone || resumeAttackStepIfAny)();
       return;
     }
@@ -13573,6 +13754,24 @@
     const centerEvent = { clientX: window.innerWidth / 2 - 130, clientY: 70 };
     const after = afterDone || resumeAttackStepIfAny;
     const message = reason || `「${topCard ? topCard.name : '?'}」がDP0以下になり消滅します`;
+    // アタック中はアタックの帯に出す。帯の中身が他のステップで上書きされないよう、ステップとして登録しておき、
+    // ボタンを押したら元のステップに戻す(resolveDestructionQueueと同じ仕組み)。
+    if (attackState) {
+      const prev = lastAttackStepFn;
+      const back = (fn) => () => { lastAttackStepFn = prev; fn(); };
+      const acts = [
+        { label: `「${topCard ? topCard.name : '?'}」をそのまま消滅させる`, onClick: back(() => resolveDestructionQueue([stack], () => after(), { allowEvasion: false })) },
+        { label: '消滅効果を発揮(トラッシュに送らない)', onClick: back(() => { showToast('消滅効果の処理は手動で行ってください'); after(); }) },
+      ];
+      const show = () => {
+        if (!findStackOwnerAndZone(stack)) { lastAttackStepFn = prev; after(); return; }
+        openStepUi(message, acts);
+      };
+      show.destrStack = stack;
+      lastAttackStepFn = show;
+      show();
+      return;
+    }
     openZonePopup(centerEvent, message, [
       { label: 'そのまま消滅させる', onClick: () => resolveDestructionQueue([stack], () => after(), { allowEvasion: false }) },
       { label: '消滅効果を発揮(トラッシュに送らない)', onClick: () => { showToast('消滅効果の処理は手動で行ってください'); after(); } },
