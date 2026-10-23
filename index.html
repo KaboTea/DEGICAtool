@@ -2793,11 +2793,17 @@
     body:not(.ls-mode) #practiceBoardPanel #fieldEffectsBtn { grid-column: 1; grid-row: 2; }
     body:not(.ls-mode) #practiceBoardPanel #practicePassBtn { grid-column: 2; grid-row: 2; opacity: 0.6; font-weight: 600; }
     body:not(.ls-mode) #practiceBoardPanel .arena-hud button.btn:not(#practiceNextPhaseBtn) { font-size: 11px; padding: 4px 9px; white-space: nowrap; }
-    body:not(.ls-mode) #practiceBoardPanel #memoryLine { grid-column: 3; grid-row: 1 / span 2; min-width: 0; padding: 4px 0; }
-    body:not(.ls-mode) #practiceBoardPanel #memoryLine .ml-slot { flex: 0 1 24px; min-width: 14px; }
+    body:not(.ls-mode) #practiceBoardPanel #memoryLine { grid-column: 3; grid-row: 1 / span 2; min-width: 0; padding: 6px 4px; overflow: visible; }
+    body:not(.ls-mode) #practiceBoardPanel #memoryLine .ml-slot { flex: 0 1 24px; width: auto; min-width: 0; }
     body:not(.ls-mode) #practiceBoardPanel .arena-phase-core { grid-column: 4; grid-row: 1 / span 2; min-width: 0; }
     body:not(.ls-mode) #practiceBoardPanel #phaseLabel { font-size: 17px !important; }
     body:not(.ls-mode) #practiceBoardPanel #practiceNextPhaseBtn { grid-column: 5; grid-row: 1 / span 2; white-space: nowrap; }
+  }
+  /* 横幅が足りないPCでは、メモリーゲージだけ下の段に全幅で出す(21マスを全部見せるため) */
+  @media (min-width: 769px) and (max-width: 1199px) {
+    body:not(.ls-mode) #practiceBoardPanel .arena-hud { grid-template-columns: auto auto minmax(0, 1fr) auto auto; }
+    body:not(.ls-mode) #practiceBoardPanel #memoryLine { grid-column: 1 / -1; grid-row: 3; }
+    body:not(.ls-mode) #practiceBoardPanel .arena-phase-core { grid-column: 3 / span 2; justify-self: end; }
   }
   @media (max-width: 768px) {
     .detail-body { flex-direction: column; }
@@ -3171,6 +3177,8 @@
     }
     body.ls-mode.ls-hand-up #practiceBoardPanel .hand-row.hand-fan,
     body.ls-mode #practiceBoardPanel .hand-row.hand-fan.has-selection { transform: none; }
+    body.ls-mode.ls-hand-away #practiceBoardPanel .hand-row.hand-fan { transform: translateY(calc(100% - 34px)) !important; left: calc(var(--ls-zc, 62px) + 14px); right: calc(var(--ls-zc, 62px) + 14px); }
+    body.ls-mode.ls-hand-away #practiceBoardPanel .hand-action-bar { display: none; }
     body.ls-mode #practiceBoardPanel .hand-fan .hand-card { width: 62px; }
     /* たたんでいる間は、左右の列(育成・山札・トラッシュ)にかぶらないよう真ん中だけに出す */
     body.ls-mode:not(.ls-hand-up) #practiceBoardPanel .hand-row.hand-fan:not(.has-selection) { left: calc(var(--ls-zc, 62px) + 14px); right: calc(var(--ls-zc, 62px) + 14px); }
@@ -3381,7 +3389,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.49.0</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.50.0</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -5109,7 +5117,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.49.0`);
+    log(`DigiCA Tool build v0.50.0`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -9010,28 +9018,56 @@
   // ---------- 対象を選んで処理するボタン(DP±・消滅・退化・レスト・アクティブ) ----------
   // 効果文の「(条件の)相手/自分のデジモン(テイマー)N体(まで)/全てを〜」を読み取り、条件に合う対象だけを候補に出す。
   // 名称・特徴・色・DP/Lv/登場コストの上限・最もDPの低い等の条件に対応。読み取れない条件は判定しない(候補が多めに出る)。
-  const TARGET_RE = /([^、。]*?)(相手|自分)の((?:デジモン|テイマー)(?:\/(?:デジモン|テイマー))?)(?:(\d+)体(まで)?|全て)(を|の進化元を)/g;
+  // 「相手の/自分の/お互いの」は省略可(省略時は両方の場から)。種類は「デジモン/テイマー」「デジモンかテイマー」「デジモンとテイマー」も読む
+  const TARGET_RE = /([^、。]*?)(?:(相手|自分|お互い)の)?((?:デジモン|テイマー)(?:(?:\/|か|と)(?:デジモン|テイマー))?)(?:(\d+)体(まで)?(ずつ)?|全て)(を|の進化元を|と、)/g;
+  // TARGET_REの一致から、対象の指定(側・種類・数)を作る。場のカードの指定でなさそうなら null
+  function targetSpecFromMatch(m) {
+    const prefix = m[1].split('\n').pop();
+    let side = m[2] === '相手' ? 'opp' : m[2] === '自分' ? 'own' : null;
+    if (!m[2]) {
+      // 側の指定がないときは、前置きが空か「〜の」で終わるもの(「Lv.6以下のデジモン1体」等)だけを場の指定とみなす
+      if (prefix && !/の$/.test(prefix)) return null;
+      if (/(手札|トラッシュ|デッキ|進化元|セキュリティ|(?<!以)下|(?<!以)上|その|この|あの)の?$/.test(prefix)) return null;
+      if (/相手は、?自身の$/.test(prefix)) side = 'opp'; // 「相手は自身のデジモン1体を消滅させる」
+    }
+    const kinds = [...new Set(m[3].split(/[\/かと]/).map(k => (k === 'デジモン' ? 'digimon' : 'tamer')))];
+    const n = m[4] ? parseInt(m[4], 10) : Infinity;
+    const each = !!m[6]; // 「〜1体ずつ」: 側ごと/種類ごと/「Lv.4とLv.6の」の条件ごとにN体
+    const condList = (/((?:Lv\.\d+|[赤青黄緑黒紫白]|「[^」]+」)と)+(?:Lv\.\d+|[赤青黄緑黒紫白]|「[^」]+」)の(?:(?:相手|自分|お互い)の)?$/.exec(prefix) || [''])[0];
+    const mult = !each ? 1
+      : kinds.length > 1 ? kinds.length
+      : condList ? (condList.match(/と/g) || []).length + 1
+      : (m[2] === 'お互い' || !m[2]) ? 2 : 1;
+    return {
+      prefix,
+      side,
+      kinds,
+      count: Number.isFinite(n) ? n * mult : Infinity,
+      upTo: !!m[5] || each,
+      phrase: `${m[2] ? m[2] + 'の' : ''}${m[3]}${m[4] ? m[4] + '体' + (m[5] ? 'まで' : '') + (m[6] ? 'ずつ' : '') : '全て'}`,
+    };
+  }
   function parseTargetActions(text) {
     const t = engineStripNotes(text || '').replace(/[＋]/g, '+').replace(/[－]/g, '-');
     const out = [];
+    let lastChoose = null; // 「〜1体を選び、選んだデジモン以外の〜」の「選ぶ」側(次の文にまたがることもある)
     t.split('。').forEach(sent => {
       let m;
-      let lastChoose = null; // 「〜1体を選び、選んだデジモン以外の〜」の「選ぶ」側
+      const pendingAnd = [];
       TARGET_RE.lastIndex = 0;
       while ((m = TARGET_RE.exec(sent))) {
         const rest = sent.slice(m.index + m[0].length);
         let action = null;
         let am;
-        if (m[6] === 'を' && /^選(び|んで)/.test(rest)) {
-          lastChoose = {
-            prefix: m[1], side: m[2] === '相手' ? 'opp' : 'own',
-            kinds: m[3].split('/').map(k => (k === 'デジモン' ? 'digimon' : 'tamer')),
-            count: m[4] ? parseInt(m[4], 10) : Infinity, upTo: !!m[5],
-            phrase: `${m[2]}の${m[3]}${m[4] ? m[4] + '体' : '全て'}`,
-          };
+        const spec = targetSpecFromMatch(m);
+        if (!spec) continue;
+        // 「AとBをレストさせる」: Aは後ろの対象と同じ処理を受ける
+        if (m[7] === 'と、') { pendingAnd.push(spec); continue; }
+        if (m[7] === 'を' && /^選(び|んで|ぶ)/.test(rest)) {
+          lastChoose = spec;
           continue;
         }
-        if (m[6] === 'の進化元を') {
+        if (m[7] === 'の進化元を') {
           // 「相手のデジモン1体の進化元を上から2枚破棄する」
           if ((am = /^(上|下)から(\d+)枚破棄/.exec(rest))) action = { type: 'matTrash', from: am[1] === '上' ? 'top' : 'bottom', n: parseInt(am[2], 10) };
           else if (/^全て破棄/.test(rest)) action = { type: 'matTrash', from: 'top', n: 99 };
@@ -9052,21 +9088,18 @@
         if (!action) continue;
         const before = sent.slice(0, m.index + m[1].length);
         const duration = action.durPhrase ? durationFromPhrase(action.durPhrase) : durationFromText(before);
-        let prefix = m[1];
+        let prefix = spec.prefix;
         // 「選んだデジモン以外の相手のデジモン全てを〜」: 先に選んだものを対象から外す
         let exclude = null;
-        if (/選んだ(?:デジモン|テイマー|カード)?以外/.test(prefix) && lastChoose) {
+        if (/選んだ(?:(?:相手|自分|お互い)の)?(?:デジモン|テイマー|カード)?以外/.test(prefix) && lastChoose) {
           exclude = lastChoose;
-          prefix = prefix.replace(/選んだ(?:デジモン|テイマー|カード)?以外の?/, '');
+          prefix = prefix.replace(/(?:このデジモンと)?選んだ(?:(?:相手|自分|お互い)の)?(?:デジモン|テイマー|カード)?以外の?/, (x) => (/^このデジモンと/.test(x) ? 'このデジモン以外の' : ''));
         }
         out.push({
           action, duration, prefix, exclude,
-          side: m[2] === '相手' ? 'opp' : 'own',
-          kinds: m[3].split('/').map(k => (k === 'デジモン' ? 'digimon' : 'tamer')),
-          count: m[4] ? parseInt(m[4], 10) : Infinity,
-          upTo: !!m[5],
-          phrase: `${m[2]}の${m[3]}${m[4] ? m[4] + '体' + (m[5] ? 'まで' : '') : '全て'}`,
+          side: spec.side, kinds: spec.kinds, count: spec.count, upTo: spec.upTo, phrase: spec.phrase,
         });
+        pendingAnd.splice(0).forEach(pa => out.push({ action, duration, prefix: pa.prefix, exclude: null, side: pa.side, kinds: pa.kinds, count: pa.count, upTo: pa.upTo, phrase: pa.phrase }));
       }
     });
     return out;
@@ -9084,20 +9117,22 @@
     const dpMax = num(/DP(\d+)以下/), dpMin = num(/DP(\d+)以上/), lvMax = num(/Lv\.(\d+)以下/), lvMin = num(/Lv\.(\d+)以上/);
     const costMax = num(/登場コスト(\d+)以下/), costMin = num(/登場コスト(\d+)以上/);
     const subj = { filters: parseSubjectFilters(pre), colors: parseSubjectColors(pre + '自分') };
-    const lvEq = /Lv\.\d+(以下|以上)/.test(pre) ? null : num(/Lv\.(\d+)の/);
+    const lvList = /Lv\.\d+と/.test(pre) ? [...pre.matchAll(/Lv\.(\d+)(?=と|の)/g)].map(x => parseInt(x[1], 10)) : null; // 「Lv.4とLv.6の」
+    const lvEq = (/Lv\.\d+(以下|以上)/.test(pre) || lvList) ? null : num(/Lv\.(\d+)の/);
     let list = p.battle.filter(s => {
       const top = getStackTopCard(s);
       if (!top) return false;
       const isTamer = top.category === 'tamer' && !s.actingAsDigimon;
       const isDigi = isDigimonLikeStack(s);
       if (!((ta.kinds.includes('digimon') && isDigi) || (ta.kinds.includes('tamer') && isTamer))) return false;
-      if (/他の/.test(pre) && s === excludeStack) return false;
+      if (/他の|このデジモン以外/.test(pre) && s === excludeStack) return false;
       const dp = getEffectiveDP(s);
       if (dpMax != null && !(isDigi && dp <= dpMax)) return false;
       if (dpMin != null && !(isDigi && dp >= dpMin)) return false;
       if (lvMax != null && !(top.level != null && top.level <= lvMax)) return false;
       if (lvMin != null && !(top.level != null && top.level >= lvMin)) return false;
       if (lvEq != null && top.level !== lvEq) return false;
+      if (lvList && !lvList.includes(top.level)) return false;
       if (costMax != null && !(top.play_cost != null && top.play_cost <= costMax)) return false;
       if (costMin != null && !(top.play_cost != null && top.play_cost >= costMin)) return false;
       if (/レスト状態の/.test(pre) && !s.rested) return false;
@@ -9346,7 +9381,7 @@
     if (a.type === 'matTrash') return `${(ta.prefix || '').replace(/【[^】]*】/g, '').replace(/[［\[][^］\]]*[］\]]/g, '').replace(/^[・\s]+/, '').trim()}${ta.phrase}の${what}`;
     const pre = (ta.prefix || '').replace(/【[^】]*】/g, '').replace(/[［\[][^］\]]*[］\]]/g, '').replace(/^[・\s]+/, '').trim();
     const dur = a.type === 'dp' && DURATION_LABELS[ta.duration] ? `(${DURATION_LABELS[ta.duration]})` : '';
-    const ex = ta.exclude ? `(選んだ${ta.exclude.phrase.replace(/^(相手|自分)の/, '')}以外)` : '';
+    const ex = ta.exclude ? `(選んだ${ta.exclude.phrase.replace(/^(相手|自分|お互い)の/, '')}以外)` : '';
     return `${pre ? pre : ''}${ta.phrase}を${what}${ex}${dur}`;
   }
   function targetHandlersFor(e, holderStack) {
@@ -9893,6 +9928,10 @@
     renderAttackBar();
     scheduleAttackWatchdog();
     renderFieldPickBanner();
+    // 横画面: 進化先などを盤面から選ぶ間は手札を自動でたたむ(育成エリア等が手札に隠れないように)
+    const pickingOnBoard = !!(evolveMode || materialTargetMode || linkTargetMode || artsEvolveMode || multiEvolveMode || assemblyMode || deckToTamerMode || fieldPickMode);
+    if (lsActive && pickingOnBoard) document.body.classList.remove('ls-hand-up');
+    document.body.classList.toggle('ls-hand-away', lsActive && pickingOnBoard);
     renderLsHandTab();
     lsUpdateDock();
     arenaFxAfterRender();
