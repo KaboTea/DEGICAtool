@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>DigiCA Tool</title>
 <style>
+  /* iPhoneの横向き(画面を回した表示)で文字が勝手に拡大されないようにする */
+  html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   :root {
     --bg: #14151a;
     --panel: #1c1e26;
@@ -3159,6 +3161,25 @@
     body.ls-mode .detail-img-col { width: 150px; }
     body.ls-mode .detail-body img { width: 150px; margin: 0; }
     body.ls-mode .detail-body > :not(.detail-img-col):not(img) { flex: 1; min-width: 0; }
+    /* カード1枚の詳細は、右の列(効果パネル)と同じくらいの幅で右側に重ねて出す。盤面は左に見えたまま */
+    body.ls-mode .detail-modal .modal:has(.detail-img-col) {
+      width: min(calc(var(--ls-r) + 90px), 62%); padding: 10px 12px;
+      padding-right: max(12px, env(safe-area-inset-right, 0px));
+    }
+    body.ls-mode .detail-body:has(.detail-img-col) { display: block; }
+    body.ls-mode .detail-body:has(.detail-img-col)::after { content: ''; display: block; clear: both; }
+    body.ls-mode .detail-body .detail-img-col { float: left; width: 92px; margin: 0 10px 6px 0; gap: 5px; }
+    body.ls-mode .detail-body .detail-img-col img { width: 92px; }
+    body.ls-mode .detail-body .dkb-item { font-size: 10px; padding: 2px 5px; white-space: normal; }
+    body.ls-mode .detail-body:has(.detail-img-col) .detail-info { font-size: 12px; }
+    body.ls-mode .detail-body:has(.detail-img-col) .detail-info .d-title { font-size: 15px; }
+    body.ls-mode .detail-body:has(.detail-img-col) .detail-info .d-number { margin-bottom: 6px; }
+    body.ls-mode .detail-body:has(.detail-img-col) .detail-tags { gap: 4px; margin-bottom: 8px; }
+    body.ls-mode .detail-body:has(.detail-img-col) .detail-tags span { font-size: 10px; padding: 2px 6px; }
+    body.ls-mode .detail-body:has(.detail-img-col) .detail-effect { line-height: 1.55; margin-bottom: 8px; }
+    body.ls-mode .detail-modal .dp-mod-panel { gap: 6px !important; margin-bottom: 8px !important; padding-bottom: 8px !important; }
+    body.ls-mode .detail-modal .dp-mod-info { font-size: 13px !important; gap: 6px !important; }
+    body.ls-mode .detail-modal .dp-mod-info .mono { font-size: 14px !important; }
     /* その他のモーダル(進化ルート・フィールド効果など)は画面の高さに収めてスクロールさせる */
     body.ls-mode .modal-backdrop:not(.detail-modal) .modal { max-height: calc(var(--ls-h) - 16px); max-width: calc(100% - 24px); overflow-y: auto; box-sizing: border-box; }
     body.ls-mode .detail-modal .modal-actions { margin-top: 10px; }
@@ -3239,7 +3260,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.46.0</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.46.1</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -4967,7 +4988,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.46.0`);
+    log(`DigiCA Tool build v0.46.1`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -14158,10 +14179,12 @@
   function renderDPModifierPanel(stack) {
     if (!isDigimonLikeStack(stack)) return null;
     const wrap = document.createElement('div');
+    wrap.className = 'dp-mod-panel';
     wrap.style.cssText = 'display:flex;flex-direction:column;gap:8px;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--border);width:100%;';
     const mod = stack.dpModifier || 0;
     const tempMod = getTempDPModifierSum(stack);
     const info = document.createElement('div');
+    info.className = 'dp-mod-info';
     info.style.cssText = 'font-size:16px;color:var(--text-dim);display:flex;gap:10px;align-items:center;flex-wrap:wrap;';
     info.innerHTML = `現在DP: <span class="mono" style="font-size:18px;font-weight:800;color:var(--accent);">${getEffectiveDP(stack)}</span>` +
       (mod !== 0 ? `<span class="mono" style="font-size:15px;color:${mod > 0 ? 'var(--c-red)' : 'var(--c-blue)'};">(${mod > 0 ? '+' : ''}${mod}・ずっと)</span>` : '') +
