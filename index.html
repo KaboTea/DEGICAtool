@@ -3389,7 +3389,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.50.0</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.50.1</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -5117,7 +5117,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.50.0`);
+    log(`DigiCA Tool build v0.50.1`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -9039,6 +9039,9 @@
       : condList ? (condList.match(/と/g) || []).length + 1
       : (m[2] === 'お互い' || !m[2]) ? 2 : 1;
     return {
+      // 「ずつ」: どの単位でN体ずつか(side=お互い / kind=デジモンとテイマー / level=「Lv.4とLv.6の」)
+      eachBy: !each ? null : kinds.length > 1 ? 'kind' : condList ? 'level' : 'side',
+      eachN: each && Number.isFinite(n) ? n : null,
       prefix,
       side,
       kinds,
@@ -9097,7 +9100,7 @@
         }
         out.push({
           action, duration, prefix, exclude,
-          side: spec.side, kinds: spec.kinds, count: spec.count, upTo: spec.upTo, phrase: spec.phrase,
+          side: spec.side, kinds: spec.kinds, count: spec.count, upTo: spec.upTo, phrase: spec.phrase, eachBy: spec.eachBy, eachN: spec.eachN,
         });
         pendingAnd.splice(0).forEach(pa => out.push({ action, duration, prefix: pa.prefix, exclude: null, side: pa.side, kinds: pa.kinds, count: pa.count, upTo: pa.upTo, phrase: pa.phrase }));
       }
@@ -9322,15 +9325,19 @@
       const exExtra = targetPoolAll(ex, e.ownerIndex).filter(st => !exCands.includes(st));
       const next = (sel) => openTargetPicker(Object.assign({}, ta, { excluded: sel }), e, holderStack);
       if (!exCands.length && !exExtra.length) { next([]); return; }
-      if (exCands.length === 1 && ex.count === 1) {
-        showToast(`「${stackLabel(exCands[0])}」を選びました(選んだもの以外が対象)`);
-        next(exCands);
+      const auto = (exCands.length === 1 && ex.count === 1) ? exCands : eachAutoPick(ex, exCands);
+      if (auto) {
+        showToast(`${auto.map(st => `「${stackLabel(st)}」`).join('')}を選びました(選んだもの以外が対象)`);
+        next(auto);
         return;
       }
       startFieldPick({
         title: `${(ex.prefix || '').replace(/【[^】]*】/g, '').trim()}${ex.phrase}を選ぶ: タップ(選んだもの以外が対象になります)`,
+        sub: ex.eachBy ? '片方にいない場合は、いる方だけ選べば進みます' : '',
         candidates: exCands, extra: exExtra,
         max: Number.isFinite(ex.count) ? ex.count : 1, upTo: ex.upTo,
+        groupOf: eachGroupFn(ex), perGroup: ex.eachN || 1,
+        initialSelected: eachPreselect(ex, exCands),
         onDone: (sel) => next(sel),
       });
       return;
@@ -9347,11 +9354,15 @@
       return;
     }
     const label = targetActionLabel(ta);
+    const autoEach = eachAutoPick(ta, cands);
+    if (autoEach) { runTargetAction(ta, e, autoEach); return; }
     startFieldPick({
       title: `${label}: 対象をタップ`,
-      sub: ta.count > 1 && !ta.upTo ? `${ta.count}体選ぶと実行します` : (ta.count > 1 ? '選び終わったら「決定」' : ''),
+      sub: ta.eachBy ? '1体ずつ選ぶと実行します(片方にいない場合は、いる方だけで進みます)' : ta.count > 1 && !ta.upTo ? `${ta.count}体選ぶと実行します` : (ta.count > 1 ? '選び終わったら「決定」' : ''),
       candidates: cands, extra,
       max: ta.count, upTo: ta.upTo,
+      groupOf: eachGroupFn(ta), perGroup: ta.eachN || 1,
+      initialSelected: eachPreselect(ta, cands),
       onDone: (sel) => runTargetAction(ta, e, sel),
     });
   }
@@ -10779,7 +10790,10 @@
     if (!fp) return null;
     const isCand = fp.candidates.includes(stack);
     const isExtra = !isCand && fp.showExtra && fp.extra.includes(stack);
-    return { selectable: isCand || isExtra, extra: isExtra, selected: fp.selected.includes(stack) };
+    const selected = fp.selected.includes(stack);
+    // 「〜1体ずつ」: その単位(側・種類など)で選び終わったものは、それ以上選べないようにする
+    const groupFull = !selected && isCand && fp.groupOf && fp.selected.filter(st => fp.groupOf(st) === fp.groupOf(stack)).length >= fp.perGroup;
+    return { selectable: (isCand && !groupFull) || isExtra, extra: isExtra, selected };
   }
   function fieldPickClick(stack) {
     const fp = fieldPickMode;
@@ -10788,7 +10802,41 @@
     if (i >= 0) fp.selected.splice(i, 1);
     else fp.selected.push(stack);
     if (i < 0 && (fp.max === 1 || fp.selected.length >= fp.max)) { finishFieldPick(); return; }
+    if (i < 0 && fp.groupOf && fieldPickGroupsDone(fp)) { finishFieldPick(); return; }
     renderPracticeBoard();
+  }
+  // 「〜1体ずつ」: 候補がいる単位(側・種類など)の全てで選び終えたか。候補がいない単位は数えない(片方にいなくても効果は進む)
+  function fieldPickGroupsDone(fp) {
+    const groups = new Map();
+    fp.candidates.forEach(st => { const g = fp.groupOf(st); groups.set(g, (groups.get(g) || 0) + 1); });
+    for (const [g, avail] of groups) {
+      const sel = fp.selected.filter(st => fp.groupOf(st) === g).length;
+      if (sel < Math.min(fp.perGroup, avail)) return false;
+    }
+    return true;
+  }
+  // 対象の「ずつ」の単位を返す関数(startFieldPickのgroupOf用)
+  function eachGroupFn(ta) {
+    if (!ta || !ta.eachBy) return null;
+    if (ta.eachBy === 'kind') return (st) => (isDigimonLikeStack(st) ? 'digimon' : 'tamer');
+    if (ta.eachBy === 'level') return (st) => ((getStackTopCard(st) || {}).level);
+    return (st) => { const f = findStackOwnerAndZone(st); return f ? practiceState.players.indexOf(f.player) : -1; };
+  }
+  // 「ずつ」で、どの単位も候補が N体以下なら選ぶ余地がないので、そのまま全部を対象にする
+  function eachAutoPick(ta, cands) {
+    const g = eachGroupFn(ta);
+    if (!g || !cands.length) return null;
+    const counts = new Map();
+    cands.forEach(st => counts.set(g(st), (counts.get(g(st)) || 0) + 1));
+    return [...counts.values()].every(c => c <= ta.eachN) ? cands.slice() : null;
+  }
+  // 「ずつ」で、候補がN体以下しかない単位は選ぶ余地がないので、最初から選んだ状態にしておく
+  function eachPreselect(ta, cands) {
+    const g = eachGroupFn(ta);
+    if (!g) return [];
+    const counts = new Map();
+    cands.forEach(st => counts.set(g(st), (counts.get(g(st)) || 0) + 1));
+    return cands.filter(st => counts.get(g(st)) <= ta.eachN);
   }
   function finishFieldPick() {
     const fp = fieldPickMode;
