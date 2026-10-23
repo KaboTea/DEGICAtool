@@ -1076,6 +1076,18 @@
     border-radius: 8px;
     overflow: hidden;
   }
+  /* 手札のコスト(緑=払ってもメモリーが自分側に残る/橙=相手側に渡る/灰=自分のターン以外) */
+  .hand-card { position: relative; }
+  .hand-card .hc-cost, .hand-card .hc-ecost {
+    position: absolute; left: 2px; z-index: 3; pointer-events: none;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 900; line-height: 1; border: 2px solid rgba(8,10,16,0.9); box-shadow: 0 1px 4px rgba(0,0,0,0.6);
+  }
+  .hand-card .hc-cost { top: 2px; width: 22px; height: 22px; border-radius: 50%; font-size: 12px; }
+  .hand-card .hc-ecost { top: 26px; min-width: 22px; height: 16px; padding: 0 3px; border-radius: 8px; font-size: 9px; box-sizing: border-box; }
+  .hand-card .ok { background: #34d399; color: #04130c; }
+  .hand-card .warn { background: #fb923c; color: #1b0c02; }
+  .hand-card .nt { background: #6b7280; color: #fff; }
   .hand-card[draggable="true"] {
     cursor: grab;
     touch-action: none;
@@ -3269,7 +3281,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.47.0</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.48.0</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -4997,7 +5009,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.47.0`);
+    log(`DigiCA Tool build v0.48.0`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -9944,6 +9956,34 @@
   // 選択中のカードをもう一度タップするとカード詳細を開く。
   // 選択状態は描画をまたいで保持し、手札の並びが変わって同じ位置に同じカードが無くなったら解除する。
   let selectedHand = null; // { index, number }
+  // 手札のコスト表示: 登場(使用)コストと、場の進化先のうち一番安い進化コスト。
+  // 自分のターン中は、払った後もメモリーが自分側に残るなら緑(ターン継続)、相手側に渡るなら橙(ターン終了)。
+  // 「〜のときコスト-X」のような軽減は判定しない(印刷どおりのコストで表示する目安)。
+  function handCostBadgesHtml(card, self) {
+    if (!card || !practiceState) return '';
+    const pi = practiceState.players.indexOf(self);
+    const myTurn = practiceState.turn.playerIndex === pi;
+    const ownSide = pi === 0 ? -practiceState.memory : practiceState.memory;
+    const tone = (cost) => (!myTurn ? 'nt' : (ownSide - cost >= 0 ? 'ok' : 'warn'));
+    const useCost = card.play_cost != null ? card.play_cost : (card.dual && typeof card.dual === 'object' && card.dual.use_cost != null ? card.dual.use_cost : null);
+    let html = '';
+    if (useCost != null) html += `<span class="hc-cost ${tone(useCost)}" title="${card.category === 'option' ? '使用' : '登場'}コスト${useCost}">${useCost}</span>`;
+    if (card.category === 'digimon') {
+      let best = null;
+      [self.raising, ...self.battle].forEach(st => {
+        if (!st || !isDigimonLikeStack(st)) return;
+        const top = getStackTopCard(st);
+        if (!top) return;
+        buildEvolveRoutes(card, top).forEach(r => {
+          if (r.cost == null) return;
+          if (r.sub && evaluateSpecialCondition(r.sub, top, st) === false) return;
+          if (best == null || r.cost < best) best = r.cost;
+        });
+      });
+      if (best != null) html += `<span class="hc-ecost ${tone(best)}" title="場のデジモンから進化できる(一番安い進化コスト${best})">進${best}</span>`;
+    }
+    return html;
+  }
   function renderSelfHand(self, canAct) {
     const handRow = document.getElementById('selfHandRow');
     handRow.innerHTML = '';
@@ -9966,7 +10006,7 @@
       const c = document.createElement('div');
       c.className = 'hand-card' + (isSelected ? ' selected' : '');
       c.style.zIndex = isSelected ? 200 : String(index + 1);
-      c.innerHTML = `<img src="${escapeHtml(miniCardImg(number))}" alt="" title="${escapeHtml(miniCardName(number))}" onerror="this.style.opacity=0">`;
+      c.innerHTML = `<img src="${escapeHtml(miniCardImg(number))}" alt="" title="${escapeHtml(miniCardName(number))}" onerror="this.style.opacity=0">` + handCostBadgesHtml(card, self);
       c.addEventListener('click', (e) => {
         e.stopPropagation();
         if (isSelected) { if (card) openCardDetail(card, true); return; }
