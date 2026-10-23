@@ -2779,6 +2779,26 @@
      上書きされて一切反映されないという不具合があったため、この位置に固定する)
      ブレイクポイントは768pxに統一する(以前は480px/700px/720pxが混在していた)。
      ======================================================================== */
+  /* ---- PC: 中央の帯を1行に(C)。左に補助ボタン(2段)、真ん中にメモリーゲージ、右にフェイズと「次のフェーズへ」 ---- */
+  @media (min-width: 769px) {
+    body:not(.ls-mode) #practiceBoardPanel .arena-hud {
+      display: grid; align-items: center; column-gap: 10px; row-gap: 4px; padding: 8px 12px;
+      grid-template-columns: auto auto minmax(0, 1fr) auto auto;
+    }
+    body:not(.ls-mode) #practiceBoardPanel .arena-hud .arena-phasebar,
+    body:not(.ls-mode) #practiceBoardPanel .arena-hud .turn-memory-row { display: contents !important; }
+    body:not(.ls-mode) #practiceBoardPanel #turnIndicatorLabel { display: none; }
+    body:not(.ls-mode) #practiceBoardPanel #practiceUndoBtn { grid-column: 1; grid-row: 1; }
+    body:not(.ls-mode) #practiceBoardPanel #practiceSwitchViewBtn { grid-column: 2; grid-row: 1; }
+    body:not(.ls-mode) #practiceBoardPanel #fieldEffectsBtn { grid-column: 1; grid-row: 2; }
+    body:not(.ls-mode) #practiceBoardPanel #practicePassBtn { grid-column: 2; grid-row: 2; opacity: 0.6; font-weight: 600; }
+    body:not(.ls-mode) #practiceBoardPanel .arena-hud button.btn:not(#practiceNextPhaseBtn) { font-size: 11px; padding: 4px 9px; white-space: nowrap; }
+    body:not(.ls-mode) #practiceBoardPanel #memoryLine { grid-column: 3; grid-row: 1 / span 2; min-width: 0; padding: 4px 0; }
+    body:not(.ls-mode) #practiceBoardPanel #memoryLine .ml-slot { flex: 0 1 24px; min-width: 14px; }
+    body:not(.ls-mode) #practiceBoardPanel .arena-phase-core { grid-column: 4; grid-row: 1 / span 2; min-width: 0; }
+    body:not(.ls-mode) #practiceBoardPanel #phaseLabel { font-size: 17px !important; }
+    body:not(.ls-mode) #practiceBoardPanel #practiceNextPhaseBtn { grid-column: 5; grid-row: 1 / span 2; white-space: nowrap; }
+  }
   @media (max-width: 768px) {
     .detail-body { flex-direction: column; }
     .detail-body img { width: 140px; margin: 0 auto; }
@@ -3152,6 +3172,8 @@
     body.ls-mode.ls-hand-up #practiceBoardPanel .hand-row.hand-fan,
     body.ls-mode #practiceBoardPanel .hand-row.hand-fan.has-selection { transform: none; }
     body.ls-mode #practiceBoardPanel .hand-fan .hand-card { width: 62px; }
+    /* たたんでいる間は、左右の列(育成・山札・トラッシュ)にかぶらないよう真ん中だけに出す */
+    body.ls-mode:not(.ls-hand-up) #practiceBoardPanel .hand-row.hand-fan:not(.has-selection) { left: calc(var(--ls-zc, 62px) + 14px); right: calc(var(--ls-zc, 62px) + 14px); }
     /* 手札のコマンド(登場・進化など)は、手札に重ならないよう手札の上側に出す */
     body.ls-mode #practiceBoardPanel .hand-row.hand-fan.has-selection { padding-bottom: 8px; }
     body.ls-mode #practiceBoardPanel .hand-action-bar { top: auto; bottom: calc(100% + 16px); }
@@ -3240,6 +3262,84 @@
     body.ls-mode #practiceBoardPanel .ls-dock .ep-choice-btns { flex-direction: row; flex-basis: 100%; }
     body.ls-mode #practiceBoardPanel .ls-dock .ep-choice-btns .ep-btn { flex: 1; text-align: center; }
 
+    /* ---- 横画面: 左右の列はボタン(G)。左=手札(相手)・セキュリティ・デジタマ・育成 / 右=山札・トラッシュを縦半分ずつ ---- */
+    body.ls-mode #practiceBoardPanel { --ls-zc: 62px; }
+    body.ls-mode.ls-narrow #practiceBoardPanel { --ls-zc: 56px; }
+    body.ls-mode #practiceBoardPanel .mat-block .mat-row,
+    body.ls-mode #practiceBoardPanel .mat-block.is-compact .mat-row {
+      grid-template-columns: var(--ls-zc) auto minmax(0, 1fr) var(--ls-zc);
+      grid-template-areas: "security raising battle decktrash" "egg raising battle decktrash";
+      grid-template-rows: 1fr auto;
+      column-gap: 8px; row-gap: 4px; align-items: stretch;
+    }
+    body.ls-mode #practiceBoardPanel #selfMatBlock .mat-row {
+      flex: 1; min-height: 0;
+      grid-template-columns: var(--ls-zc) minmax(0, 1fr) var(--ls-zc);
+      grid-template-areas: "security battle decktrash" "egg battle decktrash" "raising battle decktrash";
+      grid-template-rows: auto auto 1fr;
+    }
+    body.ls-mode #practiceBoardPanel .mat-side-col,
+    body.ls-mode #practiceBoardPanel .mat-side-col-right,
+    body.ls-mode #practiceBoardPanel #selfEggCluster,
+    body.ls-mode #practiceBoardPanel #opponentEggCluster { zoom: 1; margin: 0; padding: 0; width: auto; min-width: 0; }
+    body.ls-mode #practiceBoardPanel .mat-block .mat-side-col { display: flex; flex-direction: column; gap: 4px; }
+    body.ls-mode #practiceBoardPanel .mat-side-col > .mat-cluster { display: flex; flex-direction: column; }
+    body.ls-mode #practiceBoardPanel #opponentSideCluster { flex: 1; }
+    body.ls-mode #practiceBoardPanel .mat-block .mat-side-col-right { display: flex; flex-direction: column; align-items: stretch; gap: 4px; }
+    body.ls-mode #practiceBoardPanel .mat-side-col-right > .ls-zb { flex: 1 1 0; }
+    body.ls-mode #practiceBoardPanel #selfEggCluster, body.ls-mode #practiceBoardPanel #opponentEggCluster { display: flex; }
+    body.ls-mode #practiceBoardPanel .battle-sub-area, body.ls-mode #practiceBoardPanel .mat-block .battle-sub-area { align-self: start; }
+    body.ls-mode #practiceBoardPanel .ls-zb {
+      position: relative; overflow: hidden; box-sizing: border-box; width: 100%;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+      border-radius: 9px; border: 1.5px solid rgba(var(--side-rgb, 120,140,180),0.75);
+      background: linear-gradient(180deg, rgba(var(--side-rgb, 120,140,180),0.2), rgba(var(--side-rgb, 120,140,180),0.06));
+      color: #fff; min-height: 26px; padding: 3px 2px;
+    }
+    body.ls-mode #practiceBoardPanel .ls-zb.tappable { cursor: pointer; }
+    body.ls-mode #practiceBoardPanel .ls-zb.tappable:active { filter: brightness(1.3); }
+    body.ls-mode #practiceBoardPanel .ls-zb.drop-hover { box-shadow: 0 0 0 2px var(--gold); }
+    body.ls-mode #practiceBoardPanel .ls-zb > * { position: relative; }
+    body.ls-mode #practiceBoardPanel .ls-zb-l { font-size: 10px; font-weight: 700; opacity: 0.85; line-height: 1.1; }
+    body.ls-mode #practiceBoardPanel .ls-zb-n { font-size: 18px; font-weight: 900; line-height: 1; font-family: 'JetBrains Mono', monospace; }
+    body.ls-mode #practiceBoardPanel .ls-zb.danger .ls-zb-n { color: #ff8fa3; }
+    body.ls-mode #practiceBoardPanel .ls-zb-hand, body.ls-mode #practiceBoardPanel .ls-zb-egg { flex-direction: row; gap: 5px; min-height: 26px; }
+    body.ls-mode #practiceBoardPanel .ls-zb-hand .ls-zb-n, body.ls-mode #practiceBoardPanel .ls-zb-egg .ls-zb-n { font-size: 14px; }
+    body.ls-mode #practiceBoardPanel .ls-zb-hand .ls-zb-l, body.ls-mode #practiceBoardPanel .ls-zb-egg .ls-zb-l { font-size: 12px; }
+    body.ls-mode #practiceBoardPanel .ls-zb-security { min-height: 40px; flex: 1; flex-direction: row; flex-wrap: wrap; align-content: center; column-gap: 4px; row-gap: 2px; }
+    body.ls-mode #practiceBoardPanel .ls-zb-security .ls-zb-l { font-size: 13px; }
+    body.ls-mode #practiceBoardPanel .ls-zb-security .ls-zb-fu { flex-basis: 100%; justify-content: center; margin-top: 0; }
+    body.ls-mode #practiceBoardPanel .ls-zb-fu { display: flex; align-items: center; margin-top: 2px; }
+    body.ls-mode #practiceBoardPanel .ls-zb-fu img { width: 15px; height: 21px; object-fit: cover; border-radius: 2px; border: 1.5px solid #fff; margin-left: -6px; box-shadow: 0 1px 3px rgba(0,0,0,0.6); }
+    body.ls-mode #practiceBoardPanel .ls-zb-fu img:first-child { margin-left: 0; }
+    body.ls-mode #practiceBoardPanel .ls-zb-fu b { font-size: 9px; margin-left: 3px; color: #ffe08a; }
+    body.ls-mode #practiceBoardPanel .ls-zb-bg { position: absolute !important; inset: 4px; width: calc(100% - 8px); height: calc(100% - 8px); object-fit: cover; border-radius: 6px; opacity: 0.35; }
+    /* 育成エリア: 自分側は左の列の下に枠付きで大きく見せる */
+    body.ls-mode #practiceBoardPanel #selfMatBlock .raising-sub-area {
+      justify-self: stretch; align-self: start; zoom: 1; box-sizing: border-box; width: 100%; min-width: 0; max-width: var(--ls-zc);
+      display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 3px 0 12px;
+      border: 1.5px solid rgba(var(--side-rgb, 239,68,68),0.75); border-radius: 9px;
+      background: linear-gradient(180deg, rgba(var(--side-rgb, 239,68,68),0.18), rgba(var(--side-rgb, 239,68,68),0.05));
+    }
+    body.ls-mode #practiceBoardPanel #selfMatBlock .raising-sub-area .sa-label { display: block; font-size: 10px; font-weight: 800; margin: 0; padding: 0; position: static; }
+    body.ls-mode #practiceBoardPanel #selfMatBlock .raising-sub-area .stack-tile { width: calc(var(--ls-zc) - 14px); margin-right: 0 !important; }
+    body.ls-mode #practiceBoardPanel #selfMatBlock .raising-sub-area .tile-quickadd { display: none; }
+    /* メモリーゲージの右端に「次のフェーズへ」(C) */
+    body.ls-mode #practiceBoardPanel .turn-memory-row #practiceNextPhaseBtn {
+      flex: none; min-height: 30px; padding: 4px 16px 4px 10px; font-size: 12px; white-space: nowrap;
+      border-radius: 0; clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 50%, calc(100% - 10px) 100%, 0 100%);
+    }
+    /* 手札のタブは枚数を出さず、下の真ん中に小さく(左下は育成エリアに使う) */
+    body.ls-mode #practiceBoardPanel .ls-hand-tab { left: 50%; transform: translateX(-50%); bottom: 0; border-radius: 12px 12px 0 0; padding: 5px 22px; }
+    /* 手札のタブは真ん中だけなので、左右の列は下端まで使う(バトルエリアだけタブの分を空ける) */
+    body.ls-mode #practiceBoardPanel #selfMatBlock { padding-bottom: 4px; }
+    body.ls-mode #practiceBoardPanel #selfMatBlock .battle-sub-area { padding-bottom: 26px; }
+    body.ls-mode #practiceBoardPanel .turn-memory-row { flex-wrap: nowrap; }
+    body.ls-mode #practiceBoardPanel #memoryLine { order: 0; }
+    body.ls-mode.ls-narrow #practiceBoardPanel .turn-memory-row #practiceNextPhaseBtn { font-size: 11px; padding: 4px 12px 4px 8px; }
+    body.ls-mode.ls-narrow #practiceBoardPanel .ls-mem-btn { width: 32px; }
+    body.ls-mode.ls-narrow #practiceBoardPanel .ls-zb-trash .ls-zb-l { font-size: 8.5px; letter-spacing: -0.03em; }
+
   /* ---- 横画面固定: 縦持ちのままbody全体を90度回す(端末の画面回転ロック中でも横画面で遊べる) ---- */
   html.ls-rot body { overflow: hidden; }
   /* ---- Safariのツールバーをたためるようにする ----
@@ -3281,7 +3381,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.48.0</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.49.0</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -5009,7 +5109,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.48.0`);
+    log(`DigiCA Tool build v0.49.0`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -7342,9 +7442,45 @@
     return wrap;
   }
 
+  // 横画面用: 山札・トラッシュ・セキュリティ等を、カードの絵ではなく押しやすいボタン(ラベル+枚数)で出す
+  function buildLsZoneBtn(kind, label, count, onClick, opts) {
+    const o = opts || {};
+    const el = document.createElement('div');
+    el.className = `ls-zb ls-zb-${kind}${onClick ? ' tappable' : ''}${o.danger ? ' danger' : ''}`;
+    const fu = (o.faceUps || []);
+    el.innerHTML =
+      (o.bgImg ? `<img class="ls-zb-bg" src="${escapeHtml(miniCardImg(o.bgImg))}" alt="" onerror="this.style.opacity=0">` : '') +
+      `<span class="ls-zb-l">${label}</span><span class="ls-zb-n">${count}</span>` +
+      (fu.length ? `<span class="ls-zb-fu">${fu.slice(0, 3).map(n => `<img src="${escapeHtml(miniCardImg(n))}" alt="" onerror="this.style.opacity=0">`).join('')}<b>表${fu.length}</b></span>` : '');
+    if (onClick) el.addEventListener('click', (e) => { e.stopPropagation(); onClick(e); });
+    return el;
+  }
   function renderPlayerZones(player, { handClusterEl, eggClusterEl, sideClusterEl, deckTrashClusterEl, raisingAreaEl, battleAreaEl, isSelf, allowEvolveTarget }) {
     const fxPi = practiceState.players.indexOf(player);
     const tagPile = (el, kind) => { el.dataset.fxpile = `${fxPi}:${kind}`; return el; };
+    if (lsActive) {
+      // 横画面: 左の列(手札・セキュリティ・デジタマ)と右の列(山札・トラッシュ)をボタンにする
+      if (handClusterEl) {
+        handClusterEl.innerHTML = '';
+        if (!isSelf) handClusterEl.appendChild(tagPile(buildLsZoneBtn('hand', '✋', player.hand.length, null), 'hand'));
+      }
+      sideClusterEl.innerHTML = '';
+      const faceUps = player.security.filter(cardEntryFaceUp).map(cardEntryNum);
+      sideClusterEl.appendChild(tagPile(buildLsZoneBtn('security', '🛡', player.security.length,
+        isSelf ? (e) => openSecurityPopup(e) : (e) => openOpponentSecurityDiscardPopup(e, player),
+        { faceUps, danger: player.security.length <= 1 }), 'security'));
+      eggClusterEl.innerHTML = '';
+      eggClusterEl.appendChild(tagPile(buildLsZoneBtn('egg', '🥚', player.eggLibrary.length, null), 'egg'));
+      deckTrashClusterEl.innerHTML = '';
+      deckTrashClusterEl.appendChild(tagPile(buildLsZoneBtn('deck', '山札', player.library.length, isSelf ? (e) => openDeckPopup(e) : null, { danger: player.library.length <= 5 }), 'library'));
+      const topTrash = player.trash.length ? player.trash[player.trash.length - 1] : null;
+      const trashBtn = buildLsZoneBtn('trash', 'トラッシュ', player.trash.length, isSelf
+        ? () => openTrashListView()
+        : (topTrash ? () => { const card = cardIndexByNumber.get(topTrash); if (card) openCardDetail(card, true); } : null),
+        { bgImg: topTrash });
+      if (isSelf) setupTrashDropZone(trashBtn);
+      deckTrashClusterEl.appendChild(tagPile(trashBtn, 'trash'));
+    } else {
     // Hand: opponent's hand shows as a face-down pile (count only).
     // Self's hand is rendered separately below the mat (selfHandRow), so handClusterEl may be null.
     if (handClusterEl) {
@@ -7381,6 +7517,7 @@
         });
     if (isSelf) setupTrashDropZone(trashPile);
     deckTrashClusterEl.appendChild(tagPile(trashPile, 'trash'));
+    }
 
     // Raising area (0 or 1 stack)
     raisingAreaEl.innerHTML = '';
@@ -8879,11 +9016,21 @@
     const out = [];
     t.split('。').forEach(sent => {
       let m;
+      let lastChoose = null; // 「〜1体を選び、選んだデジモン以外の〜」の「選ぶ」側
       TARGET_RE.lastIndex = 0;
       while ((m = TARGET_RE.exec(sent))) {
         const rest = sent.slice(m.index + m[0].length);
         let action = null;
         let am;
+        if (m[6] === 'を' && /^選(び|んで)/.test(rest)) {
+          lastChoose = {
+            prefix: m[1], side: m[2] === '相手' ? 'opp' : 'own',
+            kinds: m[3].split('/').map(k => (k === 'デジモン' ? 'digimon' : 'tamer')),
+            count: m[4] ? parseInt(m[4], 10) : Infinity, upTo: !!m[5],
+            phrase: `${m[2]}の${m[3]}${m[4] ? m[4] + '体' : '全て'}`,
+          };
+          continue;
+        }
         if (m[6] === 'の進化元を') {
           // 「相手のデジモン1体の進化元を上から2枚破棄する」
           if ((am = /^(上|下)から(\d+)枚破棄/.exec(rest))) action = { type: 'matTrash', from: am[1] === '上' ? 'top' : 'bottom', n: parseInt(am[2], 10) };
@@ -8905,9 +9052,15 @@
         if (!action) continue;
         const before = sent.slice(0, m.index + m[1].length);
         const duration = action.durPhrase ? durationFromPhrase(action.durPhrase) : durationFromText(before);
-        const prefix = m[1];
+        let prefix = m[1];
+        // 「選んだデジモン以外の相手のデジモン全てを〜」: 先に選んだものを対象から外す
+        let exclude = null;
+        if (/選んだ(?:デジモン|テイマー|カード)?以外/.test(prefix) && lastChoose) {
+          exclude = lastChoose;
+          prefix = prefix.replace(/選んだ(?:デジモン|テイマー|カード)?以外の?/, '');
+        }
         out.push({
-          action, duration, prefix,
+          action, duration, prefix, exclude,
           side: m[2] === '相手' ? 'opp' : 'own',
           kinds: m[3].split('/').map(k => (k === 'デジモン' ? 'digimon' : 'tamer')),
           count: m[4] ? parseInt(m[4], 10) : Infinity,
@@ -9127,13 +9280,34 @@
   }
   function openTargetPicker(ta, e, holderStack) {
     ta = Object.assign({}, ta, { holder: holderStack || null });
-    let cands = targetCandidates(ta, e.ownerIndex, holderStack);
+    // 「〜1体を選び、選んだデジモン以外の〜」: まず残す側を選ぶ(候補が1体だけならそれに決める)
+    if (ta.exclude && !ta.excluded) {
+      const ex = ta.exclude;
+      const exCands = targetCandidates(ex, e.ownerIndex, holderStack);
+      const exExtra = targetPoolAll(ex, e.ownerIndex).filter(st => !exCands.includes(st));
+      const next = (sel) => openTargetPicker(Object.assign({}, ta, { excluded: sel }), e, holderStack);
+      if (!exCands.length && !exExtra.length) { next([]); return; }
+      if (exCands.length === 1 && ex.count === 1) {
+        showToast(`「${stackLabel(exCands[0])}」を選びました(選んだもの以外が対象)`);
+        next(exCands);
+        return;
+      }
+      startFieldPick({
+        title: `${(ex.prefix || '').replace(/【[^】]*】/g, '').trim()}${ex.phrase}を選ぶ: タップ(選んだもの以外が対象になります)`,
+        candidates: exCands, extra: exExtra,
+        max: Number.isFinite(ex.count) ? ex.count : 1, upTo: ex.upTo,
+        onDone: (sel) => next(sel),
+      });
+      return;
+    }
+    const keep = ta.excluded || [];
+    let cands = targetCandidates(ta, e.ownerIndex, holderStack).filter(st => !keep.includes(st));
     // 進化元を破棄する効果は、進化元を持つデジモンだけを候補にする
     if (ta.action.type === 'matTrash') cands = cands.filter(st => st.cards.length > 1);
-    const extra = targetPoolAll(ta, e.ownerIndex).filter(st => !cands.includes(st));
-    if (!cands.length && !extra.length) { showToast('対象にできるカードがいません', true); return; }
+    const extra = targetPoolAll(ta, e.ownerIndex).filter(st => !cands.includes(st) && !keep.includes(st));
+    if (!cands.length && !extra.length) { showToast(keep.length ? '選んだもの以外に対象がいません' : '対象にできるカードがいません', true); return; }
     if (ta.count === Infinity) {
-      if (!cands.length) { showToast('条件に合う対象がいません(条件の一部は自動判定していません)', true); return; }
+      if (!cands.length) { showToast(keep.length ? '選んだもの以外に対象がいません' : '条件に合う対象がいません(条件の一部は自動判定していません)', true); return; }
       runTargetAction(ta, e, cands);
       return;
     }
@@ -9172,7 +9346,8 @@
     if (a.type === 'matTrash') return `${(ta.prefix || '').replace(/【[^】]*】/g, '').replace(/[［\[][^］\]]*[］\]]/g, '').replace(/^[・\s]+/, '').trim()}${ta.phrase}の${what}`;
     const pre = (ta.prefix || '').replace(/【[^】]*】/g, '').replace(/[［\[][^］\]]*[］\]]/g, '').replace(/^[・\s]+/, '').trim();
     const dur = a.type === 'dp' && DURATION_LABELS[ta.duration] ? `(${DURATION_LABELS[ta.duration]})` : '';
-    return `${pre ? pre : ''}${ta.phrase}を${what}${dur}`;
+    const ex = ta.exclude ? `(選んだ${ta.exclude.phrase.replace(/^(相手|自分)の/, '')}以外)` : '';
+    return `${pre ? pre : ''}${ta.phrase}を${what}${ex}${dur}`;
   }
   function targetHandlersFor(e, holderStack) {
     return parseTargetActions(e.text).map(ta => ({
@@ -9776,7 +9951,9 @@
       const btns = document.getElementById('lsHudBtns');
       lsMove(document.getElementById('arenaTurnChip'), top);
       lsMove(document.getElementById('phasePips'), top);
-      ['practiceNextPhaseBtn', 'practicePassBtn', 'practiceUndoBtn', 'practiceSwitchViewBtn', 'fieldEffectsBtn']
+      // 「次のフェーズへ」はメモリーゲージの右端へ。パスはメニューの中から使う(ほぼ押さないため)
+      lsMove(document.getElementById('practiceNextPhaseBtn'), document.querySelector('#practiceBoardPanel .turn-memory-row'));
+      ['practiceUndoBtn', 'practiceSwitchViewBtn', 'fieldEffectsBtn']
         .forEach(id => lsMove(document.getElementById(id), btns));
       lsMove(document.getElementById('raisingPhaseActions'), document.getElementById('lsDockPhase'));
       // ポップアップも右の列(効果のところ)に入れる
@@ -9864,14 +10041,15 @@
   function renderLsHandTab() {
     const b = document.getElementById('lsHandTab');
     if (!b || !practiceState) return;
-    const n = practiceState.players[practiceState.viewingIndex].hand.length;
-    b.textContent = `手札 ${n} ${document.body.classList.contains('ls-hand-up') ? '▼' : '▲'}`;
+    b.textContent = `${document.body.classList.contains('ls-hand-up') ? '▼' : '▲'} 手札`;
   }
   // 横向きでは画面上部のボタン(効果パネル/自動エンド/演出/練習を終了)とタブを隠すため、メニューから使えるようにする
   document.getElementById('lsMenuBtn').addEventListener('click', (e) => {
     e.stopPropagation();
     const label = (id) => (document.getElementById(id) || {}).textContent || '';
+    const passBtn = document.getElementById('practicePassBtn');
     openZonePopup(centerPoint(), 'メニュー', [
+      { label: 'パス', disabled: !passBtn || passBtn.disabled, onClick: () => passBtn.click() },
       { label: label('effectPanelToggle'), onClick: () => document.getElementById('effectPanelToggle').click() },
       { label: label('autoEndToggle'), onClick: () => document.getElementById('autoEndToggle').click() },
       { label: label('arenaFxToggle'), onClick: () => document.getElementById('arenaFxToggle').click() },
