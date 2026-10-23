@@ -1389,11 +1389,17 @@
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
-    padding-top: 40px;
+    align-items: flex-start; /* DPプレートを各カードの真下に付けるため、タイルを縦に引き伸ばさない */
+    padding-top: 14px; /* 進化元の縁(右上にはみ出す)の分 */
   }
+  /* 進化元の縁: 一番上のカードの右上に重なりを見せるだけ(中身は詳細で見る) */
+  .stack-layer.st-edge { background: linear-gradient(200deg, #3a4560, #1a2030); }
+  #practiceBoardPanel .stack-layer.st-edge { border-color: rgba(var(--side-rgb, 120,140,180),0.6); background: linear-gradient(200deg, rgba(var(--side-rgb, 120,140,180),0.35), #121722); }
+  .stack-tile .st-count.st-mats { bottom: auto; top: -13px; right: -12px; font-size: 10px; padding: 0 5px; border-radius: 8px; }
+  .stack-tile.has-dp .status-badges-row { margin-top: 13px; }
   .st-dp {
     position: absolute;
-    top: -34px;
+    bottom: -12px;
     left: 50%;
     transform: translateX(-50%);
     background: var(--c-red);
@@ -2451,7 +2457,7 @@
   #practiceBoardPanel .mat-block.is-compact .raising-sub-area { min-height: 0; }
   #practiceBoardPanel .mat-block.is-compact .sub-area .sa-label { display: none; }
   #practiceBoardPanel .mat-block.is-compact .battle-top-group,
-  #practiceBoardPanel .mat-block.is-compact .battle-bottom-group { padding-top: 36px; }
+  #practiceBoardPanel .mat-block.is-compact .battle-bottom-group { padding-top: 14px; }
   #practiceBoardPanel .mat-block.is-compact .mat-pile .mp-label { font-size: 15px; }
   #practiceBoardPanel .mat-block.is-compact .empty-state { padding: 6px 0 !important; font-size: 16px; }
   #practiceBoardPanel .arena-compact-toggle {
@@ -2479,7 +2485,10 @@
     overflow: hidden;
   }
   #arenaFxLayer > * { position: absolute; pointer-events: none; }
-  #arenaFxLayer svg.fx-beam-svg { left: 0; top: 0; width: 100%; height: 100%; overflow: visible; }
+  #arenaFxLayer svg.fx-beam-svg, #arenaBeamLayer svg.fx-beam-svg { left: 0; top: 0; width: 100%; height: 100%; overflow: visible; }
+  /* アタックの矢印: 盤面より上・効果パネル/アタックの帯(fx-stack: 85)や横画面の右の列(80)より下 */
+  #arenaBeamLayer { position: fixed; inset: 0; pointer-events: none; z-index: 70; overflow: hidden; }
+  #arenaBeamLayer > * { position: absolute; pointer-events: none; }
 
   /* フェイズ/ターン切替のバナー */
   .fx-banner {
@@ -2745,7 +2754,7 @@
   }
   @keyframes fxSlashLine { 0% { transform: rotate(-12deg) scaleX(0); } 100% { transform: rotate(-12deg) scaleX(1); } }
 
-  body.arena-fx-off #arenaFxLayer { display: none; }
+  body.arena-fx-off #arenaFxLayer, body.arena-fx-off #arenaBeamLayer { display: none; }
   body.arena-fx-off #practiceBoardPanel .mat-block.is-turn,
   body.arena-fx-off #practiceBoardPanel #practiceNextPhaseBtn,
   body.arena-fx-off #practiceBoardPanel .arena-plate .ap-turn { animation: none; }
@@ -2776,7 +2785,7 @@
     .st-dp {
       font-size: 10px;
       padding: 1px 6px;
-      top: -18px;
+      bottom: -9px;
     }
 
     /* メモリー: スマホ幅のときだけ21マスを3行×7列に折り返す */
@@ -2789,7 +2798,7 @@
       flex-wrap: nowrap;
       overflow-x: auto;
       -webkit-overflow-scrolling: touch;
-      padding-top: 34px;
+      padding-top: 14px;
     }
     .stack-tile { flex-shrink: 0; }
 
@@ -2913,7 +2922,7 @@
     #practiceBoardPanel .ep-choice { flex-wrap: wrap; }
     #practiceBoardPanel .ep-choice-btns { flex-direction: row; width: 100%; justify-content: flex-end; }
 
-    #practiceBoardPanel .st-dp { font-size: 11px; padding: 1px 9px; top: -19px; clip-path: polygon(6px 0, calc(100% - 6px) 0, 100% 50%, calc(100% - 6px) 100%, 6px 100%, 0 50%); }
+    #practiceBoardPanel .st-dp { font-size: 11px; padding: 1px 9px; bottom: -9px; clip-path: polygon(6px 0, calc(100% - 6px) 0, 100% 50%, calc(100% - 6px) 100%, 6px 100%, 0 50%); }
     #practiceBoardPanel .hand-row { padding: 8px; gap: 4px; }
     #practiceBoardPanel .arena-topbar { gap: 8px; }
 
@@ -3115,7 +3124,7 @@
     body.ls-mode #practiceBoardPanel .mat-block .mat-pile .mp-label,
     body.ls-mode #practiceBoardPanel .mat-block.is-compact .mat-pile .mp-label { display: none; }
     body.ls-mode #practiceBoardPanel .battle-top-group,
-    body.ls-mode #practiceBoardPanel .battle-bottom-group { flex-wrap: nowrap; padding-top: 36px; }
+    body.ls-mode #practiceBoardPanel .battle-bottom-group { flex-wrap: nowrap; padding-top: 14px; }
     body.ls-mode #practiceBoardPanel .battle-top-group:empty,
     body.ls-mode #practiceBoardPanel .battle-bottom-group:empty { display: none; }
     body.ls-mode #practiceBoardPanel .mat-block .empty-state { padding: 6px 0 !important; }
@@ -3236,7 +3245,7 @@
   }
   html.ls-rot.ls-rot-rev body { transform: translateY(100vh) rotate(-90deg); transform: translateY(100dvh) rotate(-90deg); }
   /* 盤面の位置に合わせて出す演出は回転した画面では位置がずれるため出さない */
-  html.ls-rot #arenaFxLayer { display: none; }
+  html.ls-rot #arenaFxLayer, html.ls-rot #arenaBeamLayer { display: none; }
   .ls-force-btn { display: none; }
   @media (max-width: 900px) and (orientation: portrait) {
     #practiceBoardPanel .ls-force-btn { display: inline-block; }
@@ -3260,7 +3269,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.46.1</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.47.0</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -4988,7 +4997,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.46.1`);
+    log(`DigiCA Tool build v0.47.0`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -6900,37 +6909,42 @@
     const pick = fieldPickMode ? fieldPickTileState(stack) : null;
     if (pick) isEvolveTarget = false;
     const el = document.createElement('div');
-    const MAX_LAYERS = 10;
-    const layers = stack.cards.slice(-MAX_LAYERS); // bottom-to-top order, capped
+    // 進化元は「あるかどうか」が分かる程度に、一番上のカードの右上へ重なりの縁を最大2枚だけ見せる
+    // (枚数は「×N」で表示。中身は詳細で確認する)。タイルの高さは進化元の枚数に関係なく一定。
+    const MAX_EDGES = 2;
+    const layers = stack.cards.slice(-(MAX_EDGES + 1)); // bottom-to-top order
     const topCard = cardIndexByNumber.get(cardEntryNum(layers[layers.length - 1]));
-    // 進化元(進化元に追加されたカード)は、一番上のカードの種別に関わらず常に
-    // 上合わせ(材料が下にカスケード)にする。テイマー配下のカードが上側に
-    // 出てしまう不具合があったため、方向をデジモンと統一した。
-    const fanUp = false;
-    const OFFSET_STEP = 24;
-    const maxOffset = (layers.length - 1) * OFFSET_STEP;
+    const matCount = stack.cards.length - 1;
+    const EDGE_STEP = 5;
+    const dpPlateHtml = buildDPPlateHtml(stack, topCard);
+    const hasDpPlate = !!dpPlateHtml;
     el.className = 'stack-tile' + (stack.rested ? ' rested' : '') + (isEvolveTarget ? ' target-pick' : '') + (stack.burstEvolved ? ' burst-evolved' : '') +
       (pick ? (pick.selectable ? ' target-pick' + (pick.extra ? ' pick-extra' : '') + (pick.selected ? ' pick-selected' : '') : ' pick-dim') : '');
     el.dataset.fxid = getFxId(stack); // 演出(FX)用に、再描画をまたいで同じスタックを特定するID
-    el.style.padding = fanUp ? `${maxOffset}px 0 0 0` : `0 0 ${maxOffset}px 0`;
+    el.style.padding = '0';
+    if (hasDpPlate) el.classList.add('has-dp');
     if (stack.links && stack.links.length > 0) {
       el.style.marginRight = '35px'; // リンクの横差し表示が隣のデジモンと重ならないよう余白を確保
+    } else if (matCount > 0) {
+      el.style.marginRight = `${Math.min(matCount, MAX_EDGES) * EDGE_STEP + 2}px`; // 右上の縁の分
     }
     const badgeCount = stackKeywordBadges(stack).length + (hasAnyLock(stack) ? 1 : 0);
     if (badgeCount > 0) {
-      // カード幅を超える(4つ以上)場合は2段になるため、その分の余白を多めに確保する。
-      el.style.marginBottom = badgeCount >= 4 ? '54px' : '32px';
+      // カード幅を超える(4つ以上)場合は2段になるため、その分の余白を多めに確保する。DPプレートの分も足す
+      el.style.marginBottom = `${(badgeCount >= 4 ? 54 : 32) + (hasDpPlate ? 10 : 0)}px`;
+    } else if (hasDpPlate) {
+      el.style.marginBottom = '12px'; // カードの下にはみ出すDPプレートの分
     }
     const layerHtml = layers.map((entry, i) => {
       const depth = layers.length - 1 - i; // 0 = top card (no offset), increasing = further back
-      const offset = depth * OFFSET_STEP * (fanUp ? -1 : 1);
       const isTop = depth === 0;
-      const restStyle = (isTop && stack.rested) ? ' rotate(90deg) scale(0.82)' : '';
-      const filterStyle = (isTop && stack.rested) ? 'filter:brightness(0.7);' : '';
-      const baseStyle = `z-index:${i + 1};${filterStyle}transform:translateY(${offset}px)${restStyle};`;
+      const restStyle = stack.rested ? ' rotate(90deg) scale(0.82)' : '';
+      const filterStyle = stack.rested ? 'filter:brightness(0.7);' : '';
+      const baseStyle = `z-index:${i + 1};${filterStyle}transform:translate(${depth * EDGE_STEP}px, ${-depth * EDGE_STEP}px)${restStyle};`;
       if (cardEntryFaceDown(entry)) {
-        return `<div class="stack-layer card-back" style="${baseStyle}"></div>`;
+        return `<div class="stack-layer card-back${isTop ? '' : ' st-edge'}" style="${baseStyle}"></div>`;
       }
+      if (!isTop) return `<div class="stack-layer st-edge" style="${baseStyle}"></div>`;
       return `<img class="stack-layer" style="${baseStyle}" src="${escapeHtml(miniCardImg(cardEntryNum(entry)))}" alt="" onerror="this.style.opacity=0">`;
     }).join('');
     const linkHtml = (stack.links && stack.links.length > 0)
@@ -6955,8 +6969,8 @@
     el.innerHTML = `
       <div class="stack-fan">${layerHtml}</div>
       ${linkHtml}
-      ${stack.cards.length > 1 ? `<span class="st-count mono">${stack.cards.length}</span>` : ''}
-      ${buildDPPlateHtml(stack, topCard)}
+      ${matCount > 0 ? `<span class="st-count st-mats mono" title="進化元${matCount}枚">×${matCount}</span>` : ''}
+      ${dpPlateHtml}
       ${badgesHtml}
       ${!isEvolveTarget ? `<button type="button" class="tile-quickadd" title="レスト/アクティブ切替" style="opacity:0.55;">⟳</button>` : ''}
     `;
@@ -7571,7 +7585,20 @@
     }
     return layer;
   }
+  // アタックの矢印だけは、効果パネル・アタックの帯・ポップアップより下に描く(上に重なって読めなくなるため)
+  function getArenaBeamLayer() {
+    let layer = document.getElementById('arenaBeamLayer');
+    if (!layer) {
+      layer = document.createElement('div');
+      layer.id = 'arenaBeamLayer';
+      layer.setAttribute('aria-hidden', 'true');
+      document.body.appendChild(layer);
+    }
+    return layer;
+  }
   function clearArenaFxLayer() {
+    const beam = document.getElementById('arenaBeamLayer');
+    if (beam) beam.innerHTML = '';
     const layer = document.getElementById('arenaFxLayer');
     if (layer) layer.innerHTML = '';
     fxTileAnims.clear();
@@ -7713,7 +7740,7 @@
         <defs><linearGradient id="fxBeamGrad" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fbbf24"/><stop offset="1" stop-color="#f43f5e"/></linearGradient></defs>
         <path class="fx-beam-path"></path>
         <circle class="fx-reticle" r="10" stroke-dasharray="10 6"></circle>`;
-      getArenaFxLayer().appendChild(svg);
+      getArenaBeamLayer().appendChild(svg);
     }
     svg.style.display = '';
     const a = (atkEl.querySelector('.stack-fan') || atkEl).getBoundingClientRect();
@@ -10181,7 +10208,7 @@
     tile.addEventListener('dragstart', (e) => {
       draggedBattleStack = stack;
       e.dataTransfer.effectAllowed = 'move';
-      setEnlargedDragImage(e, tile.querySelector('.stack-fan img'));
+      setEnlargedDragImage(e, tile.querySelector('.stack-fan img.stack-layer:last-child') || tile.querySelector('.stack-fan img'));
     });
     tile.addEventListener('dragend', () => { draggedBattleStack = null; });
     // Android Chrome等、-webkit-touch-calloutが効かないブラウザ向けに、
