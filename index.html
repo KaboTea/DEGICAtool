@@ -3389,7 +3389,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.50.1</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.50.2</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -5117,7 +5117,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.50.1`);
+    log(`DigiCA Tool build v0.50.2`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -8398,7 +8398,7 @@
     return collectStackTriggers(stack, pi, zone, ['メイン'], { event: '起動' })
       .filter(e => !e.text.includes('≪ディレイ≫'))
       .map(e => Object.assign(e, { eventLabel: '起動' }))
-      .filter(e => !isOnceUsed(e));
+      .filter(e => !isOnceUsed(e) && !selfRestCostUnpayable(e));
   }
   function getHandMainEffects(card, pi) {
     if (!card || !card.effect) return [];
@@ -8671,8 +8671,18 @@
   let effectPanelFlash = false;
 
   // 発揮待ちの効果が、まだ発揮できる状態か(15-4-4-3/4)
+  // 「このテイマー/デジモンをレストさせることで」: 効果の持ち主自身をレストさせるコスト
+  const SELF_REST_COST_RE = /この(?:テイマー|デジモン)をレストさせることで/;
+  function selfRestCostOf(e) { return !!e && !e.lki && !!e.stackUid && SELF_REST_COST_RE.test(engineStripNotes(e.text || '')); }
+  // コストを払えない(既にレスト状態・レストできないロック)なら発揮できない
+  function selfRestCostUnpayable(e) {
+    if (!selfRestCostOf(e) || e.restPaid) return false;
+    const f = findStackByUid(e.stackUid);
+    return !!f && (f.stack.rested || hasLock(f.stack, 'noRest'));
+  }
   function isEffectEntryValid(e) {
     if (isOnceUsed(e)) return false;
+    if (selfRestCostUnpayable(e)) return false;
     if (e.manual && !e.stackUid) return true;
     if (e.lki) return true; // 【消滅時】等: 場を離れた後に発揮する
     if (e.zone === 'hand') {
@@ -8818,6 +8828,12 @@
     const cur = q.current;
     q.current = null;
     if (cur && !skipped) markOnceUsed(cur);
+    // 発揮しなかったなら、コストとして自動でレストさせた分を元に戻す
+    if (cur && skipped && cur.restPaid) {
+      const f = findStackByUid(cur.stackUid);
+      if (f && f.stack.rested) { f.stack.rested = false; showToast(`「${cur.cardName}」のレストを戻しました`); }
+      cur.restPaid = false;
+    }
     // 「この◯◯の【X】効果を発揮する」なら、処理完了と同時に呼び出された効果を出す
     if (cur && !skipped) {
       const derived = buildReferencedEffects(cur);
@@ -9762,6 +9778,21 @@
     Promise.resolve().then(() => { updateFxStackClasses(); lsUpdateDock(); if (attackState && attackBarState) renderAttackBar(); });
     if (!practiceState || !effectPanelEnabled) { panel.hidden = true; return; }
     const q = getEffectQueue();
+    // 処理中にした効果に「このテイマーをレストさせることで」があれば、そのコストとして自動でレストさせる
+    // (既にレスト状態なら発揮できないので取りやめる)
+    if (q.current && selfRestCostOf(q.current) && !q.current.restPaid) {
+      const cur = q.current;
+      const f = findStackByUid(cur.stackUid);
+      if (f && (f.stack.rested || hasLock(f.stack, 'noRest'))) {
+        q.current = null;
+        showToast(`「${cur.cardName}」はレスト状態(またはレストできない)のため、この効果は発揮できません`, true);
+      } else if (f) {
+        f.stack.rested = true;
+        cur.restPaid = true;
+        showToast(`「${cur.cardName}」をレストさせました(効果のコスト)`);
+        setTimeout(() => { if (practiceState) renderPracticeBoard(); }, 0);
+      }
+    }
     const validPending = q.pending.filter(isEffectEntryValid);
     if (!q.current && !validPending.length) {
       // 発揮できなくなった効果だけが残っている場合はここで片付ける
