@@ -1481,7 +1481,7 @@
   .st-vortex, .st-raid, .st-execute, .st-overclock, .st-advance, .st-quick,
   .st-icearmor, .st-progress, .st-collision, .st-companion,
   .st-partition, .st-decode, .st-indomitable, .st-ascension, .st-materialsave,
-  .st-reboot, .st-training, .st-jamming {
+  .st-reboot, .st-training, .st-jamming, .st-separation {
     position: static;
     font-size: 14px;
     filter: drop-shadow(0 1px 2px rgba(0,0,0,0.7));
@@ -2349,6 +2349,8 @@
   #practiceBoardPanel .ab-btn.primary { background: linear-gradient(180deg, #ffe08a, var(--gold)); color: #1a1204; border-color: transparent; padding: 8px 16px; }
   #practiceBoardPanel .ab-btn.primary.wait { background: rgba(var(--gold-rgb),0.15); color: #e9d999; border: 1px dashed rgba(var(--gold-rgb),0.65); }
   #practiceBoardPanel .ab-btn:disabled { opacity: 0.45; cursor: default; }
+  #practiceBoardPanel .ab-btn.has-note { white-space: normal; text-align: left; flex: 1 1 100%; }
+  #practiceBoardPanel .ab-btn .ab-note { display: block; margin-top: 3px; font-size: 10.5px; font-weight: 500; line-height: 1.45; color: rgba(255,255,255,0.62); }
   #practiceBoardPanel .ab-wait { font-size: 11px; color: #ffcf6b; }
   #practiceBoardPanel .ab-custom { flex-basis: 100%; }
   #practiceBoardPanel .ab-sec { display: flex; gap: 10px; align-items: flex-start; padding: 2px 0 4px; }
@@ -3389,7 +3391,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.54.0</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.55.0</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -5117,7 +5119,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.54.0`);
+    log(`DigiCA Tool build v0.55.0`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -5977,6 +5979,7 @@
     delete stack.rebootOverride;
     delete stack.trainingOverride;
     delete stack.jammingOverride;
+    delete stack.separationOverride;
     delete stack.sAttackBonus;
     delete stack.linkLimitBonus;
     // 効果で付与されたキーワード(✨付与)は、進化しても同じデジモンへの効果として残る。
@@ -6521,6 +6524,53 @@
     if (stack.jammingOverride === true || stack.jammingOverride === false) return stack.jammingOverride;
     return hasInnateOrLinkedKeyword(stack, 'ジャミング');
   }
+  // ≪分離《条件》≫(BT26〜):「このデジモンが自分の効果以外でバトルエリアを離れるとき、このデジモンの指定のリンクカード1枚を
+  // 破棄することで、離れない」。「自分の効果以外で」は判定しない(出しておいて、プレイヤーが選ぶ)。
+  function getSeparationConditions(stack) {
+    const out = [];
+    const re = /[≪《]分離《([^》]*)》[≫》]/g;
+    const add = (text) => { let m; re.lastIndex = 0; while ((m = re.exec(text || ''))) out.push(m[1]); };
+    if (hasInnateKeywordLine(getStackTopCard(stack), '分離')) add((getStackTopCard(stack) || {}).effect);
+    (stack.links || []).forEach(num => { const c = cardIndexByNumber.get(num); if (hasKeywordLineInText(c && c.inherited, '分離')) add(c.inherited); });
+    stack.cards.slice(0, -1).forEach(entry => { const c = cardIndexByNumber.get(cardEntryNum(entry)); if (hasKeywordLineInText(c && c.inherited, '分離')) add(c.inherited); });
+    return out;
+  }
+  function hasSeparationKeyword(stack) {
+    if (stack.separationOverride === true || stack.separationOverride === false) return stack.separationOverride;
+    return hasInnateOrLinkedKeyword(stack, '分離');
+  }
+  function toggleSeparation(stack) {
+    stack.separationOverride = !hasSeparationKeyword(stack);
+  }
+  // 破棄できる「指定のリンクカード」(条件が読み取れないときは全てのリンクカード)の、stack.links 内の位置
+  function separationLinkIndexes(stack) {
+    if (!hasSeparationKeyword(stack) || !stack.links || !stack.links.length) return [];
+    const conds = getSeparationConditions(stack);
+    return stack.links.map((num, i) => i).filter(i => {
+      if (!conds.length) return true;
+      const c = cardIndexByNumber.get(stack.links[i]);
+      return conds.some(cond => cardMatchesSubject(c, { filters: parseSubjectFilters(cond), colors: [] }));
+    });
+  }
+  // 選択肢を作る。onDone: 離れないことになったあとに呼ぶ
+  function separationActions(stack, onDone) {
+    const idxs = separationLinkIndexes(stack);
+    if (!idxs.length) return [];
+    const discard = (i) => {
+      const num = stack.links[i];
+      discardLink(stack, i);
+      showToast(`✂️ ≪分離≫: リンクカード「${miniCardName(num)}」を破棄して、離れませんでした`);
+      onDone();
+    };
+    if (idxs.length === 1) {
+      return [{ label: `✂️ 分離(リンク「${miniCardName(stack.links[idxs[0]])}」を破棄して離れない)`, onClick: () => discard(idxs[0]) }];
+    }
+    return [{ label: `✂️ 分離(リンクカード1枚を破棄して離れない)`, onClick: () => {
+      openDecisionUi('≪分離≫: 破棄するリンクカードを選んでください', [
+        ...idxs.map(i => ({ label: `「${miniCardName(stack.links[i])}」を破棄`, onClick: () => discard(i) })),
+      ]);
+    } }];
+  }
   function toggleJamming(stack) {
     stack.jammingOverride = !hasJammingKeyword(stack);
   }
@@ -6811,6 +6861,7 @@
     { label: '再起動', icon: '🔄', cls: 'st-reboot', has: hasRebootKeyword, toggle: toggleReboot },
     { label: 'トレーニング', icon: '🎓', cls: 'st-training', has: hasTrainingKeyword, toggle: toggleTraining },
     { label: 'ジャミング', icon: '🌫', cls: 'st-jamming', has: hasJammingKeyword, toggle: toggleJamming },
+    { label: '分離', icon: '✂️', cls: 'st-separation', has: hasSeparationKeyword, toggle: toggleSeparation },
   ];
   // スタックタイル/カード詳細のバッジ表示で共通利用する、現在持っているキーワード効果一覧。
   function stackKeywordBadges(stack) {
@@ -8602,30 +8653,47 @@
     return res;
   }
   // バトルエリアを離れる(消滅する)とき、それを防ぐ「〜とき、…ことで、離れない」系の即時型効果
-  function collectLeavePreventers(stack) {
+  // mode: 'destroy'(効果などで消滅するとき。「離れるとき」系も含む) / 'battle'(バトルで消滅するとき。「バトル以外で」は除く)
+  //       'leave'(消滅以外で場を離れるとき。「離れるとき」系のみ)
+  function collectLeavePreventers(stack, mode) {
     if (!practiceState) return [];
+    const leaveOnly = mode === 'leave';
+    const byBattle = mode === 'battle';
     const f = findStackOwnerAndZone(stack);
     if (!f || f.zone !== 'battle') return [];
     const pi = practiceState.players.indexOf(f.player);
     const targetUid = ensureStackUid(stack);
     const res = [];
-    const scan = (holder, isSelf) => {
-      getStackEffectSources(holder).forEach(src => {
-        src.text.split('\n').forEach((line, lineIndex) => {
-          const parsed = parseEffectLine(line);
-          if (parsed.prefix) return;
+    const leavingTop = getStackTopCard(stack);
+    // 1行が「このデジモン(または条件に合う他の自分のデジモン)が離れるとき、離れない」に当たるか
+    const lineMatches = (parsed, isSelf) => {
           const body = engineStripNotes(parsed.text);
           if (!/(離れる|消滅する)とき/.test(body) || !/(離れない|消滅しない)/.test(body)) return;
+          if (leaveOnly && !(/離れるとき/.test(body) && /離れない/.test(body))) return;
           if (parsed.labels.length && !engineTurnLabelOk(parsed.labels, pi) && !parsed.labels.some(l => /時$/.test(l))) return;
           const lm = /(離れる|消滅する)とき/.exec(body);
           const before = body.slice(0, lm.index);
           const clauseStart = Math.max(before.lastIndexOf('、'), before.lastIndexOf('】'), before.lastIndexOf(']'), before.lastIndexOf('］')) + 1;
           const clause = before.slice(clauseStart);
-          const subj = clause.lastIndexOf('が') >= 0 ? clause.slice(0, clause.lastIndexOf('が')) : clause;
+          // 「相手の効果でこのデジモンが」「自分の効果以外で」のような、原因の書き方は主語の判定から外す
+          const subjRaw = clause.lastIndexOf('が') >= 0 ? clause.slice(0, clause.lastIndexOf('が')) : clause;
+          const subj = subjRaw.replace(/(相手の|自分の)?効果(以外)?で/g, '');
           const mentionsSelf = /この(デジモン|テイマー)/.test(subj);
           if (/相手の/.test(subj)) return;
           if (isSelf ? (!mentionsSelf && /他の/.test(subj)) : mentionsSelf) return;
           if (!isSelf && !/自分の/.test(subj)) return;
+          if (byBattle && /バトル以外で/.test(subjRaw + clause)) return;
+          // 「名称に「レナモン」を含む自分のデジモン」等の条件を、離れるデジモンと照らし合わせる
+          const cond = { filters: parseSubjectFilters(subj), colors: parseSubjectColors(subj) };
+          if (!cardMatchesSubject(leavingTop, cond)) return;
+          return true;
+    };
+    const scan = (holder, isSelf, zone) => {
+      getStackEffectSources(holder).forEach(src => {
+        src.text.split('\n').forEach((line, lineIndex) => {
+          const parsed = parseEffectLine(line);
+          if (!lineAllowedInZone(parsed, zone || 'battle')) return;
+          if (!lineMatches(parsed, isSelf)) return;
           const e = {
             ownerIndex: pi, stackUid: ensureStackUid(holder), cardNumber: src.cardNumber, cardName: src.card.name,
             field: src.field, sourceLabel: src.sourceLabel, lineIndex, text: parsed.text,
@@ -8638,6 +8706,25 @@
     };
     scan(stack, true);
     f.player.battle.forEach(s => { if (s !== stack && ensureStackUid(s) !== targetUid) scan(s, false); });
+    if (f.player.raising) scan(f.player.raising, false, 'raising'); // ［育成］の「〜が離れるとき、…ことで、離れない」
+    // セキュリティに表向きで置かれているカードの［セキュリティ］効果(ST22-10など)
+    f.player.security.forEach(entry => {
+      if (!cardEntryFaceUp(entry)) return;
+      const c = cardIndexByNumber.get(cardEntryNum(entry));
+      if (!c || !c.effect) return;
+      c.effect.split('\n').forEach((line, lineIndex) => {
+        const parsed = parseEffectLine(line);
+        if (!/セキュリティ/.test(parsed.prefix)) return;
+        if (!lineMatches(parsed, false)) return;
+        const e = {
+          ownerIndex: pi, stackUid: null, lki: true, lkiUid: 'secstatic-' + c.number, secStatic: c.number,
+          cardNumber: c.number, cardName: c.name, field: 'effect', sourceLabel: 'セキュリティ(表向き)', lineIndex, text: parsed.text,
+          timing: parsed.labels[0] || '即時', event: '離れるとき', eventLabel: '離れるとき',
+        };
+        if (isOnceUsed(e)) return;
+        res.push(e);
+      });
+    });
     return res;
   }
 
@@ -9449,10 +9536,9 @@
     const a = ta.action;
     if (a.type === 'move') {
       // 1体ずつ場から移す(≪守護≫等の確認が出る場合もある)。進化元・リンクはルールどおりトラッシュへ
-      targets.forEach(s => {
-        if (!findStackOwnerAndZone(s)) return;
+      runSequentially(targets, (s, next) => {
         if (a.dest === 'hand' || a.dest === 'deckTop' || a.dest === 'deckBottom') warnIfResistant(s, ['noReturn'], '手札/デッキに戻す');
-        removeCardFromStackAt(s, s.cards.length - 1, a.dest, a.dest === 'secTop' || a.dest === 'secBottom' ? !!a.faceUp : undefined);
+        removeCardFromStackAt(s, s.cards.length - 1, a.dest, a.dest === 'secTop' || a.dest === 'secBottom' ? !!a.faceUp : undefined, next);
       });
       return;
     }
@@ -9464,8 +9550,7 @@
       return;
     }
     if (a.type === 'trash') {
-      targets.forEach(s => { if (findStackOwnerAndZone(s)) trashEntireStack(s); });
-      showToast(`🎯 ${names} を破棄しました`);
+      runSequentially(targets, (s, next) => trashStackWithLeaveCheck(s, next), () => renderPracticeBoard());
       return;
     }
     if (a.type === 'matTrash') {
@@ -13817,39 +13902,82 @@
     });
   }
 
-  function checkGuardianBeforeLeaving(stack, onProceed) {
+  // 消滅以外でバトルエリアを離れるとき(手札/デッキ/セキュリティに送る・破棄する)の確認。
+  // ≪守護≫と「〜離れるとき、…ことで、離れない」系の効果を選べるようにする。条件(「相手の効果で」等)は判定しない。
+  // onProceed: そのまま離れる / onPrevented: 離れないことになった
+  function checkLeaveBeforeMove(stack, onProceed, onPrevented, verb) {
     const ownerZone = findStackOwnerAndZone(stack);
-    if (!ownerZone || !isDigimonLikeStack(stack)) { onProceed(); return; }
-    const holder = findSubstituteHolder(stack, ownerZone.player, hasGuardianKeyword);
-    if (!holder) { onProceed(); return; }
+    const prevented = onPrevented || (() => {});
+    if (!ownerZone || ownerZone.zone !== 'battle') { onProceed(); return; }
     const c = getStackTopCard(stack);
-    const gc = getStackTopCard(holder);
-    openDecisionUi(`「${c ? c.name : '?'}」が場を離れます。≪守護≫があれば選んでください`, [
-      { label: 'そのまま移動させる', onClick: () => onProceed() },
-      { label: `👼 守護(「${gc ? gc.name : '?'}」が代わりに消滅・移動を防ぐ)`, onClick: () => substituteDestruction(holder, '≪守護≫', '👼', () => {}) },
+    const actions = [];
+    if (isDigimonLikeStack(stack)) {
+      const holder = findSubstituteHolder(stack, ownerZone.player, hasGuardianKeyword);
+      if (holder) {
+        const gc = getStackTopCard(holder);
+        actions.push({ label: `👼 守護(「${gc ? gc.name : '?'}」が代わりに消滅して、離れない)`, onClick: () => substituteDestruction(holder, '≪守護≫', '👼', prevented) });
+      }
+    }
+    actions.push(...separationActions(stack, prevented));
+    collectLeavePreventers(stack, 'leave').forEach(pv => {
+      const cost = parseTopToSecurity(pv.text);
+      const canPay = !cost || (pv.stackUid === ensureStackUid(stack) && stack.cards.length > cost.n);
+      if (!canPay) return;
+      const short = engineStripNotes(pv.text).replace(/^(【[^】]+】|[［\[][^］\]]*[］\]])+/, '');
+      actions.push({
+        label: `🛡 「${pv.cardName}」の効果で離れない${cost ? `(一番上をセキュリティの${cost.dest === 'secTop' ? '上' : '下'}へ)` : ''}`,
+        onClick: () => { engineUseLeavePreventer(pv, stack); prevented(); },
+        note: short,
+      });
+    });
+    if (!actions.length) { onProceed(); return; }
+    openDecisionUi(`「${c ? c.name : '?'}」がバトルエリアを離れます(${verb || '移動'})。離れないようにする効果があれば選んでください(条件は確認してください)`, [
+      { label: `そのまま${verb || '移動'}する`, primary: true, onClick: () => onProceed() },
+      ...actions,
     ]);
+  }
+  // 場のカードを丸ごと破棄する(効果の🎯破棄など)。離れない系の確認→パーティション/デコード→破棄
+  function trashStackWithLeaveCheck(stack, after) {
+    const done = after || (() => {});
+    checkLeaveBeforeMove(stack, () => {
+      const owner = findStackOwnerAndZone(stack);
+      if (!owner) { done(); return; }
+      offerPartitionDecodeThenProceed(stack, owner, () => { if (findStackOwnerAndZone(stack)) trashEntireStack(stack); done(); });
+    }, done, '破棄');
+  }
+  // 複数のカードを1体ずつ順番に処理する(確認が重なって消えないように)
+  function runSequentially(list, fn, done) {
+    const step = (i) => {
+      if (i >= list.length) { if (done) done(); return; }
+      const s = list[i];
+      if (!findStackOwnerAndZone(s)) { step(i + 1); return; }
+      fn(s, () => step(i + 1));
+    };
+    step(0);
   }
 
   // faceUp: セキュリティへ置くときの向き。指定すれば表裏の確認を出さない(効果の対象選択から複数体まとめて置く場合など)
-  function removeCardFromStackAt(stack, cardIndexInStack, destination, faceUp) {
+  // after: 移動が終わった(または離れないことになった)あとに呼ぶ
+  function removeCardFromStackAt(stack, cardIndexInStack, destination, faceUp, after) {
+    const done = after || (() => {});
     const isTopRemoval = cardIndexInStack === stack.cards.length - 1;
     if (isTopRemoval && destination !== 'trash') {
-      checkGuardianBeforeLeaving(stack, () => {
+      checkLeaveBeforeMove(stack, () => {
         const owner = findStackOwnerAndZone(stack);
         if (owner) {
-          offerPartitionDecodeThenProceed(stack, owner, () => reallyRemoveCardFromStackAt(stack, cardIndexInStack, destination, faceUp));
+          offerPartitionDecodeThenProceed(stack, owner, () => reallyRemoveCardFromStackAt(stack, cardIndexInStack, destination, faceUp, done));
         } else {
-          reallyRemoveCardFromStackAt(stack, cardIndexInStack, destination, faceUp);
+          reallyRemoveCardFromStackAt(stack, cardIndexInStack, destination, faceUp, done);
         }
-      });
+      }, done, DESTINATION_LABEL[destination] ? DESTINATION_LABEL[destination].replace(/へ$/, 'へ移動') : '移動');
       return;
     }
-    reallyRemoveCardFromStackAt(stack, cardIndexInStack, destination, faceUp);
+    reallyRemoveCardFromStackAt(stack, cardIndexInStack, destination, faceUp, done);
   }
 
-  function reallyRemoveCardFromStackAt(stack, cardIndexInStack, destination, presetFaceUp) {
+  function reallyRemoveCardFromStackAt(stack, cardIndexInStack, destination, presetFaceUp, after) {
     const owner = findStackOwnerAndZone(stack);
-    if (!owner) return;
+    if (!owner) { if (after) after(); return; }
     // テイマーが一番上のカードとして場から離れる場合、その下の進化元はテイマーが
     // いなくなると一緒に維持できないため、強制的にトラッシュへ送る(表向きで)。
     const isTopRemoval = cardIndexInStack === stack.cards.length - 1;
@@ -13888,6 +14016,7 @@
       if (!materialsDiscarded && stack.cards.length > 0) {
         checkStackRuleViolation(stack);
       }
+      if (after) after();
     };
     if ((destination === 'secTop' || destination === 'secBottom') && presetFaceUp === undefined) {
       askFaceOrientation((faceDown) => finish(!faceDown));
@@ -14048,9 +14177,17 @@
         const b = document.createElement('button');
         b.type = 'button';
         const isNext = !!act.primary || (i === firstBtn && /^(次へ|ブロックしない|「.*」をそのまま消滅)/.test(act.label || ''));
-        const showWait = isNext && pending && (/^次へ/.test(act.label) || !!act.primary);
+        const showWait = !st.popupLike && isNext && pending && (/^次へ/.test(act.label) || !!act.primary);
         b.className = 'ab-btn' + (isNext ? ' primary' + (showWait ? ' wait' : '') : '');
         b.textContent = isNext && /^次へ/.test(act.label) ? `${act.label} ▶` : act.label;
+        if (act.note) {
+          // 効果文を添えて、条件(「相手の効果で」等)を見ながら選べるようにする
+          b.classList.add('has-note');
+          const n = document.createElement('span');
+          n.className = 'ab-note';
+          n.textContent = act.note;
+          b.appendChild(n);
+        }
         b.disabled = !!act.disabled;
         b.addEventListener('click', (ev) => {
           ev.stopPropagation();
@@ -14117,6 +14254,21 @@
   }
   // 「離れない」系の即時型効果を使う: 割り込んで即座に発揮する(15-8-5)。コストや条件は手動で処理する。
   function engineUseLeavePreventer(pv, leavingStack) {
+    // セキュリティ表向きの「このカードを破棄することで、…離れない」は、そのカードの破棄まで自動で行う
+    if (pv.secStatic && /このカードを破棄することで/.test(pv.text)) {
+      const owner = practiceState.players[pv.ownerIndex];
+      const idx = owner.security.findIndex(x => cardEntryFaceUp(x) && cardEntryNum(x) === pv.secStatic);
+      if (idx >= 0) {
+        snapshotPracticeState();
+        owner.security.splice(idx, 1);
+        owner.trash.push(pv.secStatic);
+        checkOverflow(pv.secStatic, owner);
+        markOnceUsed(pv);
+        renderPracticeBoard();
+        showToast(`🛡 セキュリティの「${pv.cardName}」を破棄して、場に残しました`);
+        return;
+      }
+    }
     // 「このデジモンに重ねられているカードを上からN枚セキュリティの上に置くことで、離れない」は、そのコストまで自動で払う
     const cost = parseTopToSecurity(pv.text);
     if (cost && leavingStack && findStackOwnerAndZone(leavingStack)) {
@@ -14497,7 +14649,8 @@
           actions.push({ label: `👼 守護(「${gc ? gc.name : '?'}」が代わりに消滅)`, onClick: () => substituteDestruction(guardianHolder, '≪守護≫', '👼', next) });
         }
         // 「バトルエリアを離れるとき、…ことで、離れない」系(即時型)。条件・コストは手動で処理する。
-        collectLeavePreventers(stack).forEach(pv => {
+        separationActions(stack, next).forEach(a => actions.push(a));
+        collectLeavePreventers(stack, battleContext ? 'battle' : 'destroy').forEach(pv => {
           const cost = parseTopToSecurity(pv.text);
           const canPay = !cost || (pv.stackUid === ensureStackUid(stack) && stack.cards.length > cost.n);
           if (!canPay) return; // 重ねられているカードが足りない(1枚だけ)なら、置いた時点で離れてしまうので出さない
