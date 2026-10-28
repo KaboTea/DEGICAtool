@@ -2781,6 +2781,16 @@
      上書きされて一切反映されないという不具合があったため、この位置に固定する)
      ブレイクポイントは768pxに統一する(以前は480px/700px/720pxが混在していた)。
      ======================================================================== */
+  /* ---- プレイヤー全体への制限(フィールド効果の「制限」)のチップ・件数バッジ ---- */
+  .rx-chips { display: inline-flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-left: 6px; vertical-align: middle; }
+  .rx-chips.rx-own-line { display: flex; margin: 4px 0 2px 8px; }
+  .rx-chip { display: inline-flex; align-items: center; gap: 3px; padding: 2px 7px; border-radius: 999px; font-size: 10.5px; font-weight: 700; letter-spacing: .02em; white-space: nowrap;
+    background: rgba(255,92,92,.14); border: 1px solid rgba(255,110,110,.55); color: #ffb3b3; cursor: pointer; font-family: inherit; line-height: 1.4; }
+  .rx-chip.auto { border-style: dashed; }
+  .fe-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 4px; margin-left: 5px; border-radius: 999px; background: #ff5c5c; color: #fff; font-size: 10px; font-weight: 800; line-height: 1; }
+  .fe-kind { flex-shrink: 0; font-size: 10px; font-weight: 800; padding: 1px 5px; border-radius: 4px; }
+  .fe-kind.dp { background: rgba(90,160,255,.18); color: #9cc6ff; }
+  .fe-kind.rx { background: rgba(255,92,92,.16); color: #ffb3b3; }
   /* ---- PC: 中央の帯を1行に(C)。左に補助ボタン(2段)、真ん中にメモリーゲージ、右にフェイズと「次のフェーズへ」 ---- */
   @media (min-width: 769px) {
     body:not(.ls-mode) #practiceBoardPanel .arena-hud {
@@ -3391,7 +3401,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.55.0</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.57.0</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -3772,7 +3782,7 @@
 <!-- Field Effects Modal -->
 <div class="modal-backdrop" id="fieldEffectsModal">
   <div class="modal" style="width:min(560px, 94vw); max-height:86vh; overflow-y:auto;">
-    <h2>🌐 フィールド効果(自分/相手の全デジモンへのDP増減)</h2>
+    <h2>🌐 フィールド効果(場全体のDP増減・制限)</h2>
     <div id="fieldEffectsList"></div>
     <div class="modal-actions" style="margin-top:14px;">
       <button class="btn primary" id="fieldEffectAddBtn">+ 新規追加</button>
@@ -5119,7 +5129,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.55.0`);
+    log(`DigiCA Tool build v0.57.0`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -5658,6 +5668,7 @@
     return true;
   }
   function fieldEffectAppliesToStack(effect, stack) {
+    if (effect.kind === 'restrict') return false; // 制限はDPに関係しない
     if (!isDigimonLikeStack(stack)) return false;
     if (!isFieldEffectActive(effect)) return false;
     const owner = findStackOwnerAndZone(stack);
@@ -5694,6 +5705,163 @@
       }
       return true;
     });
+  }
+
+  // ---------- プレイヤー全体への制限(フィールド効果の「制限」) ----------
+  // 「相手はオプションカードを使用できない」のように、デジモン1体ではなくプレイヤーにかかる制限。
+  // 期間つきのものは practiceState.fieldEffects に kind:'restrict' で積む(DP増減と同じ期間・一覧・解除の仕組み)。
+  // 場のカードの常在効果(【お互いのターン】お互いは〜 等)は、場を見て毎回自動で検出する(積まない)。
+  // 該当する操作をしたときは確認(やめる/それでも)を出す。完全には止めない。
+  const RESTRICT_LABELS = { noOption: 'オプション使用不可', noSecEffect: 'セキュリティ効果無効', noAttackNoMat: '進化元なしでアタック不可' };
+  function restrictTargetPis(r) {
+    if (r.target === 'both') return [0, 1];
+    return [r.target === 'own' ? r.ownerIndex : 1 - r.ownerIndex];
+  }
+  function restrictChipLabel(r) {
+    return RESTRICT_LABELS[r.restrict] + (r.restrict === 'noSecEffect' && !r.optionOnly ? '(全て)' : '');
+  }
+  // 「「青ミラージュ」はオプションカードを使用できない」の形の説明
+  function restrictDescribe(r) {
+    const names = restrictTargetPis(r).map(pi => `「${practiceState.players[pi].deckName}」`).join('と');
+    const what = r.restrict === 'noOption' ? 'はオプションカードを使用できない'
+      : r.restrict === 'noAttackNoMat' ? 'は進化元を持たないデジモンではアタックできない'
+      : `のセキュリティの${r.optionOnly ? 'オプションの' : ''}【セキュリティ】効果を発揮しない`;
+    return names + what;
+  }
+  // 効果テキストからプレイヤー全体への制限を読む。side: opp/own/both、duration: 期間('permanent'=期間の記載なし)
+  function parsePlayerRestrictions(text) {
+    const out = [];
+    engineStripNotes(text || '').split('。').forEach(sent => {
+      const push = (m, restrict, side, extra) => {
+        const before = sent.slice(0, m.index);
+        const cm = /([^、】]*間)、[^、]*$/.exec(before);
+        out.push(Object.assign({ restrict, side, duration: durationFromText(before), cond: cm ? cm[1] : '' }, extra || {}));
+      };
+      const SIDE = (w) => w === '相手' ? 'opp' : w === '自分' ? 'own' : 'both';
+      let m = /(相手|お互い|自分)は[^。、]*?オプションカードを使用できな/.exec(sent);
+      if (m) push(m, 'noOption', SIDE(m[1]));
+      m = /(相手|お互い|自分)は進化元を持たないデジモンではアタックできな/.exec(sent);
+      if (m) push(m, 'noAttackNoMat', SIDE(m[1]));
+      m = /(相手|自分)の(オプションカードの)?【セキュリティ】効果全ては発揮しな/.exec(sent);
+      if (m) push(m, 'noSecEffect', SIDE(m[1]), { optionOnly: !!m[2] });
+    });
+    return out;
+  }
+  const SIDE_TO_TARGET = { opp: 'opponent', own: 'own', both: 'both' };
+  // 場のカードの常在効果による制限(自動検出)
+  function collectStaticRestrictions() {
+    const res = [];
+    if (!practiceState) return res;
+    practiceState.players.forEach((p, pi) => {
+      const holders = [...p.battle.map(s => [s, 'battle']), ...(p.raising ? [[p.raising, 'raising']] : [])];
+      holders.forEach(([holder, zone]) => {
+        getStackEffectSources(holder).forEach(src => {
+          src.text.split('\n').forEach(line => {
+            const parsed = parseEffectLine(line);
+            if (!lineAllowedInZone(parsed, zone)) return;
+            // 【登場時】【メイン】等の誘発・起動型は除く(常在型=ターンの記載だけのもの)
+            if (!parsed.labels.every(l => /ターン$/.test(l))) return;
+            if (parsed.labels.length && !engineTurnLabelOk(parsed.labels, pi)) return;
+            parsePlayerRestrictions(parsed.text).forEach(r => {
+              if (r.duration !== 'permanent') return;
+              res.push({ kind: 'restrict', restrict: r.restrict, target: SIDE_TO_TARGET[r.side], ownerIndex: pi, optionOnly: r.optionOnly,
+                refCardName: src.card.name, cond: r.cond, auto: true });
+            });
+          });
+        });
+      });
+    });
+    return res;
+  }
+  // 今有効な制限(期間つき+自動検出)
+  function getActiveRestrictions() {
+    if (!practiceState) return [];
+    const timed = (practiceState.fieldEffects || []).filter(f => f.kind === 'restrict' && isFieldEffectActive(f));
+    return [...timed, ...collectStaticRestrictions()];
+  }
+  function restrictionsFor(pi, key) {
+    return getActiveRestrictions().filter(r => r.restrict === key && restrictTargetPis(r).includes(pi));
+  }
+  function restrictSourceText(list) {
+    return list.map(r => `「${r.refCardName || '?'}」${r.cond ? `(${r.cond})` : ''}`).join('、');
+  }
+  // 制限に当たる操作の前に確認を出す。当たらなければそのまま進める
+  function confirmIfRestricted(pi, key, actionLabel, proceed, onCancel) {
+    const list = restrictionsFor(pi, key);
+    if (!list.length) { proceed(); return; }
+    openDecisionUi(`🚫 ${restrictDescribe(list[0])}(${restrictSourceText(list)}の効果)`, [
+      { label: 'やめる', primary: true, onClick: () => { if (onCancel) onCancel(); else renderPracticeBoard(); } },
+      { label: `それでも${actionLabel}`, onClick: () => proceed() },
+    ]);
+  }
+  // セキュリティチェックでめくったカードの【セキュリティ】効果を発揮しないなら、その理由を返す
+  function securityEffectBlockReason(card, attackerStack, defPi) {
+    if (!card || !practiceState) return null;
+    const isOpt = card.category === 'option';
+    const hit = restrictionsFor(defPi, 'noSecEffect').filter(r => !r.optionOnly || isOpt);
+    if (hit.length) return `${restrictSourceText(hit)}の効果`;
+    // 「このデジモンがチェックした(オプション)カードの【セキュリティ】効果は発揮しない」(アタックしているデジモン自身の効果)
+    if (attackerStack) {
+      const r = selfStaticRestriction(attackerStack, /このデジモンがチェックした(オプション)?カードの【セキュリティ】効果は発揮しな/);
+      if (r && (!r.m[1] || isOpt)) return `アタックしている「${stackLabel(attackerStack)}」の効果${r.cond ? `(${r.cond})` : ''}`;
+    }
+    return null;
+  }
+  // 効果パネルのボタン: 期間つきの制限をフィールド効果に積む
+  function restrictHandlersFor(e) {
+    if (!practiceState) return [];
+    return parsePlayerRestrictions(e.text).filter(r => r.duration !== 'permanent').map(r => {
+      const entry = { kind: 'restrict', restrict: r.restrict, target: SIDE_TO_TARGET[r.side], ownerIndex: e.ownerIndex, optionOnly: r.optionOnly,
+        duration: r.duration, refCardName: e.cardName, refCardNumber: e.cardNumber };
+      const who = restrictTargetPis(entry).map(pi => `「${practiceState.players[pi].deckName}」`).join('と');
+      return {
+        label: `🚫 ${who}に${restrictChipLabel(entry)}(${DURATION_LABELS[r.duration]})`,
+        run: () => {
+          snapshotPracticeState();
+          if (!practiceState.fieldEffects) practiceState.fieldEffects = [];
+          practiceState.fieldEffects.push(Object.assign({}, entry, { expireAtTurnCount: computeExpireAtTurnCount(r.duration, e.ownerIndex) }));
+          renderPracticeBoard();
+          showToast(`🚫 ${restrictDescribe(entry)}(${DURATION_LABELS[r.duration]})`);
+        },
+      };
+    });
+  }
+  // 盤面: 制限を受けている側のプレイヤー名の横にチップ、🌐ボタンに件数バッジ
+  function renderRestrictionUi() {
+    if (!practiceState) return;
+    document.querySelectorAll('#practiceBoardPanel .rx-chips').forEach(n => n.remove());
+    const list = getActiveRestrictions();
+    const ownLine = window.matchMedia('(max-width: 768px)').matches && !document.body.classList.contains('ls-mode');
+    [['selfNameLabel', practiceState.viewingIndex], ['opponentNameLabel', 1 - practiceState.viewingIndex]].forEach(([id, pi]) => {
+      const label = document.getElementById(id);
+      if (!label) return;
+      const mine = list.filter(r => restrictTargetPis(r).includes(pi));
+      if (!mine.length) return;
+      const wrap = document.createElement(ownLine ? 'div' : 'span');
+      wrap.className = 'rx-chips' + (ownLine ? ' rx-own-line' : '');
+      const seen = new Set();
+      mine.forEach(r => {
+        const text = restrictChipLabel(r);
+        if (seen.has(text)) return;
+        seen.add(text);
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'rx-chip' + (r.auto ? ' auto' : '');
+        b.textContent = '🚫 ' + text;
+        b.title = mine.filter(x => restrictChipLabel(x) === text).map(x => `${restrictDescribe(x)} — 「${x.refCardName || '?'}」${x.cond ? `(${x.cond})` : ''}`).join(String.fromCharCode(10));
+        b.addEventListener('click', (ev) => { ev.stopPropagation(); openFieldEffectsModal(); });
+        wrap.appendChild(b);
+      });
+      if (ownLine) label.closest('.mat-label').after(wrap);
+      else label.after(wrap);
+    });
+    const btn = document.getElementById('fieldEffectsBtn');
+    if (btn) {
+      const dpCount = (practiceState.fieldEffects || []).filter(f => f.kind !== 'restrict' && isFieldEffectActive(f)).length;
+      const n = dpCount + list.length;
+      const html = '🌐 フィールド効果' + (n ? `<span class="fe-badge">${n}</span>` : '');
+      if (btn.innerHTML !== html) btn.innerHTML = html;
+    }
   }
 
   // ---------- キーワード効果の「デフォルト所持」自動判定 ----------
@@ -6891,7 +7059,7 @@
   //     付与した場合は、そのまま相手ターンの終了時に解除される。
   // 「アクティブにならない」はアクティブフェイズの一括アクティブ化も含め、いかなる手段でも
   // アクティブにならない(=次のアクティブフェイズでは起きない)。
-  const LOCK_LABELS = { noActive: 'アクティブにならない', noRest: 'レストできない', noAttack: 'アタックできない', noEvolveEffect: '【進化時】効果を発揮しない', noAttackEffect: '【アタック時】効果を発揮しない', noBlock: 'ブロックできない' };
+  const LOCK_LABELS = { noActive: 'アクティブにならない', noRest: 'レストできない', noAttack: 'アタックできない', noAttackPlayer: 'プレイヤーにアタックできない', noBlock: 'ブロックできない', noEvolve: '進化できない', noPlayEffect: '【登場時】効果を発揮しない', noEvolveEffect: '【進化時】効果を発揮しない', noAttackEffect: '【アタック時】効果を発揮しない' };
   function hasAnyLock(stack) {
     return !!(stack.locks && Object.keys(LOCK_LABELS).some(k => stack.locks[k]));
   }
@@ -7016,6 +7184,43 @@
     if (!hit.length) return;
     const c = getStackTopCard(stack);
     showToast(`注意: 「${c ? c.name : '?'}」は耐性を持っています(${hit.map(k => RESIST_LABELS[k]).join('/')})。${actionLabel}が効果によるものなら適用されない可能性があります`, true);
+  }
+  // 効果の対象を選ぶとき、⛨耐性でその効果を受けないかを判定する。受けないなら理由(耐性名)を返す。
+  // 耐性は相手の効果に対して働くものとして扱う(自分の効果は止めない)。action: {type, dest, amount}
+  function resistBlockReason(stack, action, effectOwnerIndex, sourceCardNumber) {
+    if (!practiceState || !hasAnyResist(stack)) return null;
+    const f = findStackOwnerAndZone(stack);
+    if (!f || practiceState.players.indexOf(f.player) === effectOwnerIndex) return null;
+    const keys = ['immuneOpp'];
+    const src = cardIndexByNumber.get(sourceCardNumber);
+    if (src && src.category === 'digimon') keys.push('immuneOppDigimon');
+    if (src && src.category === 'option') keys.push('immuneOppOption');
+    const a = action || {};
+    if (a.type === 'destroy') keys.push('noDestroyByEffect');
+    if (a.type === 'move' && ['hand', 'deckTop', 'deckBottom'].includes(a.dest)) keys.push('noReturn');
+    if (a.type === 'dp' && a.amount < 0) keys.push('noDpMinus');
+    if (a.type === 'degen') keys.push('noDegen');
+    const hit = keys.filter(k => hasResist(stack, k));
+    return hit.length ? hit.map(k => RESIST_LABELS[k]).join('/') : null;
+  }
+  // 候補を「耐性で外れるもの」と「そのまま選べるもの」に分ける
+  function splitByResist(cands, action, e) {
+    const ok = [], blocked = [];
+    cands.forEach(st => { const r = resistBlockReason(st, action, e.ownerIndex, e.cardNumber); if (r) blocked.push({ st, r }); else ok.push(st); });
+    return { ok, blocked, note: blocked.length ? `⛨ 耐性で対象から外しました: ${blocked.map(b => `${stackLabel(b.st)}(${b.r})`).join('、')}` : '' };
+  }
+  // 相手のカードを手で操作するとき、関係する耐性があれば「それでも実行するか」を確認する
+  function confirmIfResistant(stack, kinds, actionLabel, proceed) {
+    if (!practiceState || !hasAnyResist(stack)) { proceed(); return; }
+    const f = findStackOwnerAndZone(stack);
+    if (!f || f.player === practiceState.players[practiceState.viewingIndex]) { proceed(); return; }
+    const hit = ['immuneOpp', 'immuneOppDigimon', 'immuneOppOption', ...kinds].filter(k => hasResist(stack, k));
+    if (!hit.length) { proceed(); return; }
+    const c = getStackTopCard(stack);
+    openDecisionUi(`⛨「${c ? c.name : '?'}」は耐性(${hit.map(k => RESIST_LABELS[k]).join('/')})を持っています。効果による${actionLabel}なら適用されません`, [
+      { label: 'やめる', primary: true, onClick: () => resumeAttackStepIfAny() },
+      { label: `それでも${actionLabel}する`, onClick: () => proceed() },
+    ]);
   }
   // 効果テキストから「〜効果を受けない」等の耐性を読み取る(効果パネルの⚡自動処理用)
   function parseResistGrants(text) {
@@ -7698,10 +7903,12 @@
           return (c && c.category === 'option') || player.raising.dualAsOption;
         })()) &&
         !(artsEvolveMode && artsEvolveMode.sourceStack === player.raising);
-      const onClick = isSelf && !stackIsTarget
+      // 進化できない系のロック/効果があれば光らせない(押すと確認を出す)
+      const evoBlocked = stackIsTarget && evolveMode && evolveBlockReason(player.raising, evolveMode.card);
+      const onClick = evoBlocked ? () => performEvolve(player.raising) : isSelf && !stackIsTarget
         ? () => openStackActionView(player.raising)
         : () => openStackDetail(player.raising);
-      const raisingTile = buildStackTile(player.raising, onClick, stackIsTarget);
+      const raisingTile = buildStackTile(player.raising, onClick, stackIsTarget && !evoBlocked);
       if (isSelf) setupStackEvolveDropTarget(raisingTile, player.raising);
       raisingAreaEl.appendChild(raisingTile);
     } else {
@@ -7725,10 +7932,11 @@
           ? !!allowEvolveTarget && !!topCard && topCard.category === 'tamer'
           : !!allowEvolveTarget && !((evolveMode || artsEvolveMode) && ((topCard && topCard.category === 'option') || stack.dualAsOption)) &&
             !(artsEvolveMode && artsEvolveMode.sourceStack === stack);
-        const onClick = isSelf && !stackIsTarget
+        const evoBlocked = stackIsTarget && evolveMode && evolveBlockReason(stack, evolveMode.card);
+        const onClick = evoBlocked ? () => performEvolve(stack) : isSelf && !stackIsTarget
           ? () => openStackActionView(stack)
           : () => openStackDetail(stack);
-        const tile = buildStackTile(stack, onClick, stackIsTarget);
+        const tile = buildStackTile(stack, onClick, stackIsTarget && !evoBlocked);
         if (isSelf) {
           setupStackEvolveDropTarget(tile, stack);
           setupStackDragSource(tile, stack);
@@ -8616,8 +8824,71 @@
     return canUseMainEffectsNow(pi) && getStackMainEffects(stack, pi, zone).length > 0;
   }
   // 手札のカードが、そのデジモンの上に進化できるか(進化画面と同じ判定: 基本条件のLv/色と、判定できる特殊条件)
+  // このデジモンが今「〜できない」常在効果を持っているか(このデジモン自身の効果行から読む)。条件付きなら cond を返す
+  function selfStaticRestriction(stack, re) {
+    const f = findStackOwnerAndZone(stack);
+    if (!f || !practiceState) return null;
+    const pi = practiceState.players.indexOf(f.player);
+    for (const src of getStackEffectSources(stack)) {
+      for (const line of src.text.split('\n')) {
+        const parsed = parseEffectLine(line);
+        if (!lineAllowedInZone(parsed, f.zone)) continue;
+        if (parsed.labels.length && !engineTurnLabelOk(parsed.labels, pi)) continue;
+        const body = engineStripNotes(parsed.text);
+        const m = re.exec(body);
+        if (!m) continue;
+        const before = body.slice(0, m.index);
+        const cm = /([^、】]*?)(間|なら|とき)、[^、]*$/.exec(before);
+        return { m, cond: cm ? cm[0].replace(/、[^、]*$/, '') : '' };
+      }
+    }
+    return null;
+  }
+  // 手札の card をこのデジモンの上に進化させられないなら、その理由を返す(進化できない系のロック/常在効果)
+  function evolveBlockReason(stack, card) {
+    if (!stack || !practiceState) return null;
+    if (hasLock(stack, 'noEvolve')) return 'ロック: 進化できない';
+    const top = getStackTopCard(stack);
+    if (top && /トークンは進化できない/.test(top.effect || '')) return 'トークンは進化できない';
+    const no = selfStaticRestriction(stack, /このデジモンは進化できな|このデジモンは進化できず/);
+    if (no) return `このデジモンは進化できない${no.cond ? `(${no.cond})` : ''}`;
+    const only = selfStaticRestriction(stack, /このデジモンは(.+?)にしか進化できない/);
+    if (only && card) {
+      const x = only.m[1];
+      if (!cardMatchesSubject(card, { filters: parseSubjectFilters(x), colors: parseSubjectColors(x) })) return `${x}にしか進化できない`;
+    }
+    // ［育成］「自分のデジモン全ては進化できない」(BT13-007 等)
+    const f = findStackOwnerAndZone(stack);
+    if (f && f.zone === 'battle') {
+      const pi = practiceState.players.indexOf(f.player);
+      for (const holder of [f.player.raising, ...f.player.battle]) {
+        if (!holder) continue;
+        const hz = holder === f.player.raising ? 'raising' : 'battle';
+        for (const src of getStackEffectSources(holder)) {
+          for (const line of src.text.split('\n')) {
+            const parsed = parseEffectLine(line);
+            if (!lineAllowedInZone(parsed, hz)) continue;
+            if (parsed.labels.length && !engineTurnLabelOk(parsed.labels, pi)) continue;
+            if (/自分のデジモン全ては進化できな/.test(parsed.text)) return `「${src.card.name}」の効果で自分のデジモン全ては進化できない`;
+          }
+        }
+      }
+    }
+    return null;
+  }
+  // アタックの対象についての制限(ロック/このデジモン自身の常在効果)
+  function attackPlayerBlockReason(stack) {
+    if (hasLock(stack, 'noAttackPlayer')) return 'ロック: プレイヤーにアタックできない';
+    const r = selfStaticRestriction(stack, /このデジモンはプレイヤーにアタックできな/);
+    return r ? `このデジモンはプレイヤーにアタックできない${r.cond ? `(${r.cond})` : ''}` : null;
+  }
+  function attackDigimonBlockReason(stack) {
+    const r = selfStaticRestriction(stack, /このデジモンは相手のデジモンにアタックできな/);
+    return r ? `このデジモンは相手のデジモンにアタックできない${r.cond ? `(${r.cond})` : ''}` : null;
+  }
   function canEvolveOntoStack(card, stack) {
     if (!card || !stack || !isDigimonLikeStack(stack)) return false;
+    if (evolveBlockReason(stack, card)) return false;
     const top = getStackTopCard(stack);
     if (!top) return false;
     if (['BT12-013', 'BT12-012'].includes(card.number)) return true; // 進化画面でも自動判定しないカード
@@ -8937,6 +9208,8 @@
     }
     const f = findStackByUid(e.stackUid);
     if (!f) return false;
+    // 🔒【登場時】/【進化時】/【アタック時】効果を発揮しない: 誘発した後で付いた場合も発揮できなくする
+    if ((e.timing === '登場時' && hasLock(f.stack, 'noPlayEffect')) || (e.timing === '進化時' && hasLock(f.stack, 'noEvolveEffect')) || (e.timing === 'アタック時' && hasLock(f.stack, 'noAttackEffect'))) return false;
     if (e.field === 'effect') return cardEntryNum(f.stack.cards[f.stack.cards.length - 1]) === e.cardNumber;
     if (e.field === 'inherited') return f.stack.cards.slice(0, -1).some(x => cardEntryNum(x) === e.cardNumber);
     if (e.field === 'link') return (f.stack.links || []).includes(e.cardNumber);
@@ -9335,9 +9608,9 @@
         // 「相手のデジモン1体の【進化時】効果は発揮しない」「〜1体はレストできず、【進化時】効果は発揮しない」: ロックを付ける
         if (m[7] === 'は' || m[7] === 'の') {
           const head = rest.slice(0, 60);
-          const em = /(?:^|、)((?:【(?:進化時|アタック時)】効果と?)+)は発揮(しない|せず)/.exec(head);
+          const em = /(?:^|、)((?:【(?:登場時|進化時|アタック時)】効果と?)+)は発揮(しない|せず)/.exec(head);
           // 「1体はレストできない」「1体はアタックとブロックができない」「1体は次の相手のアクティブフェイズではアクティブにならない」
-          const lm = m[7] === 'は' ? /^、?(?:(?:次の)?(?:相手の|自分の)?ターン終了まで、?)?(?:次の(?:相手|自分)の)?(?:アクティブフェイズでは、?)?(レストできな[いく]|レストできず|アクティブにならない|アタックとブロックができない|(?<!プレイヤーに)アタックできな[いく]|アタックできず)/.exec(head) : null;
+          const lm = m[7] === 'は' ? /^、?(?:(?:次の)?(?:相手の|自分の)?ターン終了まで、?)?(?:次の(?:相手|自分)の)?(?:アクティブフェイズでは、?)?(レストできな[いく]|レストできず|アクティブにならな[いく]|アクティブにならず|アタックとブロックができない|アタック\/ブロックできな[いく]|プレイヤーにアタックできな[いく]|プレイヤーにアタックできず|(?<!プレイヤーに)アタックできな[いく]|アタックできず|進化できな[いく]|進化できず)/.exec(head) : null;
           if (!em && !lm) continue;
           // 期間の書いていないもの(【お互いのターン】〜全ての【進化時】効果は発揮しない 等の常在型)はボタンにしない
           const before = sent.slice(0, m.index + m[1].length);
@@ -9346,12 +9619,24 @@
           if (duration === 'permanent' && lm && /アクティブフェイズ/.test(lm[0])) duration = 'untilOpponentTurnEnd';
           if (duration === 'permanent') continue;
           const locks = [];
-          if (/^レストできず/.test(head) || (lm && /レスト/.test(lm[1]))) locks.push('noRest');
-          if (lm && /アクティブにならない/.test(lm[1])) locks.push('noActive');
-          if (lm && /アタック/.test(lm[1])) locks.push('noAttack');
-          if (lm && /ブロック/.test(lm[1])) locks.push('noBlock');
-          if (em && /進化時/.test(em[1])) locks.push('noEvolveEffect');
-          if (em && /アタック時/.test(em[1])) locks.push('noAttackEffect');
+          // 「進化できず、プレイヤーにアタックできない」「アクティブにならず、進化できない」のように続くものもまとめて読む
+          const chainSegs = [];
+          if (lm || em) {
+            for (const seg of head.slice(lm ? lm.index : em.index).replace(/^、/, '').split('、')) {
+              if (!/(できな[いく]|できず|ならな[いく]|ならず|発揮しな|発揮せず|ターン終了まで|アクティブフェイズでは)/.test(seg)) break;
+              chainSegs.push(seg);
+            }
+          }
+          const chain = chainSegs.join('、');
+          if (/^レストできず/.test(head) || /レストできな|レストできず/.test(chain)) locks.push('noRest');
+          if (/アクティブにならな|アクティブにならず/.test(chain)) locks.push('noActive');
+          if (/プレイヤーにアタックできな|プレイヤーにアタックできず/.test(chain)) locks.push('noAttackPlayer');
+          if (/(?<!プレイヤーに)アタックできな|(?<!プレイヤーに)アタックできず|アタックとブロック|アタック\/ブロック/.test(chain)) locks.push('noAttack');
+          if (/ブロックができな|ブロックできな|ブロックできず/.test(chain)) locks.push('noBlock');
+          if (/(?<!しか)進化できな|(?<!しか)進化できず/.test(chain)) locks.push('noEvolve');
+          if ((em && /登場時/.test(em[1])) || /【登場時】効果[^、]*は発揮(しな|せず)/.test(chain)) locks.push('noPlayEffect');
+          if ((em && /進化時/.test(em[1])) || /【進化時】効果[^、]*は発揮(しな|せず)/.test(chain)) locks.push('noEvolveEffect');
+          if ((em && /アタック時/.test(em[1])) || /【アタック時】効果[^、]*は発揮(しな|せず)/.test(chain)) locks.push('noAttackEffect');
           const common = { duration, prefix: spec.prefix, exclude: null, side: spec.side, kinds: spec.kinds, count: spec.count, upTo: spec.upTo, phrase: spec.phrase, eachBy: spec.eachBy, eachN: spec.eachN };
           // 「〜の【進化時】効果は発揮せず、DP-3000」: DP増減にロックを添える
           const dm = em && em[2] === 'せず' ? /^、?DP([+\-]\d+)/.exec(head.slice(em.index + em[0].length)) : null;
@@ -9650,10 +9935,14 @@
     let cands = targetCandidates(ta, e.ownerIndex, holderStack).filter(st => !keep.includes(st));
     // 進化元を破棄する効果は、進化元を持つデジモンだけを候補にする
     if (ta.action.type === 'matTrash') cands = cands.filter(st => st.cards.length > 1);
+    // ⛨耐性でこの効果を受けないものは候補から外す(「条件外も選ぶ」からは選べる)
+    const rs = splitByResist(cands, ta.action, e);
+    cands = rs.ok;
     const extra = targetPoolAll(ta, e.ownerIndex).filter(st => !cands.includes(st) && !keep.includes(st));
     if (!cands.length && !extra.length) { showToast(keep.length ? '選んだもの以外に対象がいません' : '対象にできるカードがいません', true); return; }
     if (ta.count === Infinity) {
-      if (!cands.length) { showToast(keep.length ? '選んだもの以外に対象がいません' : '条件に合う対象がいません(条件の一部は自動判定していません)', true); return; }
+      if (rs.note) showToast(rs.note);
+      if (!cands.length) { if (!rs.note) showToast(keep.length ? '選んだもの以外に対象がいません' : '条件に合う対象がいません(条件の一部は自動判定していません)', true); return; }
       runTargetAction(ta, e, cands);
       return;
     }
@@ -9662,7 +9951,8 @@
     if (autoEach) { runTargetAction(ta, e, autoEach); return; }
     startFieldPick({
       title: `${label}: 対象をタップ`,
-      sub: ta.eachBy ? '1体ずつ選ぶと実行します(片方にいない場合は、いる方だけで進みます)' : ta.count > 1 && !ta.upTo ? `${ta.count}体選ぶと実行します` : (ta.count > 1 ? '選び終わったら「決定」' : ''),
+      sub: [ta.eachBy ? '1体ずつ選ぶと実行します(片方にいない場合は、いる方だけで進みます)' : ta.count > 1 && !ta.upTo ? `${ta.count}体選ぶと実行します` : (ta.count > 1 ? '選び終わったら「決定」' : ''), rs.note].filter(Boolean).join(' / '),
+      emptyMsg: rs.blocked.length ? '耐性を持たない対象がいません(「条件外も選ぶ」から選べます)' : undefined,
       candidates: cands, extra,
       max: ta.count, upTo: ta.upTo,
       groupOf: eachGroupFn(ta), perGroup: ta.eachN || 1,
@@ -9719,9 +10009,10 @@
   // 期間(ターン終了まで/相手のターン終了まで)があれば、その時点で自動で外す。対象として正しいかの判定はしない。
   // 「…を与え、(そのデジモンの)【進化時】効果と【アタック時】効果は発揮しない」: 同じ対象に付けるロック
   function trailingEffectLocks(after) {
-    const m = /^[^。]{0,4}?[、,\s]*(?:そのデジモンの)?((?:【(?:進化時|アタック時)】効果と?)+)は発揮しない/.exec(after || '');
+    const m = /^[^。]{0,4}?[、,\s]*(?:そのデジモンの)?((?:【(?:登場時|進化時|アタック時)】効果と?)+)は発揮しない/.exec(after || '');
     if (!m) return [];
     const locks = [];
+    if (/登場時/.test(m[1])) locks.push('noPlayEffect');
     if (/進化時/.test(m[1])) locks.push('noEvolveEffect');
     if (/アタック時/.test(m[1])) locks.push('noAttackEffect');
     return locks;
@@ -9861,9 +10152,11 @@
           const kinds = g.ta ? g.ta.kinds : ['digimon'];
           // 種類(デジモン/テイマー)だけ合う全員。対象の条件が読み取れたら、そのうち条件に合うものを候補にする
           const pool = targetPoolAll({ side: g.side, kinds }, e.ownerIndex).filter(st => sides.includes(practiceState.players.indexOf(findStackOwnerAndZone(st).player)));
-          const cands = g.ta ? targetCandidates(g.ta, e.ownerIndex, holderStack) : pool;
+          const rsG = splitByResist(g.ta ? targetCandidates(g.ta, e.ownerIndex, holderStack) : pool, { type: 'grant' }, e);
+          const cands = rsG.ok;
           if (g.target === 'all') {
-            if (!cands.length) { showToast('条件に合うデジモンがいません(条件の一部は自動判定していません)', true); return; }
+            if (rsG.note) showToast(rsG.note);
+            if (!cands.length) { if (!rsG.note) showToast('条件に合うデジモンがいません(条件の一部は自動判定していません)', true); return; }
             apply(cands);
             return;
           }
@@ -9874,7 +10167,7 @@
           const count = g.ta && Number.isFinite(g.ta.count) ? g.ta.count : 1;
           startFieldPick({
             title: `${names}${g.dp ? `・DP${g.dp > 0 ? '+' : ''}${g.dp}` : ''}を与えるカードをタップ${durLabel}`,
-            sub: g.ta ? `条件: ${(g.ta.prefix || '').trim() || '指定なし'}${g.ta.side === 'opp' ? '相手の' : g.ta.side === 'own' ? '自分の' : ''}${g.ta.kinds.length === 1 ? (g.ta.kinds[0] === 'tamer' ? 'テイマー' : 'デジモン') : ''}${count > 1 ? count + '体' + (g.ta.upTo ? 'まで' : '') : ''}` : '対象の条件は判定していません',
+            sub: [g.ta ? `条件: ${(g.ta.prefix || '').trim() || '指定なし'}${g.ta.side === 'opp' ? '相手の' : g.ta.side === 'own' ? '自分の' : ''}${g.ta.kinds.length === 1 ? (g.ta.kinds[0] === 'tamer' ? 'テイマー' : 'デジモン') : ''}${count > 1 ? count + '体' + (g.ta.upTo ? 'まで' : '') : ''}` : '対象の条件は判定していません', rsG.note].filter(Boolean).join(' / '),
             candidates: cands, extra,
             extraLabel: '条件外も選ぶ',
             max: count, upTo: g.ta ? g.ta.upTo : false,
@@ -10133,8 +10426,8 @@
   }
   function getEffectHandlers(e) {
     if (e.deferred) return deferredHandlersFor(e);
-    if (e.event === '破棄') { const ds = discardedSelfHandlersFor(e); if (ds.length) return [...ds, ...getEffectHandlersBase(e)]; }
-    return getEffectHandlersBase(e);
+    if (e.event === '破棄') { const ds = discardedSelfHandlersFor(e); if (ds.length) return [...ds, ...getEffectHandlersBase(e), ...restrictHandlersFor(e)]; }
+    return [...getEffectHandlersBase(e), ...restrictHandlersFor(e)];
   }
   function getEffectHandlersBase(e) {
     if (e.burst) {
@@ -10521,6 +10814,7 @@
     renderLsHandTab();
     lsUpdateDock();
     arenaFxAfterRender();
+    renderRestrictionUi();
     effectEngineAfterRender();
     autoEndAfterRender();
   }
@@ -12240,6 +12534,14 @@
 
   function performEvolve(targetStack) {
     if (!evolveMode || !practiceState) return;
+    const blockReason = evolveBlockReason(targetStack, evolveMode.card);
+    if (blockReason && evolveMode.overrideBlockFor !== targetStack) {
+      openDecisionUi(`「${stackLabel(targetStack)}」は進化できません(${blockReason})`, [
+        { label: 'やめる', primary: true, onClick: () => renderPracticeBoard() },
+        { label: 'それでも進化する', onClick: () => { if (!evolveMode) return; evolveMode.overrideBlockFor = targetStack; performEvolve(targetStack); } },
+      ]);
+      return;
+    }
     evolveRouteTarget = targetStack;
     const topCard = cardIndexByNumber.get(cardEntryNum(targetStack.cards[targetStack.cards.length - 1]));
     const self = practiceState.players[practiceState.viewingIndex];
@@ -12305,8 +12607,8 @@
 
   function showMultiEvolvePicker() {
     const self = practiceState.players[practiceState.viewingIndex];
-    const pool = [...self.battle, ...(self.raising ? [self.raising] : [])].filter(s => isDigimonLikeStack(s));
     const isJogress = multiEvolveMode.mode === 'jogress';
+    const pool = [...self.battle, ...(self.raising ? [self.raising] : [])].filter(s => isDigimonLikeStack(s) && !(isJogress && evolveBlockReason(s, multiEvolveMode.card)));
     const handN = multiEvolveMode.handMaterials.length;
     const buttons = [];
     // デジクロスは手札のデジモンも材料にできる(ジョグレスは場のデジモン限定)
@@ -12630,7 +12932,7 @@
     const self = practiceState.players[practiceState.viewingIndex];
     const primary = evolveRouteTarget;
     const pool = [...self.battle, ...(self.raising ? [self.raising] : [])]
-      .filter(s => s !== primary && isDigimonLikeStack(s));
+      .filter(s => s !== primary && isDigimonLikeStack(s) && !(evolveMode && evolveBlockReason(s, evolveMode.card)));
     startFieldPick({
       title: 'ジョグレス進化: もう1体の進化元(材料)をタップ',
       candidates: pool,
@@ -12677,9 +12979,15 @@
   }
 
   // ---------- Hand actions: 登場/使用 / 進化 / 育成進化 / トラッシュ ----------
-  function appearFromHand(handIndex, handNumber, e) {
+  function appearFromHand(handIndex, handNumber, e, rxChecked) {
     const card = cardIndexByNumber.get(handNumber);
     if (!card) return;
+    // 🚫「オプションカードを使用できない」
+    if (!rxChecked && (card.category === 'option' || card.dual)) {
+      const pos = e ? { clientX: e.clientX, clientY: e.clientY } : undefined;
+      confirmIfRestricted(practiceState.viewingIndex, 'noOption', '使用する', () => appearFromHand(handIndex, handNumber, pos, true));
+      if (restrictionsFor(practiceState.viewingIndex, 'noOption').length) return;
+    }
     // デュアルカード(Digimon/Option)はデジモン側の登場コストを持たず、進化先または
     // オプション側の使用としてのみ場に出せる。ここではオプション側の使用として扱う。
     const isDualUse = !!card.dual;
@@ -14293,7 +14601,12 @@
     return { clientX: window.innerWidth / 2 - 130, clientY: 70 };
   }
 
-  function declareAttack(stack) {
+  function declareAttack(stack, rxChecked) {
+    // 🚫「進化元を持たないデジモンではアタックできない」
+    if (!rxChecked && stack.cards.length <= 1 && restrictionsFor(practiceState.viewingIndex, 'noAttackNoMat').length) {
+      confirmIfRestricted(practiceState.viewingIndex, 'noAttackNoMat', 'アタックする', () => declareAttack(stack, true));
+      return;
+    }
     const attackerOwner = practiceState.players[practiceState.viewingIndex];
     const defenderOwner = practiceState.players[1 - practiceState.viewingIndex];
     snapshotPracticeState();
@@ -14312,8 +14625,16 @@
     lastAttackStepFn = showAttackTargetStep;
     if (attackState) attackState.stepName = 'target';
     const enemyDigimon = attackState.defenderOwner.battle.filter(s => isDigimonLikeStack(s));
-    const restedTargets = enemyDigimon.filter(s => s.rested);
-    const activeTargets = enemyDigimon.filter(s => !s.rested);
+    // 「プレイヤーにアタックできない」「相手のデジモンにアタックできない」(ロック/このデジモンの常在効果)
+    const noPlayer = attackPlayerBlockReason(attackState.attackerStack);
+    const noDigimon = attackDigimonBlockReason(attackState.attackerStack);
+    const restedTargets = noDigimon ? [] : enemyDigimon.filter(s => s.rested);
+    const activeTargets = noDigimon ? enemyDigimon : enemyDigimon.filter(s => !s.rested);
+    const toPlayer = () => {
+      attackState.targetType = 'player';
+      attackState.targetStack = null;
+      showAttackTriggerStep();
+    };
     const toTarget = (s) => {
       attackState.targetType = 'digimon';
       attackState.targetStack = s;
@@ -14325,19 +14646,22 @@
       title: `「${stackLabel(attackState.attackerStack)}」のアタック対象: レスト状態の相手デジモンをタップ、またはプレイヤーへ`,
       candidates: restedTargets,
       extra: activeTargets,
-      extraLabel: 'アクティブも対象にする(効果)',
+      extraLabel: noDigimon ? 'それでもデジモンを対象にする' : 'アクティブも対象にする(効果)',
       showExtra: false,
-      emptyMsg: 'レスト状態の相手デジモンはいません',
+      emptyMsg: noDigimon ? `🔒 ${noDigimon}` : 'レスト状態の相手デジモンはいません',
+      sub: noPlayer ? `🔒 ${noPlayer}` : '',
       attackStep: true,
       noCancel: true,
-      buttons: [{
+      buttons: [noPlayer ? {
+        label: `🛡 相手プレイヤーへ(🔒 アタックできない)`,
+        onClick: () => openDecisionUi(`「${stackLabel(attackState.attackerStack)}」は${noPlayer.replace(/^ロック: /, '')}(🔒)`, [
+          { label: 'やめる(対象を選び直す)', primary: true, onClick: () => showAttackTargetStep() },
+          { label: 'それでもプレイヤーへアタックする', onClick: () => toPlayer() },
+        ]),
+      } : {
         label: `🛡 相手プレイヤーへ(セキュリティ${attackState.defenderOwner.security.length}枚)`,
         primary: true,
-        onClick: () => {
-          attackState.targetType = 'player';
-          attackState.targetStack = null;
-          showAttackTriggerStep();
-        },
+        onClick: () => toPlayer(),
       }],
       onDone: (sel) => { if (sel[0]) toTarget(sel[0]); },
     });
@@ -14940,14 +15264,18 @@
     pend.resolve = resolve;
     // 【セキュリティ】効果を効果パネルに出す(めくった時に1回だけ。【セキュリティ】効果は発揮待ちにならず優先して処理する: 15-16-10-2)
     const secKey = `${remaining}:${top}:${defOwner.security.length}`;
-    if (effectPanelEnabled && isNewCheck) {
-      const list = referencedEntriesFrom(card, { labels: ['セキュリティ'], self: true }, { ownerIndex: defPi })
-        .map(e => Object.assign(e, { lkiUid: `sec-${top}-${secKey}`, event: 'セキュリティチェック', eventLabel: 'セキュリティチェック' }));
+    const secEntries = () => referencedEntriesFrom(card, { labels: ['セキュリティ'], self: true }, { ownerIndex: defPi })
+      .map(e => Object.assign(e, { lkiUid: `sec-${top}-${secKey}`, event: 'セキュリティチェック', eventLabel: 'セキュリティチェック' }));
+    // 🚫「【セキュリティ】効果を発揮しない」: 効果パネルに出さない(「それでも出す」で出せる)
+    if (isNewCheck) pend.secBlocked = securityEffectBlockReason(card, attackState.attackerStack, defPi);
+    const enqueueSec = () => {
+      const list = secEntries();
       if (list.length) {
         enqueueEffects(list.slice(1), [list[0]]);
         renderEffectPanel();
       }
-    }
+    };
+    if (effectPanelEnabled && isNewCheck && !pend.secBlocked) enqueueSec();
     const thumb = `<img src="${escapeHtml(miniCardImg(top))}" alt="" class="ab-sec-img" onerror="this.style.opacity=0">`;
     const cat = { digimon: 'デジモン', tamer: 'テイマー', option: 'オプション' }[card.category] || '';
     const battleInfo = isDigimon
@@ -14955,12 +15283,14 @@
         (atkDP <= secDP ? ' <span class="ab-sec-lose">→ アタック側が消滅します</span>' : ' <span class="ab-sec-win">→ アタック側の勝ち</span>') + '</div>'
       : '';
     const hasSecEffect = referencedEntriesFrom(card, { labels: ['セキュリティ'], self: true }, { ownerIndex: defPi }).length > 0;
+    const secBlocked = hasSecEffect && pend.secBlocked && !pend.secForced;
     openStepUi(`🛡 セキュリティチェック(残り${remaining}枚): めくったカードの行き先を選んでください`, [
       {
         custom: true,
         render: (c) => {
           c.innerHTML = `<div class="ab-sec">${thumb}<div class="ab-sec-info"><div class="ab-sec-name">${escapeHtml(card.name)} <span>${cat}${card.level ? ' Lv.' + card.level : ''}</span></div>${battleInfo}` +
-            (hasSecEffect ? `<div class="ab-sec-fx">⚡ 【セキュリティ】効果を効果パネルに出しています</div>` : '') +
+            (secBlocked ? `<div class="ab-sec-fx" style="color:#ffb3b3;">🚫 【セキュリティ】効果は発揮しません(${escapeHtml(pend.secBlocked)})</div>`
+              : hasSecEffect ? `<div class="ab-sec-fx">⚡ 【セキュリティ】効果を効果パネルに出しています</div>` : '') +
             `<div class="ab-sec-hint">カードをタップすると詳細を表示</div></div></div>`;
           c.querySelector('.ab-sec-img').addEventListener('click', (ev) => { ev.stopPropagation(); openCardDetail(card, true); });
         },
@@ -14968,6 +15298,7 @@
       { label: isDigimon ? 'バトルしてトラッシュへ' : 'トラッシュへ', primary: true, onClick: () => resolve('trash') },
       { label: '手札へ', onClick: () => resolve('hand') },
       { label: 'バトルエリアへ登場(コストなし)', onClick: () => resolve('battle') },
+      ...(secBlocked && effectPanelEnabled ? [{ label: '🚫 それでも【セキュリティ】効果を出す', onClick: () => { pend.secForced = true; enqueueSec(); doSecurityCheckForAttack(); } }] : []),
     ]);
   }
 
@@ -15249,10 +15580,10 @@
     const topIndex = stack.cards.length - 1;
     const oppTopCardObj = cardIndexByNumber.get(cardEntryNum(stack.cards[topIndex]));
     if (!oppTopCardObj || oppTopCardObj.category !== 'tamer') {
-      mk('退化', () => { warnIfResistant(stack, ['noDegen'], '退化'); removeCardFromStackAt(stack, topIndex, 'trash'); });
+      mk('退化', () => confirmIfResistant(stack, ['noDegen'], '退化', () => removeCardFromStackAt(stack, topIndex, 'trash')));
     }
-    mk('一番上を移動▾', (e) => openHierarchicalDestinationPicker(e, '一番上のカードを送る', (dest) => { warnIfResistant(stack, ['noReturn'], '移動'); removeCardFromStackAt(stack, topIndex, dest); }, { excludeBattle: true, excludeTrash: true, ownerPlayer: (findStackOwnerAndZone(stack) || {}).player }));
-    mk('消滅', () => { warnIfResistant(stack, ['noDestroyByEffect'], '消滅'); resolveDestructionQueue([stack], () => {}); });
+    mk('一番上を移動▾', (e) => openHierarchicalDestinationPicker(e, '一番上のカードを送る', (dest) => confirmIfResistant(stack, ['hand', 'deckTop', 'deckBottom'].includes(dest) ? ['noReturn'] : [], '移動', () => removeCardFromStackAt(stack, topIndex, dest)), { excludeBattle: true, excludeTrash: true, ownerPlayer: (findStackOwnerAndZone(stack) || {}).player }));
+    mk('消滅', () => confirmIfResistant(stack, ['noDestroyByEffect'], '消滅', () => resolveDestructionQueue([stack], () => {})));
     if (stack.cards.length > 1) mk('一番上だけ移動▾', (e) => openMoveTopOnlyPicker(e, stack));
     if (isDigimonLikeStack(stack) || (oppTopCardObj && oppTopCardObj.category === 'tamer')) {
       mk('🔒 ロック', (e) => openLockMenu(e, stack));
@@ -15730,7 +16061,14 @@
   }
   function fieldEffectDescribe(effect) {
     const ownerName = practiceState.players[effect.ownerIndex].deckName;
-    const targetLabel = effect.target === 'own' ? `${ownerName}の全デジモン` : `${ownerName}から見た相手の全デジモン`;
+    const oppName = practiceState.players[1 - effect.ownerIndex].deckName;
+    const durOf = (d) => ({ thisTurn: 'このターンの間', untilOpponentTurnEnd: '相手のターン終了まで', untilNextOpponentTurnEnd: '次の相手のターン終了まで',
+      untilOwnTurnEnd: '自分のターン終了まで', untilNextOwnTurnEnd: '次の自分のターン終了まで' }[d] || '');
+    if (effect.kind === 'restrict') {
+      const tail = effect.auto ? `「${effect.refCardName || '?'}」がいる間${effect.cond ? `・${effect.cond}` : ''}(場のカードから自動)` : `${durOf(effect.duration)}${effect.refCardName ? ` — ${effect.refCardName}` : ''}`;
+      return `${restrictDescribe(effect)}(${tail})`;
+    }
+    const targetLabel = effect.target === 'own' ? `「${ownerName}」の全デジモン` : `「${oppName}」の全デジモン`;
     const amountLabel = `DP${effect.amount >= 0 ? '+' : ''}${effect.amount}`;
     const durationLabel = {
       thisTurn: 'このターンの間',
@@ -15738,7 +16076,7 @@
       untilNextOpponentTurnEnd: '次の相手のターン終了まで',
       untilOwnTurnEnd: '自分のターン終了まで',
       untilNextOwnTurnEnd: '次の自分のターン終了まで',
-      ownTurnOnly: `${ownerName}のターンのみ・毎ターン継続`,
+      ownTurnOnly: `「${ownerName}」のターンのみ・毎ターン継続`,
       whileCard: effect.refCardName ? `「${effect.refCardName}」がある間` : '特定のカードがある間',
     }[effect.duration] || '';
     return `${targetLabel} ${amountLabel}(${durationLabel})`;
@@ -15746,7 +16084,8 @@
   function renderFieldEffectsList() {
     const listEl = document.getElementById('fieldEffectsList');
     const effects = (practiceState && practiceState.fieldEffects) || [];
-    if (effects.length === 0) {
+    const autos = practiceState ? collectStaticRestrictions() : [];
+    if (effects.length === 0 && autos.length === 0) {
       listEl.innerHTML = '<div class="placeholder">現在、場全体にかかっている効果はありません。</div>';
       return;
     }
@@ -15755,11 +16094,24 @@
       const active = isFieldEffectActive(effect);
       const row = document.createElement('div');
       row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 4px;border-bottom:1px solid var(--border);';
+      const isRx = effect.kind === 'restrict';
       row.innerHTML = `
-        <div style="font-size:12px;${active ? '' : 'color:var(--text-dim);'}">
-          ${active ? '' : '<span style="color:var(--danger);">(現在は条件を満たしていません)</span> '}${escapeHtml(fieldEffectDescribe(effect))}
+        <div style="font-size:12px;display:flex;gap:6px;align-items:flex-start;${active ? '' : 'color:var(--text-dim);'}">
+          <span class="fe-kind ${isRx ? 'rx' : 'dp'}">${isRx ? '制限' : 'DP'}</span>
+          <span>${active ? '' : '<span style="color:var(--danger);">(現在は条件を満たしていません)</span> '}${escapeHtml(fieldEffectDescribe(effect))}</span>
         </div>
         <button type="button" class="btn" data-idx="${idx}" style="font-size:11px;padding:4px 8px;flex-shrink:0;">🗑 解除</button>
+      `;
+      listEl.appendChild(row);
+    });
+    autos.forEach(effect => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 4px;border-bottom:1px solid var(--border);';
+      row.innerHTML = `
+        <div style="font-size:12px;display:flex;gap:6px;align-items:flex-start;">
+          <span class="fe-kind rx">制限</span><span>${escapeHtml(fieldEffectDescribe(effect))}</span>
+        </div>
+        <span style="font-size:10px;color:var(--text-dim);flex-shrink:0;">自動(カードが離れると消える)</span>
       `;
       listEl.appendChild(row);
     });
