@@ -3340,6 +3340,15 @@
     body.ls-mode #evolveRouteModal .modal { width: min(400px, calc(100% - 24px)); padding: 10px 12px; }
     body.ls-mode #evolveRouteModal h2 { font-size: 13px; margin: 0 0 4px; }
     body.ls-mode #evolveRouteModal #evolveRouteSubtitle { font-size: 11px !important; margin-bottom: 6px !important; }
+    #evolveRouteNote { font-size: 11.5px; line-height: 1.45; padding: 6px 9px; border-radius: 7px; margin: -4px 0 8px; }
+    #evolveRouteNote.ok { background: rgba(63,210,143,.10); color: #7fe3b5; border: 1px solid rgba(63,210,143,.35); }
+    #evolveRouteNote.ng { background: rgba(255,120,80,.12); color: #ffb08a; border: 1px solid rgba(255,120,80,.4); }
+    #evolveRouteNote.info { background: rgba(138,160,192,.10); color: var(--text-dim); border: 1px solid rgba(138,160,192,.3); }
+    #evolveRouteNote .ern-line + .ern-line { margin-top: 3px; }
+    #evolveRouteNote .ern-go { margin-top: 6px; font-size: 11px; padding: 5px 10px; }
+    .evolve-route-item .eri-red { display: block; font-size: 10.5px; color: #8fe3c0; margin-top: 2px; }
+    .evolve-route-item .eri-red.warn { color: #ffd27a; }
+    #evolveExtraRow .btn { flex: 1; }
     body.ls-mode #evolveRouteModal #evolveRouteList { gap: 5px !important; max-height: none !important; }
     body.ls-mode #evolveRouteModal .evolve-route-item { padding: 6px 9px; font-size: 12px; }
     body.ls-mode #evolveRouteModal .evolve-manual { margin-top: 6px !important; }
@@ -3503,7 +3512,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.61.1</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.64.0</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -3846,8 +3855,9 @@
 <!-- Evolution route picker -->
 <div class="modal-backdrop" id="evolveRouteModal">
   <div class="modal">
-    <h2 class="mono">進化ルートを選択</h2>
+    <h2 class="mono" id="evolveRouteTitle">進化ルートを選択</h2>
     <div id="evolveRouteSubtitle" style="font-size:12px;color:var(--text-dim);margin-bottom:12px;"></div>
+    <div id="evolveRouteNote" hidden></div>
     <div id="evolveRouteList" style="display:flex;flex-direction:column;gap:8px;max-height:340px;overflow-y:auto;"></div>
     <div class="field evolve-manual" id="evolveManualField" style="margin-top:12px;">
       <button type="button" class="btn evolve-manual-toggle" id="evolveManualToggle">✏️ コストを手入力 ▸</button>
@@ -3863,6 +3873,7 @@
         <button class="btn" id="evolveAppFusionBtn" style="flex:1;">📲 アプ合体にする</button>
       </div>
     </div>
+    <div class="field" id="evolveExtraRow" style="margin-top:8px;display:none;gap:8px;flex-wrap:wrap;"></div>
     <div class="modal-actions">
       <button class="btn" id="evolveRouteCancel">キャンセル</button>
     </div>
@@ -5239,7 +5250,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.61.1`);
+    log(`DigiCA Tool build v0.64.0`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -6238,6 +6249,7 @@
   function evolveCondMatches(card, cond, selfNumber) {
     if (!card) return false;
     if (/^このカード$/.test(cond.trim())) return card.number === selfNumber;
+    if (typeof revealCondMatches === 'function') return revealCondMatches(card, cond);
     if (/デジモンカード/.test(cond) && card.category !== 'digimon') return false;
     const lv = /Lv\.(\d+)(以下|以上)?/.exec(cond);
     if (lv) {
@@ -6246,6 +6258,44 @@
       if (lv[2] === '以下' ? L > n : lv[2] === '以上' ? L < n : L !== n) return false;
     }
     return cardMatchesSubject(card, { filters: parseSubjectFilters(cond), colors: parseSubjectColors(cond) });
+  }
+  // 「自分の手札から、〜1枚を支払う登場コスト-3で登場できる」「〜をコストを支払わずに登場できる」: 手札から選んで、効果のコストで登場する
+  function playFromHandHandlersFor(e) {
+    if (!practiceState) return [];
+    const t = engineStripNotes(e.text || '').replace(/(名称|特徴)に/g, '$1\u0001');
+    const out = [];
+    const re = /自分の手札から、([^。]*?)(\d+)枚(?:まで)?を、?([^、。]*?)(登場|使用)(?:でき|させ)/g;
+    let m;
+    while ((m = re.exec(t))) {
+      const cond = m[1].replace(/\u0001/g, 'に');
+      const mid = m[3];
+      let costRule = null, x;
+      if (/コストを支払わず/.test(mid)) costRule = { type: 'free' };
+      else if ((x = /コスト[-－](\d+)/.exec(mid))) costRule = { type: 'minus', n: parseInt(x[1], 10) };
+      else if ((x = /コスト(\d+)で/.exec(mid))) costRule = { type: 'fixed', n: parseInt(x[1], 10) };
+      if (!costRule) continue;
+      const verb = m[4];
+      out.push({
+        label: `📥 手札から${verb}(${costRule.type === 'free' ? 'コストなし' : costRule.type === 'minus' ? `コスト-${costRule.n}` : `コスト${costRule.n}`})`,
+        run: () => {
+          if (e.ownerIndex !== practiceState.viewingIndex) { showToast('この自動処理は、その効果を持つプレイヤーの視点に切り替えてから実行してください', true); return; }
+          const p = practiceState.players[e.ownerIndex];
+          const list = p.hand.map((num, idx) => ({ idx, num, card: cardIndexByNumber.get(cardEntryNum(num)) })).filter(x => x.card && x.card.category !== 'digi-egg');
+          const ok = list.filter(x => revealCondMatches(x.card, cond));
+          const ng = list.filter(x => !ok.includes(x));
+          const go = (x) => appearFromHand(x.idx, cardEntryNum(x.num), centerPoint(), false, { costRule });
+          if (ok.length === 1 && !ng.length) { go(ok[0]); return; }
+          const btn = (x, isOk) => ({ label: `${isOk ? '' : '(条件外) '}「${x.card.name}」`, onClick: () => go(x) });
+          const showAll = () => openDecisionUi('登場させるカードを選んでください(条件外も表示中)', [...ok.map(x => btn(x, true)), ...ng.map(x => btn(x, false)), { label: 'やめる', onClick: () => renderPracticeBoard() }]);
+          openDecisionUi(ok.length ? `手札から${verb}するカードを選んでください(条件: ${cond})` : `条件(${cond})に合うカードが手札にありません`, [
+            ...ok.map(x => btn(x, true)),
+            ...(ng.length ? [{ label: `条件外も選ぶ(${ng.length}枚)`, onClick: showAll }] : []),
+            { label: 'やめる', onClick: () => renderPracticeBoard() },
+          ]);
+        },
+      });
+    }
+    return out;
   }
   function evolveFromZoneHandlersFor(e, holderStack) {
     if (!practiceState) return [];
@@ -9294,10 +9344,59 @@
   function canUseMainEffectsNow(pi) {
     return !!practiceState && practiceState.turn.phase === 'main' && practiceState.turn.playerIndex === pi && !attackState;
   }
+  // 「【自分のターン】〜が〜に進化/登場するとき、このテイマーをレストさせることで、支払う進化コスト-1」を
+  // 【メイン】の起動効果と同じように扱う(先にレスト → 手札から選んで、コストを下げて進化/登場)
+  function restReductionAsMain(stack, pi, zone) {
+    const out = [];
+    collectStackTriggers(stack, pi, zone, ['自分のターン', 'お互いのターン'], { event: '起動' }).forEach(e => {
+      const body = engineStripNotes(e.text).replace(/^(【[^】]+】|［[^］]*］|\[[^\]]*\]|\{[^}]*\})+/, '');
+      // 代償(「〜ことで」)の種類: このテイマーのレスト=自動 / このテイマーの消滅・デッキの下=ボタンで払う / それ以外=手で処理
+      const costInfo = (cost) => {
+        if (/^この(テイマー|デジモン)をレストさせる$/.test(cost)) return { kind: 'rest' };
+        if (/^この(テイマー|デジモン)をレストさせ、/.test(cost)) return { kind: 'rest+manual' };
+        if (/^この(テイマー|デジモン)を消滅させる$/.test(cost)) return { kind: 'destroy' };
+        if (/^この(テイマー|デジモン)をデッキの下に戻す$/.test(cost)) return { kind: 'deckBottom' };
+        return { kind: 'manual' };
+      };
+      const perNote = (s2) => { const pm = /([^、。]*ごとに)、支払う/.exec(s2); return pm ? `(${pm[1]}。下げる量は手で調整してください)` : ''; };
+      let m = /^(.+?)が(.+?)に進化するとき、(.+?)ことで、(?:[^、。]*ごとに、)?支払う進化コスト[-－](\d+)/.exec(body);
+      if (m && !/このカード/.test(m[2])) {
+        const ci = costInfo(m[3]);
+        out.push(Object.assign({}, e, { timing: 'メイン', sourceLabel: '進化コスト軽減', restReduction: ci.kind, lki: ci.kind === 'destroy' || ci.kind === 'deckBottom',
+          text: `【メイン】${m[3]}ことで、${m[1]}1体を手札の${m[2]}に支払う進化コスト-${m[4]}で進化できる。${perNote(body)}` }));
+        return;
+      }
+      m = /^(?:自分の手札から、)?(.+?)(?:が|を)登場(?:する|させる)とき、(.+?)ことで、(?:[^、。]*ごとに、)?支払う登場コスト[-－](\d+)/.exec(body);
+      if (m) {
+        const ci = costInfo(m[2]);
+        const cond = m[1].replace(/1枚$/, '').replace(/自分の/, '');
+        out.push(Object.assign({}, e, { timing: 'メイン', sourceLabel: '登場コスト軽減', restReduction: ci.kind, lki: ci.kind === 'destroy' || ci.kind === 'deckBottom',
+          text: `【メイン】${m[2]}ことで、自分の手札から、${cond}1枚を支払う登場コスト-${m[3]}で登場できる。${perNote(body)}` }));
+      }
+    });
+    return out;
+  }
+  // 起動した軽減効果の代償のうち、ボタンで払えるもの(このテイマーを消滅させる/デッキの下に戻す)
+  function reductionCostHandlersFor(e) {
+    if (!e.restReduction || (e.restReduction !== 'destroy' && e.restReduction !== 'deckBottom') || e.costPaid) return [];
+    const f = e.stackUid ? findStackByUid(e.stackUid) : null;
+    if (!f) return [];
+    const name = (getStackTopCard(f.stack) || {}).name || '?';
+    return [{
+      label: e.restReduction === 'destroy' ? `💸 代償: 「${name}」を消滅させる` : `💸 代償: 「${name}」をデッキの下に戻す`,
+      run: () => {
+        e.costPaid = true;
+        const done = () => { renderPracticeBoard(); renderEffectPanel(); };
+        if (e.restReduction === 'destroy') resolveDestructionQueue([f.stack], done);
+        else removeCardFromStackAt(f.stack, f.stack.cards.length - 1, 'deckBottom', undefined, done);
+        renderEffectPanel();
+      },
+    }];
+  }
   function getStackMainEffects(stack, pi, zone) {
     const top = getStackTopCard(stack);
     if (!top || top.category === 'option' || stack.dualAsOption) return [];
-    return collectStackTriggers(stack, pi, zone, ['メイン'], { event: '起動' })
+    return [...collectStackTriggers(stack, pi, zone, ['メイン'], { event: '起動' }), ...restReductionAsMain(stack, pi, zone)]
       .filter(e => !e.text.includes('≪ディレイ≫'))
       .map(e => Object.assign(e, { eventLabel: '起動' }))
       .filter(e => !isOnceUsed(e) && !selfRestCostUnpayable(e));
@@ -9693,7 +9792,7 @@
 
   // 発揮待ちの効果が、まだ発揮できる状態か(15-4-4-3/4)
   // 「このテイマー/デジモンをレストさせることで」: 効果の持ち主自身をレストさせるコスト
-  const SELF_REST_COST_RE = /この(?:テイマー|デジモン)をレストさせることで/;
+  const SELF_REST_COST_RE = /この(?:テイマー|デジモン)をレストさせ(?:ることで|、)/;
   function selfRestCostOf(e) { return !!e && !e.lki && !!e.stackUid && SELF_REST_COST_RE.test(engineStripNotes(e.text || '')); }
   // コストを払えない(既にレスト状態・レストできないロック)なら発揮できない
   function selfRestCostUnpayable(e) {
@@ -10933,7 +11032,7 @@
     if (e.deferred) return deferredHandlersFor(e);
     const extra = () => {
       const f = e.stackUid ? findStackByUid(e.stackUid) : null;
-      const list = [...restrictHandlersFor(e), ...evolveFromZoneHandlersFor(e, f && f.stack)];
+      const list = [...reductionCostHandlersFor(e), ...restrictHandlersFor(e), ...evolveFromZoneHandlersFor(e, f && f.stack), ...playFromHandHandlersFor(e)];
       // 進化元効果・セキュリティ効果・消滅時などの「デッキの上からN枚オープン」(【効果】欄のものは基本の処理で出している)
       const rm = /(?<!相手の)デッキの上から(\d+)枚オープン/.exec(e.text || '');
       if (rm && e.timing !== 'ディレイ' && (!f || e.field !== 'effect')) {
@@ -13001,9 +13100,30 @@
     return clauses.some(Boolean);
   }
 
-  function openEvolveRouteModal(card, topCardForMatching, subtitleText, onResolve, showSpecialOptions, actionLabel, routesOverride, targetStackForMatching) {
+  function openEvolveRouteModal(card, topCardForMatching, subtitleText, onResolve, showSpecialOptions, actionLabel, routesOverride, targetStackForMatching, mopts) {
+    const mo = mopts || {};
     pendingEvolveResolve = onResolve;
-    const routes = routesOverride || buildEvolveRoutes(card, topCardForMatching);
+    let routes = routesOverride || buildEvolveRoutes(card, topCardForMatching);
+    const noteLines = [...(mo.notes || [])];
+    if (mo.reductions && mo.reductions.length) {
+      const applied = applyReductionsToRoutes(routes, mo.reductions);
+      routes = applied.routes;
+      noteLines.push(...applied.notes.map(t => ({ cls: 'info', html: escapeHtml(t) })));
+    }
+    document.getElementById('evolveRouteTitle').textContent = mo.title || ((actionLabel || '進化') === '進化' ? '進化ルートを選択' : `${actionLabel}方法を選択`);
+    const noteEl = document.getElementById('evolveRouteNote');
+    noteEl.hidden = !noteLines.length;
+    noteEl.className = noteLines.some(x => x.cls === 'ng') ? 'ng' : noteLines.some(x => x.cls === 'ok') ? 'ok' : 'info';
+    noteEl.innerHTML = noteLines.map(x => `<div class="ern-line">${x.html}</div>`).join('');
+    const extraRow = document.getElementById('evolveExtraRow');
+    extraRow.innerHTML = '';
+    (mo.extraButtons || []).forEach(b => {
+      const el = document.createElement('button');
+      el.type = 'button'; el.className = 'btn'; el.textContent = b.label;
+      el.addEventListener('click', () => { evolveRouteModal.classList.remove('open'); pendingEvolveResolve = null; b.onClick(); });
+      extraRow.appendChild(el);
+    });
+    extraRow.style.display = (mo.extraButtons || []).length ? 'flex' : 'none';
     evolveRouteSubtitle.textContent = subtitleText;
     evolveManualCost.value = '0';
     evolveRouteList.innerHTML = '';
@@ -13032,7 +13152,8 @@
           ? `<span class="eri-text" style="color:var(--danger);">⚠ ${escapeHtml(r.scalingNote)}(可変コストのため、下の手動入力で計算して入力してください)</span>`
           : '';
         const origHtml = r.origCost != null && r.origCost !== r.cost ? `<s style="opacity:.6;margin-right:3px;">${r.origCost}</s>` : '';
-        btn.innerHTML = `<span class="eri-cost">コスト${origHtml}${r.cost}</span>${mainText}${scalingHtml}`;
+        const redHtml = r.reductionText ? `<span class="eri-red${/^❓/.test(r.reductionText) ? ' warn' : ''}">${escapeHtml(r.reductionText)}</span>` : '';
+        btn.innerHTML = `<span class="eri-cost">コスト${origHtml}${r.cost}</span>${mainText}${redHtml}${scalingHtml}`;
         if (r.scalingNote) {
           btn.disabled = true;
           btn.style.opacity = '0.55';
@@ -13040,6 +13161,7 @@
         } else {
           btn.addEventListener('click', () => {
             evolveRouteModal.classList.remove('open');
+            if (r.onPick) r.onPick();
             if (pendingEvolveResolve) pendingEvolveResolve(r.cost);
           });
         }
@@ -13083,6 +13205,18 @@
     // 手入力は普段はたたむ(効果のコストはルートに反映済み)。選べるルートが無いときだけ最初から開く
     const hasRoute = !!evolveRouteList.querySelector('.evolve-route-item:not([disabled])');
     setEvolveManualOpen(!hasRoute);
+    if (mo.manualFromRoutes && routes.length) evolveManualCost.value = String(Math.min(...routes.filter(r => !r.scalingNote).map(r => r.cost)));
+    // 色条件を満たさない等: 「それでも〜する」を押すまでルートと手入力を隠す
+    const manualField = document.getElementById('evolveManualField');
+    const gated = !!mo.gateLabel;
+    evolveRouteList.style.display = gated ? 'none' : 'flex';
+    manualField.style.display = gated ? 'none' : '';
+    if (gated) {
+      const go = document.createElement('button');
+      go.type = 'button'; go.className = 'btn ern-go'; go.textContent = mo.gateLabel;
+      go.addEventListener('click', () => { go.remove(); evolveRouteList.style.display = 'flex'; manualField.style.display = ''; });
+      noteEl.appendChild(go);
+    }
     evolveRouteModal.classList.add('open');
   }
   function setEvolveManualOpen(open) {
@@ -13123,7 +13257,8 @@
       evolveMode.card, topCard,
       `「${topCard ? topCard.name : '?'}」→${evolveMode.source === 'trash' ? 'トラッシュの' : ''}「${evolveMode.card.name}」に進化(進化元: ${topCard ? topCard.name : '?'})${rule ? ` — 効果: ${EVOLVE_COST_RULE_LABEL(rule)}` : ''}`,
       (cost) => finalizeEvolve(cost),
-      !isRaisingTarget, null, routesOverride, targetStack
+      !isRaisingTarget, null, routesOverride, targetStack,
+      { manualFromRoutes: true, reductions: rule && rule.type === 'free' ? [] : collectCostReductions('evolve', evolveMode.card, { pi: practiceState.viewingIndex, target: targetStack, source: evolveMode.source }) }
     );
     if (manualDefault != null) evolveManualCost.value = String(manualDefault);
   }
@@ -13572,13 +13707,14 @@
   }
 
   // ---------- Hand actions: 登場/使用 / 進化 / 育成進化 / トラッシュ ----------
-  function appearFromHand(handIndex, handNumber, e, rxChecked) {
+  // opts.costRule: 効果で登場/使用するときのコスト({type:'free'|'minus'|'fixed', n})
+  function appearFromHand(handIndex, handNumber, e, rxChecked, opts) {
     const card = cardIndexByNumber.get(handNumber);
     if (!card) return;
     // 🚫「オプションカードを使用できない」
     if (!rxChecked && (card.category === 'option' || card.dual)) {
       const pos = e ? { clientX: e.clientX, clientY: e.clientY } : undefined;
-      confirmIfRestricted(practiceState.viewingIndex, 'noOption', '使用する', () => appearFromHand(handIndex, handNumber, pos, true));
+      confirmIfRestricted(practiceState.viewingIndex, 'noOption', '使用する', () => appearFromHand(handIndex, handNumber, pos, true, opts));
       if (restrictionsFor(practiceState.viewingIndex, 'noOption').length) return;
     }
     // デュアルカード(Digimon/Option)はデジモン側の登場コストを持たず、進化先または
@@ -13613,33 +13749,38 @@
       resumeAttackStepIfAny();
     };
 
-    const anchorEvent = e || centerPoint();
-    const actions = [];
+    // 進化と同じ「方法を選択」画面: 払い方ごとの行 + たたんだ手入力 + 特殊な出し方のボタン
+    const pi = practiceState.viewingIndex;
+    const routes = [];
+    const rule = opts && opts.costRule;
     if (baseCost !== null && baseCost !== undefined) {
-      actions.push({ label: `そのまま${verb}(コスト${baseCost})`, onClick: () => finalize(baseCost) });
+      if (rule) {
+        const ec = applyEvolveCostRule(rule, baseCost);
+        routes.push({ label: `効果で${verb}`, sub: `効果で${verb}(${EVOLVE_COST_RULE_LABEL(rule).replace(/進化/g, verb === '使用' ? '使用' : '登場')})`, cost: ec, origCost: baseCost, effectRoute: true });
+      }
+      routes.push({ label: `通常の${verb}`, sub: `通常の${verb}`, cost: baseCost });
     }
-    actions.push({
-      custom: true,
-      render: (container) => {
-        container.style.cssText = 'display:flex;flex-direction:column;gap:6px;padding:4px 0;';
-        container.innerHTML = `
-          ${buildCostStepperHTML('appearCostInput', 0)}
-          <button type="button" id="appearCostGo" class="btn" style="font-size:11px;padding:6px 8px;">このコストで${verb}</button>
-        `;
-        wireCostStepper(container, 'appearCostInput');
-        container.querySelector('#appearCostGo').addEventListener('click', (ev) => {
-          ev.stopPropagation();
-          const x = parseInt(container.querySelector('#appearCostInput').value, 10);
-          closeZonePopup();
-          finalize(x);
-        });
-      },
-    });
-    if (card.category !== 'option' && card.category !== 'tamer' && !card.dual) {
-      actions.push({ label: 'デジクロスにする', onClick: () => enterMultiEvolveMode(handIndex, handNumber, 'digixros') });
-      actions.push({ label: 'アセンブリにする', onClick: () => enterAssemblyMode(handIndex, handNumber) });
+    const notes = [];
+    let gateLabel = null;
+    if (isOption && !opts) {
+      const cc = optionColorCheck(isDualUse ? Object.assign({}, card, { color: card.color }) : card, pi);
+      notes.push({ cls: cc.ok ? 'ok' : 'ng', html: cc.html });
+      if (!cc.ok) gateLabel = 'それでも使用する';
     }
-    openZonePopup(anchorEvent, `「${displayName}」を${verb}`, actions);
+    const reductions = rule && rule.type === 'free' ? [] : collectCostReductions(isOption ? 'use' : 'play', card, { pi, source: 'hand' });
+    const extraButtons = [];
+    if (card.category === 'digimon' && !card.dual) {
+      const txt = `${card.effect || ''}\n${card.inherited || ''}`;
+      if (/デジクロス/.test(txt)) extraButtons.push({ label: '🔗 デジクロスにする', onClick: () => enterMultiEvolveMode(handIndex, handNumber, 'digixros') });
+      if (/アセンブリ/.test(txt)) extraButtons.push({ label: '🧩 アセンブリにする', onClick: () => enterAssemblyMode(handIndex, handNumber) });
+    }
+    const catJa = isDualUse ? 'デュアル・オプション側' : ({ digimon: 'デジモン', tamer: 'テイマー', option: 'オプション' }[card.category] || '');
+    const EN_JA = Object.fromEntries(Object.entries(JA_COLOR_EN).map(([k, v]) => [v, k]));
+    const colJa = (card.color || []).map(c => EN_JA[c] || c).join('/');
+    closeZonePopup();
+    openEvolveRouteModal(card, null, `「${displayName}」(${[catJa, colJa].filter(Boolean).join('・')})を${verb}`,
+      (cost) => finalize(cost), false, verb, routes, null,
+      { notes, reductions, extraButtons, gateLabel, manualFromRoutes: true });
   }
 
   function trashFromHand(handIndex) {
@@ -14353,6 +14494,7 @@
     if (/テイマー$/.test(c) && card.category !== 'tamer') return false;
     if (/進化元効果を持つ/.test(c) && !(card.inherited || '').trim()) return false;
     if (/デジクロス条件を持つ/.test(c) && !/デジクロス/.test(card.effect || '')) return false;
+    if (/多色/.test(c) && (card.color || []).length < 2) return false;
     const nc = /(\d)色(以上)?/.exec(c);
     if (nc) { const k = (card.color || []).length, n = parseInt(nc[1], 10); if (nc[2] ? k < n : k !== n) return false; }
     const inc = /((?:[赤青黄緑黒紫白](?:\/|か)?)+)を含む/.exec(c.replace(/「[^」]*」/g, '「」'));
@@ -14381,6 +14523,251 @@
       if (!cols.some(col => (card.color || []).includes(col))) return false;
     }
     return cardMatchesSubject(card, { filters: parseSubjectFilters(c), colors: [] });
+  }
+
+  // ---------- 場の条件の判定(「〜がいる」「セキュリティがN枚以下」など) ----------
+  // 返り値: true / false / null(この書き方は判定できない=プレイヤーに確認してもらう)
+  function fieldStacksOf(pi) { const p = practiceState.players[pi]; return [...p.battle, ...(p.raising ? [p.raising] : [])]; }
+  function stackMatchesFilterText(st, filter, wantCats) {
+    const top = getStackTopCard(st);
+    if (!top) return false;
+    if (wantCats && wantCats.length && !wantCats.includes(top.category)) return false;
+    if (st.dualAsOption) return false;
+    let c = filter;
+    if (/レスト状態の/.test(c)) { if (!st.rested) return false; c = c.replace(/レスト状態の/g, ''); }
+    const src = /進化元に((?:「[^」]+」(?:\/|か)?)+)がある/.exec(c);
+    if (src) {
+      const names = (src[1].match(/「([^」]+)」/g) || []).map(x => x.slice(1, -1));
+      const ok = st.cards.slice(0, -1).some(e => { const cc = cardIndexByNumber.get(cardEntryNum(e)); return cc && names.some(n => (cc.name || '').includes(n)); });
+      if (!ok) return false;
+      c = c.replace(src[0], '');
+    }
+    const dp = /DP(\d+)(以上|以下)の?/.exec(c);
+    if (dp) {
+      const v = getEffectiveDP(st), n = parseInt(dp[1], 10);
+      if (v == null || (dp[2] === '以上' ? v < n : v > n)) return false;
+      c = c.replace(dp[0], '');
+    }
+    c = c.replace(/^の|の$/g, '').trim();
+    return revealCondMatches(top, c);
+  }
+  // 「緑の自分のテイマー」「特徴に「CS」を持つ自分のデジモン/テイマー」「自分の「天野ネネ」」に合うスタックを数える
+  function splitFieldSubject(pi, subj) {
+    let s2 = subj.replace(/^(?:バトル)?エリアに/, '').trim();
+    const owners = /相手の/.test(s2) ? [1 - pi] : /自分の/.test(s2) ? [pi] : [pi, 1 - pi];
+    let cats = ['digimon', 'tamer'];
+    const cm = /(デジモン|テイマー)(?:\/|と|か)?(デジモン|テイマー)?$/.exec(s2);
+    if (cm) { cats = [cm[1], cm[2]].filter(Boolean).map(x => x === 'デジモン' ? 'digimon' : 'tamer'); s2 = s2.slice(0, cm.index); }
+    else if (!/」$/.test(s2)) return null;
+    const filter = s2.replace(/(自分|相手|お互い)の/g, '').replace(/他の/g, '').replace(/^の|の$/g, '');
+    // 知っている言い回しだけで出来ているか(残りがあれば判定しない)
+    const rest = filter
+      .replace(/進化元に(「[^」]+」(\/|か)?)+がある/g, '')
+      .replace(/(名称に|特徴に|特徴)?(「[^」]+」(\/|か(?=「))?)+(を含む|を持つ|の記述がある)?/g, '')
+      .replace(/≪[^≫]+≫の記述がある/g, '').replace(/進化元に(「[^」]+」(\/|か)?)+がある/g, '').replace(/進化元効果を持つ/g, '')
+      .replace(/Lv\.\d+(以上|以下)?/g, '').replace(/DP\d+(以上|以下)/g, '').replace(/レスト状態/g, '')
+      .replace(/(\d色|多色)(以上)?/g, '').replace(/[赤青黄緑黒紫白]/g, '').replace(/[\/のかを含]/g, '').trim();
+    if (rest) return null;
+    return { owners, cats, filter };
+  }
+  function countFieldSubject(pi, subj) {
+    const sp = splitFieldSubject(pi, subj);
+    if (!sp) return null;
+    let n = 0;
+    sp.owners.forEach(o => fieldStacksOf(o).forEach(st => { if (stackMatchesFilterText(st, sp.filter, sp.cats)) n++; }));
+    return n;
+  }
+  function evalFieldCondition(cond, pi) {
+    const c = (cond || '').trim().replace(/^エリアに/, '');
+    if (!c) return true;
+    const P = practiceState.players[pi], O = practiceState.players[1 - pi];
+    // 「AがいるかBがいる」のような並記は今のところ扱わない。「Aか、Bを持つ自分のデジモンがいる」は主語側で分ける
+    let m;
+    if ((m = /^自分のセキュリティが(\d+)枚以下$/.exec(c))) return P.security.length <= +m[1];
+    if ((m = /^相手のセキュリティが(\d+)枚以下$/.exec(c))) return O.security.length <= +m[1];
+    if ((m = /^お互いのセキュリティ合計が(\d+)枚以下$/.exec(c))) return P.security.length + O.security.length <= +m[1];
+    if ((m = /^相手のトラッシュが(\d+)枚以上$/.exec(c))) return O.trash.length >= +m[1];
+    if ((m = /^相手の手札またはトラッシュが(\d+)枚以上$/.exec(c))) return O.hand.length >= +m[1] || O.trash.length >= +m[1];
+    if ((m = /^自分のトラッシュ(?:に|の)(.+?)が(\d+)枚以上(?:ある)?$/.exec(c))) return P.trash.filter(n => revealCondMatches(cardIndexByNumber.get(cardEntryNum(n)), m[1])).length >= +m[2];
+    if (/^自分の手札が相手より少ない$/.test(c)) return P.hand.length < O.hand.length;
+    if (/^自分のデジモン体数が相手より少ない$/.test(c)) return P.battle.filter(isDigimonLikeStack).length < O.battle.filter(isDigimonLikeStack).length;
+    if (/^自分の表向きのセキュリティがない$/.test(c)) return !P.security.some(e => e && typeof e === 'object' && e.u);
+    if ((m = /^自分の(?:表向きのセキュリティに|セキュリティに表向きの)「([^」]+)」が(ある|ない)$/.exec(c))) {
+      const has = P.security.some(e => e && typeof e === 'object' && e.u && miniCardName(cardEntryNum(e)) === m[1]);
+      return m[2] === 'ある' ? has : !has;
+    }
+    if ((m = /^(?:バトルエリアに)?自分の「([^」]+)」が(?:バトルエリアに)?ない$/.exec(c))) return !P.battle.some(st => (getStackTopCard(st) || {}).name === m[1]);
+    if ((m = /^(.+?)が(\d+)体以上いる$/.exec(c))) { const k = countFieldSubject(pi, m[1]); return k == null ? null : k >= +m[2]; }
+    if ((m = /^(.+?)がいない$/.exec(c))) { const k = countFieldSubject(pi, m[1]); return k == null ? null : k === 0; }
+    if ((m = /^(.+?)がいる$/.exec(c))) {
+      // 「自分のテイマーか特徴に「ハイブリッド体」を持つ自分のデジモン」: 主語ごとに分けてどれか
+      const parts = m[1].split(/(?<=デジモン|テイマー|」)か(?=[^。]*(?:自分|相手)の)/);
+      const rs = parts.map(x => countFieldSubject(pi, x));
+      if (rs.some(k => k != null && k > 0)) return true;
+      return rs.some(k => k == null) ? null : false;
+    }
+    return null;
+  }
+  // 条件を満たしているスタックの名前(表示用)
+  function fieldConditionWitness(cond, pi) {
+    const m = /^(?:エリアに)?(.+?)がいる$/.exec((cond || '').trim());
+    if (!m) return '';
+    for (const part of m[1].split(/(?<=デジモン|テイマー|」)か(?=[^。]*(?:自分|相手)の)/)) {
+      const sp = splitFieldSubject(pi, part);
+      if (!sp) continue;
+      for (const o of sp.owners) {
+        const st = fieldStacksOf(o).find(x => stackMatchesFilterText(x, sp.filter, sp.cats));
+        if (st) return stackLabel(st);
+      }
+    }
+    return '';
+  }
+  // ---------- オプションの色条件(4-21) ----------
+  // 返り値: { ok, ignore, html } ok=使ってよい / html=表示する1行
+  function optionColorCheck(card, pi) {
+    const eff = engineStripNotes(card.dual ? (card.dual.effect || '') : (card.effect || ''));
+    const colors = card.color || [];
+    const EN_JA = Object.fromEntries(Object.entries(JA_COLOR_EN).map(([k, v]) => [v, k]));
+    const stacks = fieldStacksOf(pi).filter(st => { const t = getStackTopCard(st); return t && !st.dualAsOption && (t.category === 'digimon' || t.category === 'tamer'); });
+    // 「このカードは紫でも色条件を満たせる」
+    const alt = [...eff.matchAll(/このカードは([赤青黄緑黒紫白])でも色条件を満たせる/g)].map(x => JA_COLOR_EN[x[1]]);
+    const holder = (col) => stacks.find(st => (getStackTopCard(st).color || []).includes(col));
+    const missing = colors.filter(col => !holder(col) && !(alt.length && alt.some(a => holder(a))));
+    const colorText = colors.map(c => EN_JA[c] || c).join('/');
+    if (!missing.length) {
+      const names = [...new Set(colors.map(col => holder(col) || alt.map(holder).find(Boolean)).filter(Boolean).map(stackLabel))].join('・');
+      return { ok: true, html: `✔ 色条件OK: ${escapeHtml(colorText)}のデジモン/テイマーがいます(${escapeHtml(names)})` };
+    }
+    // 色条件を無視できる書き方
+    const reasons = [];
+    let unknown = null;
+    const kw = /≪使用条件《([^》]+)》≫/.exec(eff);
+    if (kw) {
+      const spec = kw[1];
+      let subj;
+      const tm = /^特徴((?:「[^」]+」\/?)+)$/.exec(spec);
+      const mm = /^((?:「[^」]+」\/?)+)の記述$/.exec(spec);
+      if (tm) subj = `特徴${tm[1]}を持つ自分のデジモン/テイマー`;
+      else if (mm) subj = `${mm[1]}の記述がある自分のデジモン/テイマー`;
+      const r = subj ? evalFieldCondition(subj + 'がいる', pi) : null;
+      if (r) reasons.push(`${spec}(${fieldConditionWitness(subj + 'がいる', pi)})`);
+      else if (r == null) unknown = `≪使用条件《${spec}》≫`;
+    }
+    if (/(?:^|。|\n)このカードは色条件を無視できる/.test(eff)) reasons.push('このカードの効果');
+    [...eff.matchAll(/([^。\n]*?)(?:間|とき)、この(?:オプション)?カードは色条件を無視(?:して使用)?できる/g)].forEach(x => {
+      const cond = x[1].replace(/^.*?。/, '').trim();
+      const r = evalFieldCondition(cond, pi);
+      if (r) { const w = fieldConditionWitness(cond, pi); reasons.push(cond + (w ? `(${w})` : '')); }
+      else if (r == null) unknown = cond;
+    });
+    if (reasons.length) return { ok: true, ignore: true, html: `✔ 色条件を無視できます: ${escapeHtml(reasons[0])}` };
+    if (unknown) return { ok: false, unsure: true, html: `❓ 色条件(${escapeHtml(colorText)})を満たしていません。「${escapeHtml(unknown)}」なら色条件を無視できます(自動で判定できない書き方なので確認してください)` };
+    return { ok: false, html: `⚠ 色条件を満たしていません: ${escapeHtml(missing.map(c => EN_JA[c] || c).join('・'))}のデジモン/テイマーが場にいません` };
+  }
+
+  // ---------- 常時のコスト軽減(代償なし) ----------
+  // kind: 'evolve' | 'play' | 'use'。ctx: { pi, target(進化元スタック), source('hand'|'trash'|…) }
+  // 返り値: [{ n, label, holds(true/null), scaling(注記|null), once(発揮記録用エントリ|null) }]
+  function collectCostReductions(kind, card, ctx) {
+    const out = [];
+    if (!card || !practiceState) return out;
+    const pi = ctx.pi;
+    const verbRe = kind === 'evolve' ? '進化' : kind === 'use' ? '使用' : '登場';
+    const stripHead = (t) => engineStripNotes(t).replace(/^(【[^】]+】|［[^］]*］|\[[^\]]*\]|\{[^}]*\})+/, '');
+    const nOf = (m) => parseInt(m, 10);
+    const condOf = (cond) => cond ? evalFieldCondition(cond, pi) : true;
+    // (1) 場のカード(バトルエリア/育成エリア)の効果
+    if (practiceState.turn.playerIndex === pi) {
+      const zones = [];
+      const P = practiceState.players[pi];
+      P.battle.forEach(st => zones.push([st, 'battle']));
+      if (P.raising) zones.push([P.raising, 'raising']);
+      zones.forEach(([st, zone]) => getStackEffectSources(st).forEach(src => src.text.split('\n').forEach((line, lineIndex) => {
+        const parsed = parseEffectLine(line);
+        if (!lineAllowedInZone(parsed, zone)) return;
+        if (parsed.labels.some(l => !/^(自分のターン|お互いのターン)$/.test(l))) return;
+        if (!engineTurnLabelOk(parsed.labels, pi)) return;
+        const body = stripHead(parsed.text);
+        if (/ことで|この効果で|次に|ターン終了まで/.test(body)) return;
+        const entry = { ownerIndex: pi, stackUid: ensureStackUid(st), cardNumber: src.cardNumber, field: src.field, lineIndex, text: parsed.text };
+        if (isOnceUsed(entry)) return;
+        const name = src.card.name + (src.field === 'inherited' ? '(進化元)' : src.field === 'link' ? '(リンク)' : '');
+        let m;
+        if (kind === 'evolve') {
+          m = /^((?:レスト状態の|裏向きの進化元を持つ)?)(このデジモン(?:か自分のテイマー)?|(.*?)自分のデジモン)が(?:(.+?)に)?進化するとき、(?:(.+?)なら、)?支払う(?:進化)?コスト[-－](\d+)/.exec(body);
+          if (!m) return;
+          const t = ctx.target;
+          if (!t) return;
+          if (m[2].startsWith('このデジモン')) {
+            if (t !== st && !(/テイマー/.test(m[2]) && (getStackTopCard(t) || {}).category === 'tamer')) return;
+          }
+          if (m[1] === 'レスト状態の' && !t.rested) return;
+          if (m[3] && !stackMatchesFilterText(t, m[3].replace(/の$/, ''), null)) return;
+          let dest = (m[4] || '').replace(/^手札の/, '');
+          if (/^トラッシュの/.test(dest)) { if (ctx.source !== 'trash') return; dest = dest.replace(/^トラッシュの/, ''); }
+          if (dest && !revealCondMatches(card, dest.replace(/(デジモン)?カード$|デジモン$/, '') + (/(デジモン)?カード$|デジモン$/.test(dest) ? 'デジモンカード' : ''))) return;
+          const h = condOf(m[5]);
+          if (h === false) return;
+          out.push({ n: nOf(m[6]), label: `「${name}」の効果`, holds: h, cond: m[5] || '', once: isOncePerTurnText(parsed.text) ? entry : null });
+        } else {
+          m = /^(?:自分の)?(?:手札の|手札から、?)?(.+?)(?:が|を)登場(?:する|させる)とき、(?:(.+?)なら、)?支払う(?:登場)?コスト[-－](\d+)(?:できる)?。?(.*)$/.exec(body);
+          if (!m || /このカード/.test(m[1])) return;
+          let cond = m[1].replace(/1枚$/, '').replace(/^自分の/, '');
+          if (!revealCondMatches(card, cond)) return;
+          const h = condOf(m[2]);
+          if (h === false) return;
+          const scaling = /ごとに/.test(m[4]) ? m[4].replace(/。.*$/, '') : null;
+          out.push({ n: nOf(m[3]), label: `「${name}」の効果`, holds: h, cond: m[2] || '', scaling, once: isOncePerTurnText(parsed.text) ? entry : null });
+        }
+      })));
+    }
+    // (2) このカード自身の効果(「このカードが登場するとき、〜なら、支払う登場コスト-N」)
+    const own = (card.effect || '').split('\n');
+    own.forEach(line => {
+      const parsed = parseEffectLine(line);
+      if (parsed.prefix) return;
+      if (parsed.labels.some(l => !/^(自分のターン|お互いのターン)$/.test(l))) return;
+      const body = stripHead(parsed.text);
+      if (/この効果で|ことで/.test(body)) return;
+      let m;
+      if (kind === 'evolve') {
+        m = /^(.*?)(?:自分の)?デジモンが(?:手札の)?このカードに進化するとき、(?:(.+?)ごとに、)?支払う(?:進化)?コスト[-－](\d+)/.exec(body);
+        if (!m) return;
+        if (m[1] && ctx.target && !stackMatchesFilterText(ctx.target, m[1].replace(/自分の$/, '').replace(/の$/, ''), null)) return;
+        out.push({ n: nOf(m[3]), label: 'このカードの効果', holds: true, cond: '', scaling: m[2] ? `${m[2]}ごとに-${m[3]}` : null });
+      } else {
+        m = /^(?:(.+?)間、)?(?:手札の)?このカード(?:が(?:手札から)?登場する|を登場させる|を使用する)とき、(?:(.+?)なら、)?(?:(.+?)ごとに、?)?支払う(?:登場|使用)?コスト[-－](\d+)/.exec(body);
+        if (!m) return;
+        const cond = m[1] ? m[1] : m[2];
+        const h = condOf(cond);
+        if (h === false) return;
+        out.push({ n: nOf(m[4]), label: 'このカードの効果', holds: h, cond: cond || '', scaling: m[3] ? `${m[3]}ごとに-${m[4]}` : null });
+      }
+    });
+    return out;
+  }
+  // ルート一覧に軽減を反映した行を足す(確実な軽減はまとめて1行、判定できない条件つきは個別の行、「〜ごとに」は注記)
+  function applyReductionsToRoutes(routes, reds) {
+    if (!reds.length) return { routes, notes: [] };
+    const sure = reds.filter(r => r.holds === true && !r.scaling);
+    const unsure = reds.filter(r => r.holds == null && !r.scaling);
+    const notes = reds.filter(r => r.scaling).map(r => `ℹ️ ${r.label}: ${r.scaling}(行には入れていません。下の手入力で調整してください)`);
+    const extra = [];
+    const mk = (r0, list, warn) => {
+      const n = list.reduce((a, x) => a + x.n, 0);
+      const base = r0.cost;
+      return Object.assign({}, r0, {
+        cost: Math.max(0, base - n), origCost: r0.origCost != null ? r0.origCost : base,
+        reductionText: (warn ? '❓ ' : '➖ ') + list.map(x => `${x.label} -${x.n}${x.cond ? `(${x.cond}なら)` : ''}`).join('、') + (warn ? ' ※条件を確認' : ''),
+        onPick: () => list.forEach(x => x.once && markOnceUsed(x.once)),
+      });
+    };
+    routes.forEach(r0 => {
+      if (r0.scalingNote) return;
+      if (sure.length) extra.push(mk(r0, sure, false));
+      unsure.forEach(u => extra.push(mk(r0, [...sure, u], true)));
+    });
+    return { routes: [...extra, ...routes], notes };
   }
 
   function openRevealResolveView(revealed, self, spec) {
