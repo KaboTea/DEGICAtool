@@ -3120,8 +3120,14 @@
       flex: 1; writing-mode: vertical-rl; letter-spacing: 0.15em; padding: 8px 0; min-height: 0;
     }
     body.ls-mode #practiceBoardPanel .ls-dock-toggle.has-items { color: #1a1204; background: linear-gradient(180deg, #ffe08a, var(--gold)); border-color: transparent; }
+    /* 開いているときも、右端の帯(たたむボタン)はそのままの場所に残す。右の列はその左に出す */
+    body.ls-mode.ls-dock-open #practiceBoardPanel .ls-dock-toggle {
+      position: fixed; top: 6px; bottom: 6px; right: calc(4px + env(safe-area-inset-right, 0px)); width: 32px; z-index: 82;
+      writing-mode: vertical-rl; letter-spacing: 0.15em; padding: 8px 0; min-height: 0; margin: 0;
+      color: rgba(255,255,255,0.85); background: rgba(30,36,56,0.98); border: 1px solid rgba(255,255,255,0.25);
+    }
     body.ls-mode.ls-dock-open #practiceBoardPanel .ls-dock {
-      position: absolute; top: 0; bottom: 0; right: env(safe-area-inset-right, 0px);
+      position: absolute; top: 0; bottom: 0; right: calc(40px + env(safe-area-inset-right, 0px));
       width: var(--ls-r); z-index: 80; padding-left: 6px;
       box-shadow: -14px 0 30px rgba(0,0,0,0.65);
     }
@@ -3449,7 +3455,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.60.4</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.60.5</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -5180,7 +5186,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.60.4`);
+    log(`DigiCA Tool build v0.60.5`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -11074,6 +11080,12 @@
       // 発揮できなくなった効果だけが残っている場合はここで片付ける
       if (q.pending.length) q.pending = [];
       panel.hidden = true;
+      return;
+    }
+    // 発揮できる効果が1つだけなら、「発揮する/しない」を聞かずに処理中にする(処理中の画面でも「発揮しない」を選べる)
+    if (!q.current && validPending.length === 1) {
+      q.pending = validPending;
+      selectEffect(validPending[0].id);
       return;
     }
     panel.hidden = false;
