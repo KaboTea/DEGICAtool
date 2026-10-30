@@ -3401,7 +3401,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.57.0</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.58.0</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -5129,7 +5129,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.57.0`);
+    log(`DigiCA Tool build v0.58.0`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -5826,6 +5826,104 @@
       };
     });
   }
+  // ---------- 効果で手札/トラッシュから進化する(「このデジモンをトラッシュの〜に進化コスト-2で進化できる」等) ----------
+  function parseEvolveFromZone(text) {
+    const out = [];
+    // 「特徴に」「名称に」の「に」を「〜に進化」の区切りと間違えないよう、いったん置き換えて読む
+    const back = (x) => (x || '').replace(/\u0001/g, 'に');
+    engineStripNotes(text || '').replace(/(名称|特徴)に/g, '$1\u0001').split('。').forEach(sent => {
+      const jm = /で、?(?:自分の)?手札の(.+?)(?:1枚)?に[^。]{0,20}?ジョグレス進化(?:できる|させる)/.exec(sent);
+      if (jm) { out.push({ jogress: true, zones: ['hand'], cond: back(jm[1]) }); return; }
+      let m = /(?:を|は|から)、?(?:自分の)?(手札\/トラッシュ|トラッシュ\/手札|手札|トラッシュ)の(.+?)(?:1枚)?に([^。]{0,40}?)進化(?:できる|させる)/.exec(sent);
+      // 「自分のデジモン1体をこのカードにコストを支払わずに進化できる」(トラッシュ/手札にあるこのカード自身)
+      if (!m) { const sm = /(?:を|は)、?(このカード)に([^。]{0,40}?)進化(?:できる|させる)/.exec(sent); if (sm) m = Object.assign([sm[0], '手札/トラッシュ', sm[1], sm[2]], { index: sm.index }); }
+      if (!m) return;
+      const before = sent.slice(0, m.index);
+      const subj = before.slice(Math.max(before.lastIndexOf('、'), before.lastIndexOf('】'), before.lastIndexOf('］'), before.lastIndexOf(']')) + 1);
+      if (/相手の/.test(subj)) return;
+      const tail = m[3];
+      let costRule = { type: 'normal' };
+      let x;
+      if (/コストを支払わず/.test(tail)) costRule = { type: 'free' };
+      else if ((x = /進化コスト(\d+)で/.exec(tail)) || (x = /(\d+)コスト支払って/.exec(tail))) costRule = { type: 'fixed', n: parseInt(x[1], 10) };
+      else if ((x = /進化コスト[-－](\d+)/.exec(tail))) costRule = { type: 'minus', n: parseInt(x[1], 10) };
+      out.push({
+        zones: m[1].includes('/') ? ['hand', 'trash'] : [m[1] === 'トラッシュ' ? 'trash' : 'hand'],
+        cond: back(m[2]), subj: back(subj), costRule, ignoreCond: /(進化条件|Lv\.)を無視/.test(tail),
+        who: /この(デジモン|テイマー)/.test(subj) ? 'self' : /育成エリア/.test(subj) ? 'raising' : 'pick',
+      });
+    });
+    return out;
+  }
+  function evolveCondMatches(card, cond, selfNumber) {
+    if (!card) return false;
+    if (/^このカード$/.test(cond.trim())) return card.number === selfNumber;
+    if (/デジモンカード/.test(cond) && card.category !== 'digimon') return false;
+    const lv = /Lv\.(\d+)(以下|以上)?/.exec(cond);
+    if (lv) {
+      const n = parseInt(lv[1], 10), L = card.level;
+      if (L == null) return false;
+      if (lv[2] === '以下' ? L > n : lv[2] === '以上' ? L < n : L !== n) return false;
+    }
+    return cardMatchesSubject(card, { filters: parseSubjectFilters(cond), colors: parseSubjectColors(cond) });
+  }
+  function evolveFromZoneHandlersFor(e, holderStack) {
+    if (!practiceState) return [];
+    return parseEvolveFromZone(e.text).map(ev => {
+      const zoneLabel = ev.zones.map(z => z === 'trash' ? 'トラッシュ' : '手札').join('/');
+      const label = ev.jogress
+        ? `🧬 ${zoneLabel}の${ev.cond}にジョグレス進化`
+        : `🧬 ${zoneLabel}から進化${ev.costRule.type !== 'normal' ? `(${EVOLVE_COST_RULE_LABEL(ev.costRule).replace(/で$|に$/, '')})` : ''}`;
+      return {
+        label,
+        run: () => {
+          if (e.ownerIndex !== practiceState.viewingIndex) { showToast('この自動処理は、その効果を持つプレイヤーの視点に切り替えてから実行してください', true); return; }
+          const p = practiceState.players[e.ownerIndex];
+          // 進化させるカードの候補(手札/トラッシュ)
+          const all = [];
+          ev.zones.forEach(z => (z === 'trash' ? p.trash : p.hand).forEach((entry, idx) => {
+            const num = cardEntryNum(entry);
+            const c = cardIndexByNumber.get(num);
+            if (c && c.category === 'digimon') all.push({ zone: z, idx, num, card: c, ok: evolveCondMatches(c, ev.cond, e.cardNumber) });
+          }));
+          const seen = new Set();
+          const uniq = (list) => list.filter(x => { const k = x.zone + x.num; if (seen.has(k)) return false; seen.add(k); return true; });
+          const ok = uniq(all.filter(x => x.ok));
+          const ng = uniq(all.filter(x => !x.ok));
+          const go = (pick) => {
+            if (ev.jogress) {
+              if (pick.zone !== 'hand') { showToast('ジョグレス進化は手札のカードのみ対応しています', true); return; }
+              enterMultiEvolveMode(pick.idx, pick.num, 'jogress');
+              return;
+            }
+            // 進化するデジモン
+            const own = [...p.battle, ...(p.raising ? [p.raising] : [])].filter(st => isDigimonLikeStack(st) || (/テイマー/.test(ev.subj) && (getStackTopCard(st) || {}).category === 'tamer'));
+            let allowed = null;
+            let fixed = null;
+            if (ev.who === 'self' && holderStack && findStackOwnerAndZone(holderStack)) fixed = holderStack;
+            else if (ev.who === 'raising' && p.raising) fixed = p.raising;
+            else {
+              const cond = { filters: parseSubjectFilters(ev.subj), colors: parseSubjectColors(ev.subj) };
+              allowed = own.filter(st => cardMatchesSubject(getStackTopCard(st), cond) && !(/他の/.test(ev.subj) && st === holderStack));
+              if (!allowed.length) allowed = null; // 条件に合うものがいなければ全て選べる
+            }
+            enterEvolveMode(pick.idx, pick.num, false, { source: pick.zone, costRule: ev.costRule, ignoreCond: ev.ignoreCond, allowedTargets: allowed, effectName: e.cardName });
+            if (fixed) performEvolve(fixed);
+          };
+          if (!ok.length && !ng.length) { showToast(`${zoneLabel}に進化できるデジモンカードがありません`, true); return; }
+          if (ok.length === 1 && !ng.length) { go(ok[0]); return; }
+          const btnOf = (x) => ({ label: `${x.ok ? '' : '(条件外) '}「${x.card.name}」${ev.zones.length > 1 ? `(${x.zone === 'trash' ? 'トラッシュ' : '手札'})` : ''}`, onClick: () => go(x) });
+          const showAll = () => openDecisionUi(`進化させるカードを選んでください(条件外も表示中)`, [...ok.map(btnOf), ...ng.map(btnOf), { label: 'やめる', onClick: () => renderPracticeBoard() }]);
+          openDecisionUi(ok.length ? `進化させるカードを選んでください(条件: ${ev.cond})` : `条件(${ev.cond})に合うカードがありません`, [
+            ...ok.map(btnOf),
+            ...(ng.length ? [{ label: `条件外も選ぶ(${ng.length}枚)`, onClick: showAll }] : []),
+            { label: 'やめる', onClick: () => renderPracticeBoard() },
+          ]);
+        },
+      };
+    });
+  }
+
   // 盤面: 制限を受けている側のプレイヤー名の横にチップ、🌐ボタンに件数バッジ
   function renderRestrictionUi() {
     if (!practiceState) return;
@@ -7905,10 +8003,11 @@
         !(artsEvolveMode && artsEvolveMode.sourceStack === player.raising);
       // 進化できない系のロック/効果があれば光らせない(押すと確認を出す)
       const evoBlocked = stackIsTarget && evolveMode && evolveBlockReason(player.raising, evolveMode.card);
+      const evoNotAllowed = stackIsTarget && evolveMode && evolveMode.allowedTargets && evolveMode.allowedTargets.length && !evolveMode.allowedTargets.includes(player.raising);
       const onClick = evoBlocked ? () => performEvolve(player.raising) : isSelf && !stackIsTarget
         ? () => openStackActionView(player.raising)
         : () => openStackDetail(player.raising);
-      const raisingTile = buildStackTile(player.raising, onClick, stackIsTarget && !evoBlocked);
+      const raisingTile = buildStackTile(player.raising, onClick, stackIsTarget && !evoBlocked && !evoNotAllowed);
       if (isSelf) setupStackEvolveDropTarget(raisingTile, player.raising);
       raisingAreaEl.appendChild(raisingTile);
     } else {
@@ -7933,10 +8032,11 @@
           : !!allowEvolveTarget && !((evolveMode || artsEvolveMode) && ((topCard && topCard.category === 'option') || stack.dualAsOption)) &&
             !(artsEvolveMode && artsEvolveMode.sourceStack === stack);
         const evoBlocked = stackIsTarget && evolveMode && evolveBlockReason(stack, evolveMode.card);
+        const evoNotAllowed = stackIsTarget && evolveMode && evolveMode.allowedTargets && evolveMode.allowedTargets.length && !evolveMode.allowedTargets.includes(stack);
         const onClick = evoBlocked ? () => performEvolve(stack) : isSelf && !stackIsTarget
           ? () => openStackActionView(stack)
           : () => openStackDetail(stack);
-        const tile = buildStackTile(stack, onClick, stackIsTarget && !evoBlocked);
+        const tile = buildStackTile(stack, onClick, stackIsTarget && !evoBlocked && !evoNotAllowed);
         if (isSelf) {
           setupStackEvolveDropTarget(tile, stack);
           setupStackDragSource(tile, stack);
@@ -10426,8 +10526,9 @@
   }
   function getEffectHandlers(e) {
     if (e.deferred) return deferredHandlersFor(e);
-    if (e.event === '破棄') { const ds = discardedSelfHandlersFor(e); if (ds.length) return [...ds, ...getEffectHandlersBase(e), ...restrictHandlersFor(e)]; }
-    return [...getEffectHandlersBase(e), ...restrictHandlersFor(e)];
+    const extra = () => { const f = e.stackUid ? findStackByUid(e.stackUid) : null; return [...restrictHandlersFor(e), ...evolveFromZoneHandlersFor(e, f && f.stack)]; };
+    if (e.event === '破棄') { const ds = discardedSelfHandlersFor(e); if (ds.length) return [...ds, ...getEffectHandlersBase(e), ...extra()]; }
+    return [...getEffectHandlersBase(e), ...extra()];
   }
   function getEffectHandlersBase(e) {
     if (e.burst) {
@@ -11805,13 +11906,16 @@
   const evolveRouteSubtitle = document.getElementById('evolveRouteSubtitle');
   const evolveManualCost = document.getElementById('evolveManualCost');
 
-  function enterEvolveMode(handIndex, handNumber, burst) {
+  // opts: { source: 'hand'|'trash', costRule: {type:'free'|'fixed'|'minus'|'normal', n}, ignoreCond, allowedTargets: stack[], effectName }
+  function enterEvolveMode(handIndex, handNumber, burst, opts) {
     const card = cardIndexByNumber.get(handNumber);
     if (!card) return;
-    evolveMode = { handIndex, handNumber, card, burst: !!burst };
+    const o = opts || {};
+    evolveMode = { handIndex, handNumber, card, burst: !!burst, source: o.source || 'hand', costRule: o.costRule || null, ignoreCond: !!o.ignoreCond, allowedTargets: o.allowedTargets || null, effectName: o.effectName || '' };
+    const fromLabel = evolveMode.source === 'trash' ? 'トラッシュの' : '';
     evolveModeText.textContent = burst
       ? `「${card.name}」をバースト進化させる先を、バトルエリア/育成エリアの進化元から選んでください(解決後にテイマーを手札へ戻せます。ターン終了までに破棄が必要です)`
-      : `「${card.name}」の進化先を、バトルエリア/育成エリアの進化元から選んでください`;
+      : `${o.effectName ? `🧬「${o.effectName}」の効果: ` : ''}${fromLabel}「${card.name}」の進化先を、バトルエリア/育成エリアの進化元から選んでください`;
     evolveModeBanner.classList.add('active');
     renderPracticeBoard();
   }
@@ -12481,7 +12585,8 @@
         const scalingHtml = r.scalingNote
           ? `<span class="eri-text" style="color:var(--danger);">⚠ ${escapeHtml(r.scalingNote)}(可変コストのため、下の手動入力で計算して入力してください)</span>`
           : '';
-        btn.innerHTML = `<span class="eri-cost">コスト${r.cost}</span>${mainText}${scalingHtml}`;
+        const origHtml = r.origCost != null && r.origCost !== r.cost ? `<s style="opacity:.6;margin-right:3px;">${r.origCost}</s>` : '';
+        btn.innerHTML = `<span class="eri-cost">コスト${origHtml}${r.cost}</span>${mainText}${scalingHtml}`;
         if (r.scalingNote) {
           btn.disabled = true;
           btn.style.opacity = '0.55';
@@ -12546,14 +12651,45 @@
     const topCard = cardIndexByNumber.get(cardEntryNum(targetStack.cards[targetStack.cards.length - 1]));
     const self = practiceState.players[practiceState.viewingIndex];
     const isRaisingTarget = self.raising === targetStack;
+    // 効果による進化: ルートのコストを効果の書き方に合わせて変え、「進化条件を無視」なら条件に関係なく進化できるルートを先頭に出す
+    let routesOverride = null;
+    let manualDefault = null;
+    const rule = evolveMode.costRule;
+    if (rule || evolveMode.ignoreCond) {
+      const base = buildEvolveRoutes(evolveMode.card, topCard);
+      routesOverride = base.map(r => Object.assign({}, r, { cost: applyEvolveCostRule(rule, r.cost), origCost: r.cost }));
+      const evoCosts = (evolveMode.card.evo || []).map(x => x.cost ?? 0);
+      const baseCost = base.length ? Math.min(...base.map(r => r.cost)) : (evoCosts.length ? Math.min(...evoCosts) : 0);
+      manualDefault = applyEvolveCostRule(rule, baseCost);
+      if (evolveMode.ignoreCond) {
+        routesOverride.unshift({ cost: manualDefault, origCost: baseCost, label: `🧬 効果で進化(進化条件を無視${rule ? '・' + EVOLVE_COST_RULE_LABEL(rule) : ''})`, sub: null });
+      }
+    }
     openEvolveRouteModal(
       evolveMode.card, topCard,
-      `「${topCard ? topCard.name : '?'}」→「${evolveMode.card.name}」に進化(進化元: ${topCard ? topCard.name : '?'})`,
+      `「${topCard ? topCard.name : '?'}」→${evolveMode.source === 'trash' ? 'トラッシュの' : ''}「${evolveMode.card.name}」に進化(進化元: ${topCard ? topCard.name : '?'})${rule ? ` — 効果: ${EVOLVE_COST_RULE_LABEL(rule)}` : ''}`,
       (cost) => finalizeEvolve(cost),
-      !isRaisingTarget, null, null, targetStack
+      !isRaisingTarget, null, routesOverride, targetStack
     );
+    if (manualDefault != null) evolveManualCost.value = String(manualDefault);
   }
 
+  // 進化させるカードを、元の場所(手札/トラッシュ)から取り出す
+  function takeEvolveSourceCard(self) {
+    const zone = evolveMode.source === 'trash' ? self.trash : self.hand;
+    let idx = evolveMode.handIndex;
+    if (!(idx >= 0 && cardEntryNum(zone[idx]) === evolveMode.handNumber)) idx = zone.findIndex(x => cardEntryNum(x) === evolveMode.handNumber);
+    if (idx >= 0) zone.splice(idx, 1);
+  }
+  // 効果による進化のコスト: free=0 / fixed=N / minus=通常-N / normal=通常
+  function applyEvolveCostRule(rule, cost) {
+    if (!rule) return cost;
+    if (rule.type === 'free') return 0;
+    if (rule.type === 'fixed') return rule.n;
+    if (rule.type === 'minus') return Math.max(0, cost - rule.n);
+    return cost;
+  }
+  const EVOLVE_COST_RULE_LABEL = (r) => !r ? '' : r.type === 'free' ? 'コストを支払わずに' : r.type === 'fixed' ? `進化コスト${r.n}で` : r.type === 'minus' ? `支払う進化コスト-${r.n}で` : '進化コストを支払って';
   function finalizeEvolve(cost) {
     if (!evolveMode || !evolveRouteTarget || !practiceState) return;
     if (isNaN(cost) || cost < 0) { showToast('コストの入力が不正です', true); return; }
@@ -12563,7 +12699,7 @@
     const targetStack = evolveRouteTarget;
 
     snapshotPracticeState();
-    self.hand.splice(evolveMode.handIndex, 1);
+    takeEvolveSourceCard(self);
     // このスタックが以前バースト進化で保留中だった場合、さらに進化することで
     // 「ターン終了時に破棄」の保留は解消される。
     if (targetStack.burstEvolved) targetStack.burstEvolved = false;
@@ -12899,7 +13035,7 @@
     const targetStack = evolveRouteTarget;
 
     snapshotPracticeState();
-    self.hand.splice(evolveMode.handIndex, 1);
+    takeEvolveSourceCard(self);
     if (targetStack.burstEvolved) targetStack.burstEvolved = false;
     const links = targetStack.links || [];
     let removedLinkDP = 0;
@@ -12950,7 +13086,7 @@
     const primary = evolveRouteTarget;
 
     snapshotPracticeState();
-    self.hand.splice(evolveMode.handIndex, 1);
+    takeEvolveSourceCard(self);
     // ルール8-2-2-1-2: 進化元となったカードが持つリンクカードは、重ねる直前に破棄される。
     [primary, secondStack].forEach(s => {
       if (s.links && s.links.length > 0) {
@@ -13960,6 +14096,7 @@
           <span class="dli-name trash-list-name" data-idx="${idx}" style="cursor:pointer;">${escapeHtml(miniCardName(number))}</span>
           <button type="button" class="btn trash-row-move" data-idx="${idx}" style="font-size:10px;padding:3px 6px;">送る▾</button>
           <button type="button" class="btn trash-row-material" data-idx="${idx}" style="font-size:10px;padding:3px 6px;">進化元へ</button>
+          ${c && c.category === 'digimon' ? `<button type="button" class="btn trash-row-evolve" data-idx="${idx}" style="font-size:10px;padding:3px 6px;">🧬進化</button>` : ''}
           ${linkBtn}
         </div>`;
       }).join('');
@@ -14008,6 +14145,15 @@
             },
             { excludeTrash: true, ownerPlayer: self }
           );
+        });
+      });
+      detailBody.querySelectorAll('.trash-row-evolve').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const idx = parseInt(btn.dataset.idx, 10);
+          const number = self.trash[idx];
+          cardDetailModal.classList.remove('open');
+          enterEvolveMode(idx, number, false, { source: 'trash' });
         });
       });
       detailBody.querySelectorAll('.trash-row-material').forEach(btn => {
