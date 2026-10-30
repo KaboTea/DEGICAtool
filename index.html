@@ -3401,7 +3401,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.58.0</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.59.0</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -5129,7 +5129,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.58.0`);
+    log(`DigiCA Tool build v0.59.0`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -10526,7 +10526,20 @@
   }
   function getEffectHandlers(e) {
     if (e.deferred) return deferredHandlersFor(e);
-    const extra = () => { const f = e.stackUid ? findStackByUid(e.stackUid) : null; return [...restrictHandlersFor(e), ...evolveFromZoneHandlersFor(e, f && f.stack)]; };
+    const extra = () => {
+      const f = e.stackUid ? findStackByUid(e.stackUid) : null;
+      const list = [...restrictHandlersFor(e), ...evolveFromZoneHandlersFor(e, f && f.stack)];
+      // 進化元効果・セキュリティ効果・消滅時などの「デッキの上からN枚オープン」(【効果】欄のものは基本の処理で出している)
+      const rm = /自分のデッキの上から(\d+)枚オープン/.exec(e.text || '');
+      if (rm && e.timing !== 'ディレイ' && (!f || e.field !== 'effect')) {
+        const n = parseInt(rm[1], 10);
+        list.push({ label: `📖 デッキの上から${n}枚オープン`, run: () => {
+          if (e.ownerIndex !== practiceState.viewingIndex) { showToast('この自動処理は、その効果を持つプレイヤーの視点に切り替えてから実行してください', true); return; }
+          revealTopAndSort(n, e.text, e.cardName);
+        } });
+      }
+      return list;
+    };
     if (e.event === '破棄') { const ds = discardedSelfHandlersFor(e); if (ds.length) return [...ds, ...getEffectHandlersBase(e), ...extra()]; }
     return [...getEffectHandlersBase(e), ...extra()];
   }
@@ -10548,7 +10561,7 @@
     if (e.timing === 'ディレイ') {
       const list = [...memoryHandlersFor(e)];
       const rm = /自分のデッキの上から(\d+)枚オープン/.exec(e.text);
-      if (rm) list.push({ label: `📖 デッキの上から${rm[1]}枚オープン`, run: () => revealTopAndSort(parseInt(rm[1], 10)) });
+      if (rm) list.push({ label: `📖 デッキの上から${rm[1]}枚オープン`, run: () => revealTopAndSort(parseInt(rm[1], 10), e.text, e.cardName) });
       list.push(...targetHandlersFor(e, null), ...drawHandlersFor(e));
       return list;
     }
@@ -10569,7 +10582,7 @@
     const rm = /自分のデッキの上から(\d+)枚オープン/.exec(line);
     if (rm) {
       const n = parseInt(rm[1], 10);
-      list.push({ label: `📖 デッキの上から${n}枚オープン`, run: () => { if (viewOk()) revealTopAndSort(n); } });
+      list.push({ label: `📖 デッキの上から${n}枚オープン`, run: () => { if (viewOk()) revealTopAndSort(n, line, e.cardName); } });
     }
     // 「〜とき、≪ディレイ≫」等: このオプションをディレイして、ディレイの効果に割り込みで切り替える
     if (line.includes('≪ディレイ≫') && e.timing !== 'ディレイ') {
@@ -11911,8 +11924,8 @@
     const card = cardIndexByNumber.get(handNumber);
     if (!card) return;
     const o = opts || {};
-    evolveMode = { handIndex, handNumber, card, burst: !!burst, source: o.source || 'hand', costRule: o.costRule || null, ignoreCond: !!o.ignoreCond, allowedTargets: o.allowedTargets || null, effectName: o.effectName || '' };
-    const fromLabel = evolveMode.source === 'trash' ? 'トラッシュの' : '';
+    evolveMode = { handIndex, handNumber, card, burst: !!burst, source: o.source || 'hand', costRule: o.costRule || null, ignoreCond: !!o.ignoreCond, allowedTargets: o.allowedTargets || null, effectName: o.effectName || '', revealRef: o.revealRef || null, onTaken: o.onTaken || null };
+    const fromLabel = evolveMode.source === 'trash' ? 'トラッシュの' : evolveMode.source === 'reveal' ? '公開した' : '';
     evolveModeText.textContent = burst
       ? `「${card.name}」をバースト進化させる先を、バトルエリア/育成エリアの進化元から選んでください(解決後にテイマーを手札へ戻せます。ターン終了までに破棄が必要です)`
       : `${o.effectName ? `🧬「${o.effectName}」の効果: ` : ''}${fromLabel}「${card.name}」の進化先を、バトルエリア/育成エリアの進化元から選んでください`;
@@ -12676,7 +12689,8 @@
 
   // 進化させるカードを、元の場所(手札/トラッシュ)から取り出す
   function takeEvolveSourceCard(self) {
-    const zone = evolveMode.source === 'trash' ? self.trash : self.hand;
+    if (evolveMode.onTaken) evolveMode.onTaken();
+    const zone = evolveMode.source === 'trash' ? self.trash : evolveMode.source === 'reveal' && evolveMode.revealRef ? evolveMode.revealRef : self.hand;
     let idx = evolveMode.handIndex;
     if (!(idx >= 0 && cardEntryNum(zone[idx]) === evolveMode.handNumber)) idx = zone.findIndex(x => cardEntryNum(x) === evolveMode.handNumber);
     if (idx >= 0) zone.splice(idx, 1);
@@ -12709,6 +12723,7 @@
     // ≪進撃≫の判定はコスト支払い後のメモリー状況で行う必要があるため、payMemoryの後に呼ぶ。
     resetKeywordStateOnEvolve(targetStack, self);
     const evolvedName = evolveMode.card.name;
+    const fromReveal = evolveMode.source === 'reveal';
     if (isBurst) targetStack.burstEvolved = true;
 
     evolveRouteModal.classList.remove('open');
@@ -12716,6 +12731,7 @@
     exitEvolveMode();
     renderPracticeBoard();
     showToast(`「${evolvedName}」に進化しました(コスト${cost})`);
+    if (fromReveal) { resumeRevealSessionIfAny(); return; }
     resumeAttackStepIfAny();
     if (isBurst) promptBurstTamerReturn(targetStack, self);
   }
@@ -13453,7 +13469,7 @@
       if (m[1].includes(`【${triggerLabel}】`)) {
         const n = parseInt(m[2], 10);
         showToast(`📖「${card.name}」の${triggerLabel}効果: デッキの上から${n}枚オープンします`);
-        revealTopAndSort(n);
+        revealTopAndSort(n, card.effect.slice(m.index).split('\n')[0], card.name);
         return;
       }
     }
@@ -13785,20 +13801,128 @@
       { label: 'キャンセル', onClick: () => {} },
     ]);
   }
-  function revealTopAndSort(x) {
+  // effectText/effectName: 効果から開いたとき、「その中の〜を手札に加える」等の指示を読んで振り分け画面に反映する
+  function revealTopAndSort(x, effectText, effectName) {
     const self = practiceState.players[practiceState.viewingIndex];
     if (self.library.length === 0) { showToast('デッキがありません', true); return; }
     if (isNaN(x) || x <= 0) { showToast('枚数の入力が不正です', true); return; }
     snapshotPracticeState();
     const revealed = self.library.splice(0, Math.min(x, self.library.length));
-    openRevealResolveView(revealed, self);
+    const spec = effectText ? parseRevealInstructions(effectText) : null;
+    if (spec) spec.effectName = effectName || '';
+    openRevealResolveView(revealed, self, spec);
+  }
+  // ---------- 「デッキの上からN枚オープンする。その中の〜」の指示を読む ----------
+  // 戻り値: { steps: [{ cond, count, act, costRule, restedPlay, verb }], rest: 'bottom'|'top'|'topOrBottom'|'trash'|'hand'|null }
+  const REVEAL_ACT_TEXT = { hand: '手札に加える', play: '登場させる', use: '使用する', evolve: '進化する', material: '進化元の下に置く', tamerUnder: 'テイマーの下に置く', trash: '破棄する', secTop: 'セキュリティの上に置く', secBottom: 'セキュリティの下に置く' };
+  const REVEAL_ACT_LABEL = { hand: '手札', play: '登場', use: '使用', evolve: '進化', material: '進化元', tamerUnder: 'テイマー下', trash: '破棄', secTop: 'セキュリティ上', secBottom: 'セキュリティ下' };
+  function parseRevealInstructions(text) {
+    const t = engineStripNotes(text || '');
+    const om = /デッキの上から(\d+)枚オープンする。([\s\S]*)/.exec(t);
+    if (!om) return null;
+    const after = om[2];
+    const steps = [];
+    const VERB = '(手札に加え|登場(?:させ|でき)|使用でき|進化元の下に置|テイマーの下に置|下に置|破棄|進化(?:でき|させ)|セキュリティの(上|下)に[^、。]*?置)';
+    const actOf = (v, ud) => /手札/.test(v) ? 'hand' : /登場/.test(v) ? 'play' : /使用/.test(v) ? 'use' : /進化元/.test(v) ? 'material'
+      : /テイマー/.test(v) ? 'tamerUnder' : /セキュリティ/.test(v) ? (ud === '下' ? 'secBottom' : 'secTop') : /下に置/.test(v) ? 'material' : /破棄/.test(v) ? 'trash' : 'evolve';
+    const ruleOf = (mid) => {
+      let x;
+      if (/コストを支払わず/.test(mid)) return { type: 'free' };
+      if ((x = /(?:進化|登場)?コスト(\d+)で/.exec(mid))) return { type: 'fixed', n: parseInt(x[1], 10) };
+      if ((x = /コスト[-－](\d+)/.exec(mid))) return { type: 'minus', n: parseInt(x[1], 10) };
+      return null;
+    };
+    const push = (cond, count, upTo, v, ud, mid, extra) => steps.push(Object.assign({ cond: (cond || '').trim(), count, upTo: !!upTo, act: actOf(v, ud), costRule: ruleOf(mid || ''), restedPlay: /レスト状態で/.test(mid || ''), ignoreCond: /進化条件を無視/.test(mid || '') }, extra || {}));
+    // 「〜を手札に加える」の前まで(「残り」「オープンしたカードは」より前)
+    const body = after.split(/残(?:り|った)|オープンしたカード(?:は|を)/)[0];
+    body.split('。').forEach(sent0 => {
+      if (!/その中|そのカードが/.test(sent0)) return;
+      const sent = sent0.replace(/その中から、/, 'その中の');
+      const before = steps.length;
+      const re = new RegExp('(?:その中の|、)([^、。]*?)(\\d+)枚(まで)?(ずつ)?(?:を|に)、?([^、。]*?)' + VERB, 'g');
+      let m;
+      while ((m = re.exec(sent))) {
+        let cond = m[1] || '';
+        const n = parseInt(m[2], 10);
+        // 「A1枚とB1枚を」: 手順を分ける
+        if (/\d+枚と/.test(cond)) {
+          const parts = cond.split(/(\d+)枚と/);
+          for (let i = 0; i < parts.length - 1; i += 2) push(parts[i], parseInt(parts[i + 1], 10), false, m[6], m[7], m[5]);
+          push(parts[parts.length - 1], n, m[3], m[6], m[7], m[5]);
+          continue;
+        }
+        // 「AとB1枚ずつ」: それぞれ1枚ずつの手順にする
+        if (m[4]) {
+          const parts = cond.replace(/「[^」]*」/g, q => q.replace(/と/g, '\u0002')).split(/と(?=[「特名赤青黄緑黒紫白]|Lv)/).map(x => x.replace(/\u0002/g, 'と'));
+          if (parts.length > 1) { parts.forEach(pc => push(pc, n, m[3], m[6], m[7], m[5])); continue; }
+        }
+        push(cond, n, m[3], m[6], m[7], m[5]);
+      }
+      if (steps.length > before) return;
+      // 「その中の〜を登場コスト合計7までコストを支払わずに登場できる」
+      m = new RegExp('その中の([^。]*?)を、?(?:登場)?コスト合計(\\d+)まで、?([^、。]*?)' + VERB).exec(sent);
+      if (m) { push(m[1], Infinity, true, m[4], m[5], m[3], { costSum: parseInt(m[2], 10) }); return; }
+      // 「その中の〜全てを…」
+      m = new RegExp('その中の([^。]*?)全て(?:を)?、?([^、。]*?)' + VERB).exec(sent);
+      if (m) { push(m[1].replace(/を$/, ''), Infinity, false, m[3], m[4], m[2]); return; }
+      // 「(このデジモン)をその中の〜にコストを支払わずに進化できる」
+      m = /をその中の(.+?)に、?([^、。]*?)進化(?:でき|させ)/.exec(sent);
+      if (m) { push(m[1], 1, false, '進化でき', null, m[2]); return; }
+      // 「そのカードが〜なら、手札に加える」(1枚だけオープン)
+      m = new RegExp('そのカードが(.+?)なら、?([^、。]*?)' + VERB).exec(sent);
+      if (m) { push(m[1].replace(/のカード$/, 'のカード'), 1, false, m[3], m[4], m[2]); return; }
+    });
+    let rest = null;
+    const rm = /(?:残(?:り|った)(?:の)?(?:カード)?|オープンしたカード)(?:は|を)([^。]*)/.exec(after);
+    if (rm) {
+      const r = rm[1];
+      if (/デッキの上か下|デッキの上\/下/.test(r)) rest = 'topOrBottom';
+      else if (/デッキの下/.test(r)) rest = 'bottom';
+      else if (/デッキの上/.test(r)) rest = 'top';
+      else if (/破棄/.test(r)) rest = 'trash';
+      else if (/手札/.test(r)) rest = 'hand';
+    }
+    if (!steps.length && !rest) return null;
+    return { steps, rest, taken: steps.map(() => 0) };
+  }
+  // 条件文(「テイマーカード」「赤のLv.3のデジモンカード」「特徴に「X」を持つカード」「「A」か「B」」等)に合うか
+  function revealCondMatches(card, cond) {
+    if (!card) return true;
+    const c = (cond || '').trim();
+    if (!c) return true;
+    // 「テイマーカードか黒のLv.4以下のカード」: カードごとにどれかに合えばよい
+    const parts = c.split(/カード(?:か|\/)(?=.)/).map((x, i, a) => i < a.length - 1 ? x + 'カード' : x);
+    if (parts.length > 1) return parts.some(x => revealCondMatches(card, x));
+    if (/テイマーカード/.test(c) && card.category !== 'tamer') return false;
+    if (/デジモンカード/.test(c) && card.category !== 'digimon') return false;
+    if (/オプションカード/.test(c) && card.category !== 'option') return false;
+    const lv = /Lv\.(\d+)(以下|以上)?/.exec(c);
+    if (lv) {
+      const n = parseInt(lv[1], 10), L = card.level;
+      if (L == null) return false;
+      if (lv[2] === '以下' ? L > n : lv[2] === '以上' ? L < n : L !== n) return false;
+    }
+    const cm = /(登場|使用)?コスト(\d+)(以下|以上)?(?!で)/.exec(c);
+    if (cm) {
+      const n = parseInt(cm[2], 10), v = card.play_cost;
+      if (v == null) return false;
+      if (cm[3] === '以下' ? v > n : cm[3] === '以上' ? v < n : v !== n) return false;
+    }
+    const noQuote = c.replace(/「[^」]*」/g, '「」');
+    const colm = /((?:[赤青黄緑黒紫白](?:か|\/|・)?)+)の/.exec(noQuote);
+    if (colm) {
+      const cols = [...colm[1].matchAll(/[赤青黄緑黒紫白]/g)].map(x => JA_COLOR_EN[x[0]]);
+      if (!cols.some(col => (card.color || []).includes(col))) return false;
+    }
+    return cardMatchesSubject(card, { filters: parseSubjectFilters(c), colors: [] });
   }
 
-  function openRevealResolveView(revealed, self) {
+  function openRevealResolveView(revealed, self, spec) {
     closeZonePopup();
     currentDetailCard = null;
     document.getElementById('addToDeckFromDetail').style.display = 'none';
     activeRevealSession = { revealed, self };
+    let manual = !spec;
     // 全てのカードを振り分け終えたら、「閉じる」を押さなくても自動で閉じる。戻り値: まだ表示中ならtrue
     function render() {
       if (revealed.length === 0) {
@@ -13809,6 +13933,7 @@
         resumeAttackStepIfAny();
         return false;
       }
+      if (!manual) { renderGuided(); return true; }
       const rows = revealed.map((number, i) => `
         <div class="deck-list-item reveal-row" style="cursor:default;">
           <img src="${escapeHtml(miniCardImg(number))}" alt="" class="reveal-view-row" data-idx="${i}" style="width:34px;border-radius:3px;cursor:pointer;" onerror="this.style.opacity=0">
@@ -13825,9 +13950,12 @@
         <div class="detail-info" style="width:100%;">
           <div class="d-title">公開したカード</div>
           <div class="d-number mono">残り${revealed.length}枚を振り分けてください</div>
+          ${spec ? '<button type="button" class="btn reveal-guided" style="font-size:10.5px;padding:4px 8px;margin-top:6px;">📖 効果の指示に戻る</button>' : ''}
           <div class="deck-list" style="margin-top:8px;">${rows || '<div class="empty-state">処理完了しました</div>'}</div>
         </div>
       `;
+      const gb = detailBody.querySelector('.reveal-guided');
+      if (gb) gb.addEventListener('click', () => { manual = false; render(); });
       detailBody.querySelectorAll('.reveal-view-row').forEach(el => {
         el.addEventListener('click', () => {
           const idx = parseInt(el.dataset.idx, 10);
@@ -13872,6 +14000,125 @@
           enterMaterialTargetMode(number, 'reveal', null);
         });
       });
+    }
+    // 効果の指示どおりに振り分ける画面(条件に合う手順のボタンだけ押せる)
+    function renderGuided() {
+      const steps = spec.steps;
+      const restStep = steps.length + 1;
+      const CIRC = ['①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧'];
+      const num = (i) => CIRC[i] || `(${i + 1})`;
+      const left = (i) => steps[i].count === Infinity ? Infinity : steps[i].count - spec.taken[i];
+      const restPerCard = spec.rest === 'bottom' || spec.rest === 'top' || spec.rest === 'topOrBottom';
+      const restBtns = (i) => !restPerCard ? '' : (spec.rest === 'topOrBottom' ? ['top', 'bottom'] : [spec.rest]).map(d =>
+        `<button type="button" class="btn rg-rest" data-idx="${i}" data-dest="${d}" style="font-size:10.5px;padding:4px 7px;white-space:nowrap;">${num(steps.length)}山札${d === 'top' ? '上' : '下'}</button>`).join('');
+      const REST_TEXT = { bottom: 'デッキの下に戻す', top: 'デッキの上に戻す', topOrBottom: 'デッキの上か下に戻す', trash: '破棄する', hand: '手札に加える' };
+      const instr = steps.map((st, i) => `<div>${num(i)} <b>${escapeHtml(st.cond || 'カード')}</b> ${st.costSum ? `登場コスト合計${st.costSum}まで` : st.count === Infinity ? '全て' : `${st.count}枚${st.upTo ? 'まで' : ''}`}${st.act === 'evolve' ? 'に' : 'を'} <b>${st.costRule ? EVOLVE_COST_RULE_LABEL(st.costRule).replace(/進化/, '') : ''}${REVEAL_ACT_TEXT[st.act]}</b> <span style="color:#7fe0a0;">(${spec.taken[i]}/${st.count === Infinity ? '全' : st.count})</span></div>`).join('')
+        + (spec.rest ? `<div>${restPerCard ? num(steps.length) + ' ' : ''}残り: <b>${REST_TEXT[spec.rest]}</b></div>` : '');
+      const rows = revealed.map((number, i) => {
+        const card = cardIndexByNumber.get(number);
+        const okSteps = steps.map((st, si) => left(si) > 0 && revealCondMatches(card, st.cond));
+        const any = okSteps.some(Boolean);
+        const stepBtns = steps.map((st, si) => `<button type="button" class="btn rg-step ${okSteps[si] ? 'primary' : ''}" data-idx="${i}" data-step="${si}" ${okSteps[si] ? '' : 'disabled'} style="font-size:10.5px;padding:4px 7px;white-space:nowrap;${okSteps[si] ? '' : 'opacity:.35;'}">${num(si)}${REVEAL_ACT_LABEL[st.act]}</button>`).join('');
+        return `
+        <div class="rg-row" style="display:flex;align-items:center;gap:8px;padding:7px 8px;border:1px solid var(--border);border-radius:8px;margin-bottom:5px;${any ? 'border-color:rgba(127,224,160,.5);' : ''}">
+          <img src="${escapeHtml(miniCardImg(number))}" alt="" class="rg-view" data-idx="${i}" style="width:34px;border-radius:3px;cursor:pointer;flex-shrink:0;${!any && steps.length ? 'opacity:.45;' : ''}" onerror="this.style.opacity=0">
+          <div class="rg-view" data-idx="${i}" style="flex:1;min-width:0;cursor:pointer;${!any && steps.length ? 'opacity:.45;' : ''}">
+            <div style="font-size:12.5px;font-weight:700;">${escapeHtml(miniCardName(number))}</div>
+            <div style="font-size:10px;color:var(--text-dim);">${card ? ({ digimon: 'デジモン', tamer: 'テイマー', option: 'オプション', digitama: 'デジタマ' }[card.category] || '') + (card.level ? ' Lv.' + card.level : '') : ''}</div>
+          </div>
+          <div style="display:flex;gap:4px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;">${stepBtns}${restBtns(i)}</div>
+        </div>`;
+      }).join('');
+      const bulk = spec.rest === 'trash' || spec.rest === 'hand'
+        ? `<button type="button" class="btn primary rg-bulk" style="font-size:11.5px;padding:6px 10px;">残り${revealed.length}枚を${spec.rest === 'trash' ? '破棄' : '手札に加える'}</button>` : '';
+      detailBody.innerHTML = `
+        <div class="detail-info" style="width:100%;">
+          <div class="d-title">公開したカード(${revealed.length}枚)</div>
+          <div style="margin:8px 0 10px;padding:8px 10px;border:1px solid rgba(255,200,80,.45);border-radius:8px;background:rgba(255,200,80,.07);font-size:11.5px;line-height:1.6;">
+            <div style="font-weight:800;color:#ffd27a;margin-bottom:3px;">📖 ${escapeHtml(spec.effectName || '効果')}の指示</div>${instr}
+          </div>
+          <div>${rows}</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;align-items:center;">
+            ${bulk}
+            <button type="button" class="btn rg-manual" style="font-size:10.5px;padding:5px 8px;">✋ 手動で振り分ける(条件を無視)</button>
+          </div>
+        </div>`;
+      const reopen = () => { revealSessionReopen = () => { if (render() !== false) cardDetailModal.classList.add('open'); }; };
+      detailBody.querySelectorAll('.rg-view').forEach(el => el.addEventListener('click', () => {
+        const card = cardIndexByNumber.get(revealed[parseInt(el.dataset.idx, 10)]);
+        if (!card) return;
+        reopen();
+        openCardDetail(card, true);
+      }));
+      detailBody.querySelectorAll('.rg-rest').forEach(btn => btn.addEventListener('click', () => {
+        const [number] = revealed.splice(parseInt(btn.dataset.idx, 10), 1);
+        if (btn.dataset.dest === 'top') self.library.unshift(number); else self.library.push(number);
+        renderPracticeBoard();
+        render();
+      }));
+      const bulkBtn = detailBody.querySelector('.rg-bulk');
+      if (bulkBtn) bulkBtn.addEventListener('click', () => {
+        const all = revealed.splice(0, revealed.length);
+        all.forEach(n => { if (spec.rest === 'trash') self.trash.push(n); else self.hand.push(n); });
+        renderPracticeBoard();
+        render();
+      });
+      detailBody.querySelector('.rg-manual').addEventListener('click', () => { manual = true; render(); });
+      detailBody.querySelectorAll('.rg-step').forEach(btn => btn.addEventListener('click', () => {
+        const idx = parseInt(btn.dataset.idx, 10);
+        const si = parseInt(btn.dataset.step, 10);
+        const st = steps[si];
+        const number = revealed[idx];
+        const card = cardIndexByNumber.get(number);
+        const done = () => { spec.taken[si]++; };
+        if (st.act === 'hand' || st.act === 'trash' || st.act === 'secTop' || st.act === 'secBottom') {
+          revealed.splice(idx, 1);
+          if (st.act === 'hand') self.hand.push(number);
+          else if (st.act === 'trash') self.trash.push(number);
+          else sendCardToDestination(self, number, st.act, false);
+          done();
+          renderPracticeBoard();
+          render();
+          return;
+        }
+        if (st.act === 'play') {
+          const base = card ? (card.play_cost ?? 0) : 0;
+          const cost = st.costRule ? applyEvolveCostRule(st.costRule, base) : base;
+          if (!canPayMemoryCost(practiceState.turn.playerIndex, cost)) { showToast('メモリーが上限(10)に達するため、このコストでは登場できません', true); return; }
+          revealed.splice(idx, 1);
+          self.battle.push({ cards: [number], rested: !!st.restedPlay });
+          if (cost) payMemory(practiceState.turn.playerIndex, cost);
+          done();
+          renderPracticeBoard();
+          showToast(`「${card ? card.name : '?'}」を登場させました(コスト${cost})`);
+          render();
+          return;
+        }
+        if (st.act === 'use') {
+          // オプションの使用: 手札に加えてから、手札からの使用と同じ流れで使う
+          revealed.splice(idx, 1);
+          self.hand.push(number);
+          done();
+          cardDetailModal.classList.remove('open');
+          reopen();
+          renderPracticeBoard();
+          appearFromHand(self.hand.length - 1, number, centerPoint());
+          return;
+        }
+        if (st.act === 'material' || st.act === 'tamerUnder') {
+          revealed.splice(idx, 1);
+          done();
+          cardDetailModal.classList.remove('open');
+          reopen();
+          enterMaterialTargetMode(number, 'reveal', null);
+          return;
+        }
+        if (st.act === 'evolve') {
+          cardDetailModal.classList.remove('open');
+          reopen();
+          enterEvolveMode(idx, number, false, { source: 'reveal', revealRef: revealed, costRule: st.costRule, ignoreCond: st.ignoreCond, effectName: spec.effectName, onTaken: done });
+        }
+      }));
     }
     if (render() !== false) cardDetailModal.classList.add('open');
   }
