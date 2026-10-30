@@ -1546,6 +1546,7 @@
     transform: scale(1.15);
   }
 
+  .evolve-manual-toggle { width: 100%; text-align: left; font-size: 12px; color: var(--text-dim); background: transparent; border-style: dashed; }
   .evolve-route-item {
     display: block;
     width: 100%;
@@ -3335,6 +3336,18 @@
     /* その他のモーダル(進化ルート・フィールド効果など)は画面の高さに収めてスクロールさせる */
     body.ls-mode .modal-backdrop:not(.detail-modal) .modal { max-height: calc(var(--ls-h) - 16px); max-width: calc(100% - 24px); overflow-y: auto; box-sizing: border-box; }
     body.ls-mode .detail-modal .modal-actions { margin-top: 10px; }
+    /* 進化ルートの選択は横画面では小さくまとめる */
+    body.ls-mode #evolveRouteModal .modal { width: min(400px, calc(100% - 24px)); padding: 10px 12px; }
+    body.ls-mode #evolveRouteModal h2 { font-size: 13px; margin: 0 0 4px; }
+    body.ls-mode #evolveRouteModal #evolveRouteSubtitle { font-size: 11px !important; margin-bottom: 6px !important; }
+    body.ls-mode #evolveRouteModal #evolveRouteList { gap: 5px !important; max-height: none !important; }
+    body.ls-mode #evolveRouteModal .evolve-route-item { padding: 6px 9px; font-size: 12px; }
+    body.ls-mode #evolveRouteModal .evolve-manual { margin-top: 6px !important; }
+    body.ls-mode #evolveRouteModal .evolve-manual-toggle { padding: 5px 8px; font-size: 11px; }
+    body.ls-mode #evolveRouteModal #evolveSpecialRow { margin-top: 6px !important; }
+    body.ls-mode #evolveRouteModal #evolveSpecialRow .btn { padding: 5px 6px; font-size: 11px; }
+    body.ls-mode #evolveRouteModal .modal-actions { margin-top: 6px; }
+    body.ls-mode #evolveRouteModal .modal-actions .btn { padding: 6px 12px; font-size: 12px; }
     /* カード一覧(公開したカード・トラッシュ等)の行は、ボタンを名前の下の段に回して押しやすくする */
     /* カード一覧(公開したカード等): 横幅が広いので、画像・名前・ボタンを1行に並べ、ボタンを大きくする */
     body.ls-mode .detail-modal .deck-list-item { flex-wrap: wrap; row-gap: 6px; padding: 8px 10px; }
@@ -3490,7 +3503,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.61.0</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.61.1</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -3836,10 +3849,12 @@
     <h2 class="mono">進化ルートを選択</h2>
     <div id="evolveRouteSubtitle" style="font-size:12px;color:var(--text-dim);margin-bottom:12px;"></div>
     <div id="evolveRouteList" style="display:flex;flex-direction:column;gap:8px;max-height:340px;overflow-y:auto;"></div>
-    <div class="field" style="margin-top:14px;">
-      <label>その他(手動でコストを入力)</label>
-      <div id="evolveManualCostStepperWrap" style="display:flex;flex-direction:column;gap:6px;"></div>
-      <button class="btn" id="evolveManualApply" style="margin-top:6px;width:100%;">この内容で進化</button>
+    <div class="field evolve-manual" id="evolveManualField" style="margin-top:12px;">
+      <button type="button" class="btn evolve-manual-toggle" id="evolveManualToggle">✏️ コストを手入力 ▸</button>
+      <div id="evolveManualBody" hidden>
+        <div id="evolveManualCostStepperWrap" style="display:flex;flex-direction:column;gap:6px;margin-top:8px;"></div>
+        <button class="btn" id="evolveManualApply" style="margin-top:6px;width:100%;">この内容で進化</button>
+      </div>
     </div>
     <div class="field" id="evolveSpecialRow" style="margin-top:8px;display:none;">
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
@@ -5224,7 +5239,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.61.0`);
+    log(`DigiCA Tool build v0.61.1`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -6207,6 +6222,11 @@
       if (/コストを支払わず/.test(tail)) costRule = { type: 'free' };
       else if ((x = /進化コスト(\d+)で/.exec(tail)) || (x = /(\d+)コスト支払って/.exec(tail))) costRule = { type: 'fixed', n: parseInt(x[1], 10) };
       else if ((x = /進化コスト[-－](\d+)/.exec(tail))) costRule = { type: 'minus', n: parseInt(x[1], 10) };
+      // 「…進化コストを支払って進化できる。この効果で進化するとき、支払う進化コスト-2」: 後ろの文の軽減も反映する
+      if (costRule.type === 'normal') {
+        const am = /この効果で(?:進化|登場)するとき、支払う(?:進化|登場)コスト[-－](\d+)/.exec(back(engineStripNotes(text || '')));
+        if (am) costRule = { type: 'minus', n: parseInt(am[1], 10) };
+      }
       out.push({
         zones: m[1].includes('/') ? ['hand', 'trash'] : [m[1] === 'トラッシュ' ? 'trash' : 'hand'],
         cond: back(m[2]), subj: back(subj), costRule, ignoreCond: /(進化条件|Lv\.)を無視/.test(tail),
@@ -13060,8 +13080,16 @@
       }
     }
     document.getElementById('evolveSpecialRow').style.display = showSpecialOptions ? '' : 'none';
+    // 手入力は普段はたたむ(効果のコストはルートに反映済み)。選べるルートが無いときだけ最初から開く
+    const hasRoute = !!evolveRouteList.querySelector('.evolve-route-item:not([disabled])');
+    setEvolveManualOpen(!hasRoute);
     evolveRouteModal.classList.add('open');
   }
+  function setEvolveManualOpen(open) {
+    document.getElementById('evolveManualBody').hidden = !open;
+    document.getElementById('evolveManualToggle').textContent = open ? '✏️ コストを手入力 ▾' : '✏️ コストを手入力 ▸';
+  }
+  document.getElementById('evolveManualToggle').addEventListener('click', () => setEvolveManualOpen(document.getElementById('evolveManualBody').hidden));
 
   function performEvolve(targetStack) {
     if (!evolveMode || !practiceState) return;
