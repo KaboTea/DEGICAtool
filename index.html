@@ -2781,6 +2781,49 @@
      上書きされて一切反映されないという不具合があったため、この位置に固定する)
      ブレイクポイントは768pxに統一する(以前は480px/700px/720pxが混在していた)。
      ======================================================================== */
+  /* ---- 横画面: カードを押したときの行動の吹き出し(場)・要約パネル ---- */
+  #lsFieldBar { position: absolute; z-index: 78; display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 6px 8px 7px; border-radius: 10px;
+    background: linear-gradient(180deg, rgba(20,24,38,0.97), rgba(8,10,18,0.97)); border: 1px solid rgba(var(--gold-rgb),0.6);
+    box-shadow: 0 8px 22px rgba(0,0,0,0.6), 0 0 16px rgba(var(--gold-rgb),0.2); transform: translate(-50%, -100%); white-space: nowrap; }
+  #lsFieldBar.below { transform: translate(-50%, 0); }
+  #lsFieldBar .hab-name { font-weight: 800; font-size: 12px; color: #fff; }
+  #lsFieldBar .hab-buttons { display: flex; gap: 5px; }
+  #lsFieldBar .hab-btn { min-height: 34px; padding: 0 12px; border-radius: 8px; font-weight: 800; font-size: 12.5px; border: 1px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.07); color: #fff; font-family: inherit; cursor: pointer; }
+  #lsFieldBar .hab-btn.atk { background: linear-gradient(180deg, #ff6b6b, #d94545); border-color: #ff9a9a; }
+  #lsFieldBar .hab-btn.primary { background: linear-gradient(180deg, #5aa0ff, #3a78e0); border-color: #7ab4ff; }
+  #lsFieldBar .hab-btn.more, #practiceBoardPanel .hab-btn.more { min-width: 40px; font-size: 15px; letter-spacing: 1px; }
+  #lsSumPanel { position: absolute; z-index: 76; top: 0; bottom: 0; right: calc(40px + env(safe-area-inset-right, 0px)); width: 272px; display: flex; flex-direction: column;
+    color: #e8eefc; background: rgba(12,18,32,0.95); border-left: 2px solid rgba(120,170,255,0.5); box-shadow: -8px 0 24px rgba(0,0,0,0.5); }
+  #lsSumPanel .ms-head { position: relative; display: flex; align-items: center; gap: 6px; padding: 7px 8px 6px 14px; }
+  #lsSumPanel .ms-stripe { position: absolute; left: 0; top: 0; bottom: 0; width: 7px; display: flex; flex-direction: column; }
+  #lsSumPanel .ms-stripe i { flex: 1; }
+  #lsSumPanel .ms-cost { flex-shrink: 0; min-width: 24px; height: 24px; border-radius: 999px; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 13px; background: #2fbf71; color: #06200f; }
+  #lsSumPanel .ms-cost.warn { background: #ff9a3c; color: #2a1200; }
+  #lsSumPanel .ms-cost.nt { background: #6b7590; color: #fff; }
+  #lsSumPanel .ms-name { font-weight: 800; font-size: 14px; line-height: 1.2; flex: 1; min-width: 0; }
+  #lsSumPanel .ms-cat { font-size: 9.5px; padding: 1px 6px; border-radius: 4px; background: rgba(255,255,255,0.1); color: #c9d3ea; flex-shrink: 0; }
+  #lsSumPanel .ms-det, #lsSumPanel .ms-x { flex-shrink: 0; font-size: 10.5px; font-weight: 700; padding: 3px 7px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2); color: #cfd8ee; background: rgba(255,255,255,0.05); font-family: inherit; cursor: pointer; }
+  #lsSumPanel .ms-zone { display: flex; gap: 5px; padding: 0 8px 6px 14px; }
+  #lsSumPanel .ms-zone button { flex: 1; font-size: 11px; font-weight: 800; padding: 4px 0; border-radius: 6px; background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.14); color: #e8eefc; font-family: inherit; cursor: pointer; }
+  #lsSumPanel .ms-stats { display: flex; align-items: flex-end; gap: 12px; padding: 0 10px 1px 14px; }
+  #lsSumPanel .ms-big { line-height: 1; }
+  #lsSumPanel .ms-big small { display: block; font-size: 9px; color: #8b97b5; margin-bottom: 2px; }
+  #lsSumPanel .ms-big b { font-size: 23px; font-weight: 900; font-family: 'JetBrains Mono', monospace; }
+  #lsSumPanel .ms-big b.up { color: #7fe0a0; } #lsSumPanel .ms-big b.down { color: #ff8a8a; }
+  #lsSumPanel .ms-big em { font-style: normal; font-size: 10px; color: #8b97b5; margin-left: 3px; }
+  #lsSumPanel .ms-traits { padding: 2px 10px 5px 14px; font-size: 10px; font-weight: 600; color: #d9c38f; line-height: 1.35; }
+  #lsSumPanel .ms-badges { display: flex; flex-wrap: wrap; gap: 3px; padding: 0 10px 5px 14px; }
+  #lsSumPanel .ms-badges span { font-size: 9.5px; font-weight: 700; padding: 1px 6px; border-radius: 999px; background: rgba(90,160,255,0.16); border: 1px solid rgba(90,160,255,0.4); color: #bcd6ff; }
+  #lsSumPanel .ms-badges span.lock { background: rgba(255,92,92,0.14); border-color: rgba(255,110,110,0.5); color: #ffb3b3; }
+  #lsSumPanel .ms-body { flex: 1; overflow: auto; padding: 0 10px 8px 14px; font-size: 11px; line-height: 1.55; color: #d8e0f3; border-top: 1px solid rgba(255,255,255,0.07); -webkit-overflow-scrolling: touch; }
+  #lsSumPanel .ms-sec { margin-top: 6px; white-space: pre-wrap; }
+  #lsSumPanel .ms-sec > span { display: inline-block; font-size: 9.5px; font-weight: 800; padding: 0 5px; border-radius: 3px; margin-bottom: 2px; background: rgba(90,160,255,0.18); color: #9cc6ff; white-space: normal; }
+  #lsSumPanel .ms-sec.evo > span { background: rgba(255,210,122,0.16); color: #ffd27a; }
+  #lsSumPanel .ms-sec.evo div { font-size: 10.5px; color: #cfd8ee; }
+  #lsSumPanel .ms-sec.inh > span { background: rgba(127,224,160,0.16); color: #8fe8b0; }
+  #lsSumPanel .ms-sec.sec > span { background: rgba(255,160,90,0.16); color: #ffbf8a; }
+  #lsSumPanel .ms-sec.dual > span { background: rgba(200,140,255,0.18); color: #d6b3ff; }
+  #lsSumPanel .ms-sec small { color: #8fe8b0; font-weight: 700; margin-left: 3px; }
   /* ---- プレイヤー全体への制限(フィールド効果の「制限」)のチップ・件数バッジ ---- */
   .rx-chips { display: inline-flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-left: 6px; vertical-align: middle; }
   .rx-chips.rx-own-line { display: flex; margin: 4px 0 2px 8px; }
@@ -3401,7 +3444,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.59.3</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.60.2</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -4380,7 +4423,10 @@
           });
         });
       }
-      if (isOwn) {
+      // PC・横画面は操作を吹き出しの「⋯」に集めているので、詳細は読むだけにする(縦画面は今までどおり操作ボタンを出す)
+      if (cardBubbleMode()) {
+        detailInfo.querySelectorAll('.dp-mod-panel > div:last-child').forEach(n => n.remove());
+      } else if (isOwn) {
         detailInfo.appendChild(renderStackActionButtons(stackContext));
       } else {
         detailInfo.appendChild(renderOpponentStackActions(stackContext));
@@ -5129,7 +5175,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.59.3`);
+    log(`DigiCA Tool build v0.60.2`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -5705,6 +5751,240 @@
       }
       return true;
     });
+  }
+
+  // ---------- 横画面: カードを押したときの行動の吹き出し(場のカード)と要約パネル ----------
+  // 1回目のタップ: 行動の吹き出し(手札は今までの吹き出し、場のカードは同じ形のものをカードの上に出す)
+  // 2回目のタップ: 吹き出しを残したまま、右に要約パネル(Lv/DP・特徴・進化条件・効果文)。全文は「詳細」から
+  let lsFieldSel = null; // 吹き出しを出している場のカード(uid)
+  let lsSummary = null;  // { kind: 'hand', index, number } | { kind: 'stack', uid }
+  // 吹き出しを使う画面: 横画面とPC(縦画面のスマホは今までどおり)。要約パネルは横画面だけ(PCは2回目で全文の詳細)
+  function isPcLayout() { return !lsActive && window.matchMedia('(min-width: 769px)').matches; }
+  function cardBubbleMode() { return lsActive || isPcLayout(); }
+  function lsTapEnabled() {
+    return cardBubbleMode() && !fieldPickMode && !evolveMode && !materialTargetMode && !linkTargetMode && !deckToTamerMode && !artsEvolveMode && !multiEvolveMode && !assemblyMode;
+  }
+  function lsStackTap(stack) {
+    const uid = ensureStackUid(stack);
+    selectedHand = null;
+    if (lsFieldSel === uid && !lsActive) {
+      // PC: 2回目のタップは今までの詳細(操作ボタン付き)
+      lsFieldSel = null;
+      renderPracticeBoard();
+      openStackActionView(stack);
+      return;
+    }
+    if (lsFieldSel === uid) lsSummary = { kind: 'stack', uid };
+    else {
+      lsFieldSel = uid;
+      lsSummary = lsSummary ? { kind: 'stack', uid } : null; // パネルを開いていれば、そのカードに切り替える
+    }
+    renderPracticeBoard();
+  }
+  function lsCloseOverlay() {
+    lsFieldSel = null;
+    lsSummary = null;
+    selectedHand = null;
+    renderPracticeBoard();
+  }
+  // practiceBoardPanel の中での位置(横画面の強制回転中でもずれないよう、画面座標ではなくレイアウト上の位置で求める)
+  function lsPosInPanel(el) {
+    const panel = practiceBoardPanel;
+    let x = 0, y = 0, n = el;
+    while (n && n !== panel) {
+      x += n.offsetLeft; y += n.offsetTop;
+      const op = n.offsetParent;
+      let a = n.parentElement;
+      while (a && a !== op && a !== panel) { x -= a.scrollLeft; y -= a.scrollTop; a = a.parentElement; }
+      if (op && op !== panel) { x += op.clientLeft - op.scrollLeft; y += op.clientTop - op.scrollTop; }
+      if (!op) break;
+      n = op;
+    }
+    return { x, y, w: el.offsetWidth, h: el.offsetHeight };
+  }
+  // 場のカードの行動: 今の詳細画面の操作ボタンを流用し、よく使うものだけ吹き出しに出す
+  function lsStackActionSource(stack) {
+    const f = findStackOwnerAndZone(stack);
+    if (!f) return null;
+    const own = f.player === practiceState.players[practiceState.viewingIndex];
+    return own ? renderStackActionButtons(stack) : renderOpponentStackActions(stack);
+  }
+  function lsRenderOverlay() {
+    const oldBar = document.getElementById('lsFieldBar');
+    const oldPanel = document.getElementById('lsSumPanel');
+    if (!lsActive) lsSummary = null; // 要約パネルは横画面だけ
+    if (!practiceState || !cardBubbleMode()) {
+      if (oldBar) oldBar.remove();
+      if (oldPanel) oldPanel.remove();
+      lsFieldSel = null; lsSummary = null;
+      return;
+    }
+    // 吹き出し(場のカード)
+    const selStack = lsFieldSel ? (findStackByUid(lsFieldSel) || {}).stack : null;
+    if (lsFieldSel && !selStack) lsFieldSel = null;
+    if (oldBar) oldBar.remove();
+    const busy = !lsTapEnabled();
+    if (selStack && !busy) {
+      const tile = practiceBoardPanel.querySelector(`[data-fxid="${getFxId(selStack)}"]`);
+      if (tile) {
+        const src = lsStackActionSource(selStack);
+        const btns = src ? [...src.querySelectorAll('button')] : [];
+        const prim = [];
+        btns.forEach(b => {
+          if (b.disabled) return;
+          const t = b.textContent.trim();
+          if (/^⚔️ アタック宣言/.test(t)) prim.push({ label: '⚔️ アタック', cls: 'atk', btn: b });
+          else if (/^ディレイ$/.test(t)) prim.push({ label: '⏳ ディレイ', cls: 'primary', btn: b });
+        });
+        const mains = btns.filter(b => !b.disabled && b.style.textAlign === 'left');
+        mains.forEach((b, i) => prim.push({ label: mains.length > 1 ? `⚡ 効果${i + 1}` : '⚡ 効果', cls: 'primary', btn: b }));
+        const bar = document.createElement('div');
+        bar.id = 'lsFieldBar';
+        const top = getStackTopCard(selStack);
+        bar.innerHTML = `<div class="hab-name">${escapeHtml(top ? top.name : '?')}</div><div class="hab-buttons"></div>`;
+        const row = bar.querySelector('.hab-buttons');
+        const addBtn = (label, cls, fn) => {
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'hab-btn' + (cls ? ' ' + cls : '');
+          b.textContent = label;
+          b.addEventListener('click', (e) => { e.stopPropagation(); fn(e); });
+          row.appendChild(b);
+        };
+        prim.forEach(p => addBtn(p.label, p.cls, () => { lsFieldSel = null; lsSummary = null; p.btn.click(); }));
+        addBtn('⋯', 'more', (e) => {
+          const src2 = lsStackActionSource(selStack);
+          if (!src2) return;
+          openZonePopup(e, `「${top ? top.name : '?'}」の操作`, [{
+            custom: true,
+            render: (c) => {
+              // ±DP / DP増減のリセット(詳細画面から移したもの)
+              const dpp = renderDPModifierPanel(selStack);
+              const dpRow = dpp ? dpp.querySelector(':scope > div:last-child') : null;
+              if (dpRow) { dpRow.style.marginBottom = '4px'; c.appendChild(dpRow); }
+              c.appendChild(src2);
+              // ボタンを押したら、このポップアップと吹き出しを閉じてから操作する(続くポップアップが開けるように)
+              c.addEventListener('click', (ev) => { if (ev.target.closest('button')) { closeZonePopup(); lsFieldSel = null; lsSummary = null; } }, true);
+            },
+          }], true);
+        });
+        practiceBoardPanel.appendChild(bar);
+        const pos = lsPosInPanel(tile);
+        const pw = practiceBoardPanel.clientWidth;
+        const bw = bar.offsetWidth;
+        const cx = Math.max(bw / 2 + 4, Math.min(pw - bw / 2 - 4, pos.x + pos.w / 2));
+        bar.style.left = cx + 'px';
+        if (pos.y - bar.offsetHeight - 10 < 0) { bar.classList.add('below'); bar.style.top = (pos.y + pos.h + 8) + 'px'; }
+        else bar.style.top = (pos.y - 8) + 'px';
+      }
+    }
+    // 要約パネル
+    let card = null, stack = null;
+    if (lsSummary && lsSummary.kind === 'hand') {
+      const self = practiceState.players[practiceState.viewingIndex];
+      if (selectedHand && selectedHand.index === lsSummary.index && self.hand[lsSummary.index] === lsSummary.number) card = cardIndexByNumber.get(lsSummary.number);
+    } else if (lsSummary && lsSummary.kind === 'stack') {
+      const f = lsSummary.uid === lsFieldSel ? findStackByUid(lsSummary.uid) : null;
+      if (f) { stack = f.stack; card = getStackTopCard(stack); }
+    }
+    if (!card) {
+      lsSummary = null;
+      if (oldPanel) oldPanel.remove();
+      return;
+    }
+    const keepScroll = oldPanel && oldPanel.dataset.key === JSON.stringify(lsSummary) ? (oldPanel.querySelector('.ms-body') || {}).scrollTop || 0 : 0;
+    if (oldPanel) oldPanel.remove();
+    const panel = document.createElement('div');
+    panel.id = 'lsSumPanel';
+    panel.dataset.key = JSON.stringify(lsSummary);
+    panel.innerHTML = lsSummaryHtml(card, stack);
+    panel.addEventListener('click', (e) => e.stopPropagation());
+    panel.querySelector('.ms-x').addEventListener('click', () => { lsSummary = null; lsRenderOverlay(); });
+    panel.querySelector('.ms-det').addEventListener('click', () => { if (stack) openStackDetail(stack); else openCardDetail(card, true); });
+    const zb = panel.querySelectorAll('.ms-zone button');
+    if (zb[0]) zb[0].addEventListener('click', (e) => openDeckPopup(e));
+    if (zb[1]) zb[1].addEventListener('click', () => openTrashListView());
+    practiceBoardPanel.appendChild(panel);
+    if (keepScroll) panel.querySelector('.ms-body').scrollTop = keepScroll;
+  }
+  // 盤面の空いたところを押したら、場のカードの吹き出しと要約を閉じる
+  practiceBoardPanel.addEventListener('click', (e) => {
+    if (!cardBubbleMode() || (!lsFieldSel && !(lsSummary && lsSummary.kind === 'stack'))) return;
+    if (e.target.closest('#lsFieldBar, #lsSumPanel, [data-fxid], .zone-popup')) return;
+    lsFieldSel = null; lsSummary = null;
+    lsRenderOverlay();
+  });
+  const LS_COLOR_HEX = { red: '#e84b4b', blue: '#3d8bff', yellow: '#ffd23f', green: '#3cc46b', black: '#3a3a3a', purple: '#9b5de5', white: '#f2f2f2' };
+  const LS_LV_FORMS = ['幼年期', '成長期', '成熟期', '完全体', '究極体'];
+  function lsSummaryHtml(card, stack) {
+    const self = practiceState.players[practiceState.viewingIndex];
+    const esc = (t) => escapeHtml(engineStripNotes(t || ''));
+    const cols = card.color || [];
+    const stripe = `<div class="ms-stripe">${cols.map(x => `<i style="background:${LS_COLOR_HEX[x] || '#888'}"></i>`).join('')}</div>`;
+    const tint = cols.length ? `background:linear-gradient(90deg, ${LS_COLOR_HEX[cols[0]] || '#888'}33, transparent 70%);` : '';
+    const cat = card.dual ? 'デュアル' : ({ digimon: 'デジモン', tamer: 'テイマー', option: 'オプション', 'digi-egg': 'デジタマ' }[card.category] || '');
+    // コストバッジ(手札のみ): 出してもターンが続くなら緑、相手側へ行くなら橙
+    let costBadge = '';
+    if (!stack) {
+      const pi = practiceState.players.indexOf(self);
+      const myTurn = practiceState.turn.playerIndex === pi;
+      const ownSide = pi === 0 ? -practiceState.memory : practiceState.memory;
+      const cost = card.play_cost != null ? card.play_cost : (card.dual && card.dual.use_cost != null ? card.dual.use_cost : null);
+      if (cost != null) costBadge = `<span class="ms-cost ${!myTurn ? 'nt' : (ownSide - cost >= 0 ? '' : 'warn')}">${cost}</span>`;
+    }
+    const zone = `<div class="ms-zone"><button type="button">山札 ${self.library.length}</button><button type="button">トラッシュ ${self.trash.length}</button></div>`;
+    // Lv/DP
+    const isDigi = card.category === 'digimon' || (stack && stack.actingAsDigimon);
+    let stats = '';
+    if (isDigi) {
+      const base = card.dp != null ? card.dp : null;
+      const now = stack ? getEffectiveDP(stack) : base;
+      const cls = stack && base != null && now > base ? 'up' : (stack && base != null && now < base ? 'down' : '');
+      stats = `<div class="ms-stats">${card.level != null ? `<div class="ms-big"><small>Lv</small><b>${card.level}</b></div>` : ''}<div class="ms-big"><small>DP</small><b class="${cls}">${now != null ? now : '-'}</b>${cls ? `<em>(元${base})</em>` : ''}</div>${stack ? `<div class="ms-big"><small>進化元</small><b style="font-size:17px;">${stack.cards.length - 1}</b></div>` : ''}</div>`;
+    }
+    // 特徴(Lvと対応する形態は省く)
+    const traits = [card.form && !LS_LV_FORMS.includes(card.form) ? card.form : null, card.attribute, card.type].filter(Boolean).join('・');
+    // バッジ(場): キーワード・ロック・耐性
+    let badges = '';
+    if (stack) {
+      const list = [];
+      stackKeywordBadges(stack).forEach(d => list.push(['', `${d.icon || ''}${d.label}`]));
+      Object.keys(LOCK_LABELS).forEach(k => { if (hasLock(stack, k)) list.push(['lock', `🔒${LOCK_LABELS[k]}`]); });
+      Object.keys(RESIST_LABELS).forEach(k => { if (hasResist(stack, k)) list.push(['', `⛨${RESIST_LABELS[k]}`]); });
+      if (list.length) badges = `<div class="ms-badges">${list.map(([k, t]) => `<span class="${k}">${escapeHtml(t)}</span>`).join('')}</div>`;
+    }
+    // 本文: 【進化】の行は効果から抜き出して「進化」欄へ
+    const lines = (card.effect || '').split('\n');
+    const isEvoLine = (l) => /^【進化】/.test(l);
+    const effRest = lines.filter(l => !isEvoLine(l)).join('\n').trim();
+    const secs = [];
+    if (!stack && card.category === 'digimon') {
+      const JA = { red: '赤', blue: '青', yellow: '黄', green: '緑', black: '黒', purple: '紫', white: '白' };
+      const evo = [...(card.evo || []).map(e => `Lv.${e.level != null ? e.level : '?'} ${(e.color || []).map(x => JA[x] || x).join('/')}：コスト${e.cost != null ? e.cost : '?'}`),
+        ...lines.filter(isEvoLine).map(l => l.replace(/^【進化】/, ''))];
+      if (evo.length) secs.push(['進化', 'evo', evo.join('\n')]);
+    }
+    if (effRest) secs.push(['効果', '', effRest]);
+    if (stack) {
+      stack.cards.slice(0, -1).reverse().forEach(entry => {
+        const m = cardIndexByNumber.get(cardEntryNum(entry));
+        if (m && m.inherited && !cardEntryFaceDown(entry)) secs.push([`進化元効果<small>${escapeHtml(m.name)}</small>`, 'inh', m.inherited]);
+      });
+      (stack.links || []).forEach(num => {
+        const m = cardIndexByNumber.get(num);
+        if (m && m.inherited) secs.push([`リンク<small>${escapeHtml(m.name)}</small>`, 'inh', m.inherited]);
+      });
+    } else {
+      if (card.inherited) secs.push(['進化元効果', 'inh', card.inherited]);
+      if (card.security_effect) secs.push(['セキュリティ効果', 'sec', card.security_effect]);
+      if (card.dual) secs.push([`オプション側「${escapeHtml(card.dual.name || '')}」 使用コスト${card.dual.use_cost != null ? card.dual.use_cost : '?'}`, 'dual', card.dual.effect || '']);
+    }
+    return `
+      <div class="ms-head" style="${tint}">${stripe}${costBadge}<span class="ms-name">${escapeHtml(card.name)}</span><span class="ms-cat">${cat}</span><button type="button" class="ms-det">詳細</button><button type="button" class="ms-x">✕</button></div>
+      ${zone}${stats}
+      ${traits ? `<div class="ms-traits">${escapeHtml(traits)}</div>` : ''}
+      ${badges}
+      <div class="ms-body">${secs.map(([h, k, t]) => `<div class="ms-sec ${k}"><span>${h}</span><div>${esc(t)}</div></div>`).join('')}</div>`;
   }
 
   // ---------- プレイヤー全体への制限(フィールド効果の「制限」) ----------
@@ -7597,7 +7877,12 @@
         else if (artsEvolveMode) performArtsEvolve(stack);
       });
     } else if (onClick) {
-      el.addEventListener('click', (e) => { e.stopPropagation(); onClick(e); });
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        // 横画面: 1回目は行動の吹き出し、2回目で要約パネル
+        if (lsTapEnabled()) { lsStackTap(stack); return; }
+        onClick(e);
+      });
     }
     return el;
   }
@@ -7790,11 +8075,15 @@
     const detailInfo = detailBody.querySelector('.detail-info');
     const dpPanel = renderDPModifierPanel(stack);
     if (dpPanel) {
+      // PC・横画面は「±DP」等も吹き出しの「⋯」から使うので、ここでは今のDPの表示だけにする
+      if (cardBubbleMode()) dpPanel.querySelector(':scope > div:last-child').remove();
       const titleEl = detailInfo.querySelector('.d-title');
       if (titleEl && titleEl.nextSibling) titleEl.parentNode.insertBefore(dpPanel, titleEl.nextSibling);
       else detailInfo.appendChild(dpPanel);
     }
-    if (isOwn) {
+    if (cardBubbleMode()) {
+      // PC・横画面: 操作は吹き出しの「⋯」に集めたので、詳細は読むだけ
+    } else if (isOwn) {
       detailInfo.appendChild(renderStackActionButtons(stack));
     } else {
       detailInfo.appendChild(renderOpponentStackActions(stack));
@@ -10929,6 +11218,7 @@
     lsUpdateDock();
     arenaFxAfterRender();
     renderRestrictionUi();
+    lsRenderOverlay();
     effectEngineAfterRender();
     autoEndAfterRender();
   }
@@ -11202,7 +11492,7 @@
     if (selectedHand && self.hand[selectedHand.index] !== selectedHand.number) selectedHand = null;
     handRow.classList.toggle('has-selection', !!selectedHand);
     // カード以外の余白をタップしたら選択を解除する(カード側のクリックは伝播を止めている)
-    handRow.onclick = () => { if (selectedHand) { selectedHand = null; renderSelfHand(self, canAct); } };
+    handRow.onclick = () => { if (selectedHand) { selectedHand = null; renderSelfHand(self, canAct); lsRenderOverlay(); } };
     if (self.hand.length === 0) {
       handRow.innerHTML = '<div class="empty-state" style="padding:10px 0;font-size:12px;">(手札はありません)</div>';
       return;
@@ -11220,9 +11510,17 @@
       c.innerHTML = `<img src="${escapeHtml(miniCardImg(number))}" alt="" title="${escapeHtml(miniCardName(number))}" onerror="this.style.opacity=0">` + handCostBadgesHtml(card, self);
       c.addEventListener('click', (e) => {
         e.stopPropagation();
-        if (isSelected) { if (card) openCardDetail(card, true); return; }
+        if (isSelected) {
+          // 横画面: 2回目のタップは要約パネル(全文の詳細はパネルの「詳細」から)
+          if (lsActive && card) { lsSummary = { kind: 'hand', index, number }; lsRenderOverlay(); return; }
+          if (card) openCardDetail(card, true);
+          return;
+        }
         selectedHand = { index, number };
+        lsFieldSel = null;
+        if (lsSummary) lsSummary = { kind: 'hand', index, number };
         renderSelfHand(self, canAct);
+        lsRenderOverlay();
       });
       // ドラッグ&ドロップ: 手札カードを育成/バトルエリアへドラッグして離すと、
       // 「登場」ボタンと同じ処理(コスト入力等はそのまま)を呼び出す。
@@ -11272,6 +11570,15 @@
         actionDefs.push({ label: arr.length > 1 ? `⚡ 効果${i + 1}` : '⚡ 効果', cls: 'primary', onClick: () => useMainEffect(m) });
       });
       actionDefs.push({ label: '破棄', cls: 'danger', onClick: () => trashFromHand(index) });
+      // 横画面: 登場/使用・進化・破棄だけを出し、それ以外(進化元・リンク・効果など)は「⋯」にまとめる
+      if (cardBubbleMode()) {
+        const MAIN = /^(登場|使用|進化|破棄)$/;
+        const rest = actionDefs.filter(d => !MAIN.test(d.label));
+        const mainDefs = actionDefs.filter(d => MAIN.test(d.label));
+        if (rest.length) mainDefs.push({ label: '⋯', cls: 'more', keepSel: true, onClick: (e) => openZonePopup(e, `「${card.name}」のその他の操作`, rest.map(d => ({ label: d.label, onClick: (ev) => { selectedHand = null; lsSummary = null; d.onClick(ev || e); } }))) });
+        actionDefs.length = 0;
+        actionDefs.push(...mainDefs);
+      }
       actionDefs.forEach(def => {
         const b = document.createElement('button');
         b.type = 'button';
@@ -11279,7 +11586,9 @@
         b.textContent = def.label;
         b.addEventListener('click', (e) => {
           e.stopPropagation();
+          if (def.keepSel) { def.onClick(e); return; }
           selectedHand = null; // 操作後は選択を解除する(手札の並びが変わるため)
+          lsSummary = null;
           def.onClick(e);
         });
         btnRow.appendChild(b);
