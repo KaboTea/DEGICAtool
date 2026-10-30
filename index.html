@@ -2787,13 +2787,18 @@
     box-shadow: 0 8px 22px rgba(0,0,0,0.6), 0 0 16px rgba(var(--gold-rgb),0.2); transform: translate(-50%, -100%); white-space: nowrap; }
   #lsFieldBar.below { transform: translate(-50%, 0); }
   #lsFieldBar .hab-name { font-weight: 800; font-size: 12px; color: #fff; }
+  #practiceBoardPanel .hab-lv { display: inline-block; margin-left: 6px; padding: 0 5px; border-radius: 4px; font-size: 10px; font-weight: 800; font-family: 'JetBrains Mono', monospace;
+    color: #ffd27a; background: rgba(var(--gold-rgb), 0.14); border: 1px solid rgba(var(--gold-rgb), 0.45); vertical-align: 1px; }
   #lsFieldBar .hab-buttons { display: flex; gap: 5px; }
   #lsFieldBar .hab-btn { min-height: 34px; padding: 0 12px; border-radius: 8px; font-weight: 800; font-size: 12.5px; border: 1px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.07); color: #fff; font-family: inherit; cursor: pointer; }
   #lsFieldBar .hab-btn.atk { background: linear-gradient(180deg, #ff6b6b, #d94545); border-color: #ff9a9a; }
   #lsFieldBar .hab-btn.primary { background: linear-gradient(180deg, #5aa0ff, #3a78e0); border-color: #7ab4ff; }
   #lsFieldBar .hab-btn.more, #practiceBoardPanel .hab-btn.more { min-width: 40px; font-size: 15px; letter-spacing: 1px; }
   #lsSumPanel { position: absolute; z-index: 76; top: 0; bottom: 0; right: calc(40px + env(safe-area-inset-right, 0px)); width: 272px; display: flex; flex-direction: column;
-    color: #e8eefc; background: rgba(12,18,32,0.95); border-left: 2px solid rgba(120,170,255,0.5); box-shadow: -8px 0 24px rgba(0,0,0,0.5); }
+    color: #e8eefc; background: rgb(13,19,33); border-left: 2px solid rgba(120,170,255,0.5); box-shadow: -8px 0 24px rgba(0,0,0,0.5); }
+  /* 山札/トラッシュの列の左に出すとき(列は隠さない) */
+  #lsSumPanel.beside { top: 6px; bottom: 6px; border: 1px solid rgba(120,170,255,0.5); border-radius: 12px; overflow: hidden; box-shadow: 0 8px 28px rgba(0,0,0,0.6); }
+  #lsSumPanel.beside .ms-zone { display: none; }
   #lsSumPanel .ms-head { position: relative; display: flex; align-items: center; gap: 6px; padding: 7px 8px 6px 14px; }
   #lsSumPanel .ms-stripe { position: absolute; left: 0; top: 0; bottom: 0; width: 7px; display: flex; flex-direction: column; }
   #lsSumPanel .ms-stripe i { flex: 1; }
@@ -3444,7 +3449,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.60.2</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.60.4</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -5175,7 +5180,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.60.2`);
+    log(`DigiCA Tool build v0.60.4`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -5841,7 +5846,7 @@
         const bar = document.createElement('div');
         bar.id = 'lsFieldBar';
         const top = getStackTopCard(selStack);
-        bar.innerHTML = `<div class="hab-name">${escapeHtml(top ? top.name : '?')}</div><div class="hab-buttons"></div>`;
+        bar.innerHTML = `<div class="hab-name">${escapeHtml(top ? top.name : '?')}${top && top.level != null && isDigimonLikeStack(selStack) ? `<span class="hab-lv">Lv.${top.level}</span>` : ''}</div><div class="hab-buttons"></div>`;
         const row = bar.querySelector('.hab-buttons');
         const addBtn = (label, cls, fn) => {
           const b = document.createElement('button');
@@ -5905,6 +5910,37 @@
     if (zb[0]) zb[0].addEventListener('click', (e) => openDeckPopup(e));
     if (zb[1]) zb[1].addEventListener('click', () => openTrashListView());
     practiceBoardPanel.appendChild(panel);
+    // 自分の山札/トラッシュの列が見えていれば、その左に出す(列は隠さない)
+    const cluster = document.getElementById('selfDeckTrashCluster');
+    if (cluster && cluster.offsetWidth) {
+      const cp = lsPosInPanel(cluster);
+      const right = practiceBoardPanel.clientWidth - cp.x + 6;
+      if (practiceBoardPanel.clientWidth - right - panel.offsetWidth > 120) {
+        panel.style.right = right + 'px';
+        panel.classList.add('beside');
+      }
+    }
+    // 吹き出しがパネルに重なるなら、パネルの左へずらす
+    const barEl = document.getElementById('lsFieldBar');
+    if (barEl) {
+      const pLeft = panel.offsetLeft;
+      const bw = barEl.offsetWidth;
+      const cx = parseFloat(barEl.style.left) || 0;
+      if (cx + bw / 2 > pLeft - 6) barEl.style.left = Math.max(bw / 2 + 4, pLeft - 6 - bw / 2) + 'px';
+    }
+    // 手札の吹き出しも、パネルに重なるなら左へずらす(矢印はカードを指したまま)
+    const hb = practiceBoardPanel.querySelector('.hand-action-bar');
+    if (hb) {
+      const hp = lsPosInPanel(hb);
+      const over = hp.x + hp.w - (panel.offsetLeft - 6);
+      if (over > 0) {
+        const cur = parseFloat(hb.style.left) || 0;
+        const nl = Math.max(4, cur - over);
+        hb.style.left = nl + 'px';
+        const ax = parseFloat(hb.style.getPropertyValue('--arrow-x')) || 0;
+        hb.style.setProperty('--arrow-x', Math.min(hb.offsetWidth - 10, ax + (cur - nl)) + 'px');
+      }
+    }
     if (keepScroll) panel.querySelector('.ms-body').scrollTop = keepScroll;
   }
   // 盤面の空いたところを押したら、場のカードの吹き出しと要約を閉じる
@@ -11550,6 +11586,8 @@
     const nameEl = document.createElement('div');
     nameEl.className = 'hab-name';
     nameEl.textContent = card.name;
+    // デジモンは名前の横にLvを添える
+    if (card.level != null && card.category === 'digimon') { const lv = document.createElement('span'); lv.className = 'hab-lv'; lv.textContent = `Lv.${card.level}`; nameEl.appendChild(lv); }
     bar.appendChild(nameEl);
     const btnRow = document.createElement('div');
     btnRow.className = 'hab-buttons';
