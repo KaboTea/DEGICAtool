@@ -2781,6 +2781,41 @@
      上書きされて一切反映されないという不具合があったため、この位置に固定する)
      ブレイクポイントは768pxに統一する(以前は480px/700px/720pxが混在していた)。
      ======================================================================== */
+  /* ---- 帯・パネルの種類ごとの色(効果=金 / アタック=赤 / 消滅・場を離れる=紫 / セキュリティチェック=ミント / 確認=スレート) ---- */
+  #practiceBoardPanel .fx-stack { display: flex; flex-direction: column; gap: 6px; }
+  #practiceBoardPanel .fx-stack.has-attack.has-effect .attack-bar { border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.6); }
+  #practiceBoardPanel .fx-stack.has-attack.has-effect .effect-panel { border-radius: 12px; border-top: 1px solid rgba(var(--gold-rgb),0.65); }
+  #practiceBoardPanel .effect-panel { border-left: 5px solid var(--gold) !important; }
+  #practiceBoardPanel .attack-bar { --kc: 229,57,77; --kt: #ff6b7c; border: 1px solid rgba(var(--kc),0.7); border-left: 5px solid rgb(var(--kc));
+    background: linear-gradient(90deg, rgba(var(--kc),0.18), rgba(var(--kc),0.03) 70%), linear-gradient(180deg, rgba(16,19,32,0.97), rgba(8,10,18,0.97)) !important;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.6), 0 0 18px rgba(var(--kc),0.18); }
+  #practiceBoardPanel .attack-bar.k-des { --kc: 167,123,255; --kt: #c4a6ff; }
+  #practiceBoardPanel .attack-bar.k-confirm { --kc: 138,160,192; --kt: #b9c8de; }
+  #practiceBoardPanel .attack-bar .ab-head .ab-t { color: var(--kt) !important; }
+  #practiceBoardPanel .attack-bar .ab-st.done .d { background: rgba(var(--kc),0.6); border-color: rgba(var(--kc),0.6); }
+  #practiceBoardPanel .attack-bar .ab-st.now { color: var(--kt); }
+  #practiceBoardPanel .attack-bar .ab-st.now .d { background: rgb(var(--kc)); border-color: var(--kt); box-shadow: 0 0 10px rgba(var(--kc),0.9); }
+  #practiceBoardPanel .attack-bar .ab-ln.done { background: rgba(var(--kc),0.55); }
+  #practiceBoardPanel .attack-bar .ab-btn.primary:not(.wait) { background: linear-gradient(180deg, var(--kt), rgb(var(--kc))); color: #fff; border-color: transparent; }
+  #practiceBoardPanel .attack-bar.k-confirm .ab-btn.primary:not(.wait) { color: #0b1220; }
+  #practiceBoardPanel .attack-bar.k-sec .ab-body { margin-top: 6px; padding: 6px 9px 8px; border-radius: 9px; border: 1px solid rgba(63,210,143,0.55); border-left: 4px solid #3fd28f; background: rgba(63,210,143,0.08); }
+  #practiceBoardPanel .attack-bar.k-sec .ab-msg { color: #6fe6ae; font-weight: 800; }
+  #practiceBoardPanel .attack-bar.k-sec .ab-btn.primary:not(.wait) { background: linear-gradient(180deg, #6fe6ae, #2fb878); color: #04150c; }
+  /* たたんだ帯(1行の見出し) */
+  #practiceBoardPanel .attack-bar.fx-collapsed { display: none !important; }
+  #practiceBoardPanel .fx-mini { display: flex; align-items: center; gap: 7px; padding: 8px 10px; border-radius: 10px; font-size: 12.5px; cursor: default;
+    background: linear-gradient(90deg, rgba(229,57,77,0.18), rgba(229,57,77,0.03) 70%), linear-gradient(180deg, rgba(16,19,32,0.97), rgba(8,10,18,0.97));
+    border: 1px solid rgba(229,57,77,0.7); border-left: 5px solid rgb(229,57,77); box-shadow: 0 6px 18px rgba(0,0,0,0.45); }
+  #practiceBoardPanel .fx-mini[hidden] { display: none; }
+  #practiceBoardPanel .fx-mini.clickable { cursor: pointer; }
+  #practiceBoardPanel .fx-mini .fm-t { font-weight: 900; color: #ff6b7c; letter-spacing: 0.04em; white-space: nowrap; }
+  #practiceBoardPanel .fx-mini .fm-s { flex: 1; min-width: 0; font-weight: 700; color: rgba(255,255,255,0.85); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #practiceBoardPanel .fx-mini .fm-arrow { color: rgba(255,255,255,0.6); }
+  #practiceBoardPanel .effect-panel.fx-collapsed { cursor: pointer; }
+  #practiceBoardPanel .effect-panel.fx-collapsed > :not(.ep-head) { display: none !important; }
+  #practiceBoardPanel .effect-panel.fx-collapsed .ep-head { border-bottom: none; }
+  #practiceBoardPanel .effect-panel.fx-collapsed .ep-head button { display: none !important; }
+  #practiceBoardPanel .effect-panel .fm-tag { margin-left: auto; font-size: 10px; font-weight: 800; padding: 1px 7px; border-radius: 999px; background: rgba(var(--gold-rgb),0.2); color: #ffe08a; white-space: nowrap; }
   /* ---- 横画面: カードを押したときの行動の吹き出し(場)・要約パネル ---- */
   #lsFieldBar { position: absolute; z-index: 78; display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 6px 8px 7px; border-radius: 10px;
     background: linear-gradient(180deg, rgba(20,24,38,0.97), rgba(8,10,18,0.97)); border: 1px solid rgba(var(--gold-rgb),0.6);
@@ -3455,7 +3490,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.60.5</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.61.0</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -3615,10 +3650,13 @@
         <div class="attack-bar" id="attackBar" hidden>
           <div class="ab-head" id="attackBarHead"></div>
           <div class="ab-steps" id="attackBarSteps"></div>
-          <div class="ab-msg" id="attackBarMsg"></div>
-          <div class="ab-acts" id="attackBarActs"></div>
-          <div class="ab-pick" id="attackBarPick"></div>
+          <div class="ab-body" id="attackBarBody">
+            <div class="ab-msg" id="attackBarMsg"></div>
+            <div class="ab-acts" id="attackBarActs"></div>
+            <div class="ab-pick" id="attackBarPick"></div>
+          </div>
         </div>
+        <div class="fx-mini atk-mini" id="attackMini" hidden></div>
         <div class="effect-panel" id="effectPanel" hidden></div>
       </div>
 
@@ -5186,7 +5224,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.60.5`);
+    log(`DigiCA Tool build v0.61.0`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -8445,8 +8483,24 @@
     Object.keys(counts).forEach(k => { if (ARENA_COLOR_TABLE[k] && counts[k] > bestN) { best = k; bestN = counts[k]; } });
     return best;
   }
+  // 陣営の色は「自分=エレクトリックブルー / 相手=デジモンオレンジ」で固定する(デッキの色に合わせると、
+  // 効果処理の金やアタックの赤などの帯の色と被って見づらくなるため)。視点を切り替えても手前はいつも同じ色。
+  const ARENA_SIDE_FIXED = {
+    self: { rgb: '31,143,255', light: '#8fcaff', ink: '#fff' },
+    opp: { rgb: '240,138,36', light: '#ffc48a', ink: '#1a0e02' },
+  };
   function applyArenaSideColors() {
     const panel = practiceBoardPanel;
+    if (ARENA_SIDE_FIXED) {
+      [['self', ARENA_SIDE_FIXED.self], ['opp', ARENA_SIDE_FIXED.opp]].forEach(([side, c]) => {
+        panel.style.setProperty(`--${side}`, `rgb(${c.rgb})`);
+        panel.style.setProperty(`--${side}-rgb`, c.rgb);
+        panel.style.setProperty(`--${side}-light`, c.light);
+        panel.style.setProperty(`--${side}-ink`, c.ink);
+      });
+      arenaSideRgb = { self: ARENA_SIDE_FIXED.self.rgb, opp: ARENA_SIDE_FIXED.opp.rgb };
+      return;
+    }
     const selfP = practiceState.players[practiceState.viewingIndex];
     const oppP = practiceState.players[1 - practiceState.viewingIndex];
     const selfKey = getPlayerMainColor(selfP) || 'blue';
@@ -15219,7 +15273,82 @@
     if (!st) return;
     st.classList.toggle('has-attack', !document.getElementById('attackBar').hidden);
     st.classList.toggle('has-effect', !document.getElementById('effectPanel').hidden);
+    layoutFxStack();
   }
+  // 帯の種類を決める(見出し・色・優先順位に使う)
+  function fxBarKind(st) {
+    const t = st ? st.title || '' : '';
+    if (/が消滅します|バトルエリアを離れます/.test(t)) return 'des';
+    if (st && st.popupLike) return 'confirm';
+    if (/^🛡 セキュリティチェック/.test(t)) return 'sec';
+    return attackState ? 'atk' : 'confirm';
+  }
+  // 「今処理するもの」だけを開いて一番上に出し、残りは1行の見出しにたたむ。
+  // 優先順: ①確認(消滅・場を離れる・その他) → ②効果処理 → ③アタックの進行。たたんだ行は押すと一時的に開ける。
+  let fxPeek = null;     // 'effect' | 'attack'(たたんだ行を押して開いたもの)
+  let fxPeekSig = '';
+  function layoutFxStack() {
+    const st = document.getElementById('fxStack');
+    const bar = document.getElementById('attackBar');
+    const ep = document.getElementById('effectPanel');
+    const mini = document.getElementById('attackMini');
+    if (!st || !bar || !ep || !mini) return;
+    const barOn = !bar.hidden && !!attackBarState;
+    const effOn = !ep.hidden;
+    const kind = barOn ? fxBarKind(attackBarState) : null;
+    const barIsDecision = barOn && (kind === 'des' || kind === 'confirm');
+    let top = null;
+    if (barIsDecision) top = 'decision';
+    else if (effOn) top = 'effect';
+    else if (barOn) top = 'attack';
+    const sig = `${top}|${kind}|${attackState ? 1 : 0}|${effOn ? 1 : 0}`;
+    if (sig !== fxPeekSig) { fxPeek = null; fxPeekSig = sig; }
+    // 効果処理: 一番上でなければたたむ
+    const effMini = effOn && top !== 'effect' && fxPeek !== 'effect';
+    ep.classList.toggle('fx-collapsed', effMini);
+    ep.style.order = top === 'effect' || fxPeek === 'effect' ? '0' : '2';
+    // アタック: 確認が出ている間/効果処理が先の間は、1行の見出しにする
+    const atkStepCollapsed = barOn && !barIsDecision && top !== 'attack' && fxPeek !== 'attack';
+    bar.classList.toggle('fx-collapsed', atkStepCollapsed);
+    bar.style.order = barIsDecision || top === 'attack' || fxPeek === 'attack' ? '0' : '3';
+    const showAtkMini = !!attackState && (barIsDecision || atkStepCollapsed || !barOn);
+    mini.hidden = !showAtkMini;
+    mini.style.order = '3';
+    if (showAtkMini) {
+      const a = attackState;
+      let tgt = '対象を選択中';
+      if (a.targetType === 'player') tgt = '相手プレイヤー';
+      else if (a.targetType === 'digimon' && a.targetStack) tgt = stackLabel(a.targetStack);
+      const cur = ATTACK_STEP_INDEX[a.stepName] != null ? ATTACK_STEP_INDEX[a.stepName] : 0;
+      mini.innerHTML = `<span class="fm-t">⚔️ アタック中</span><span class="fm-s">${escapeHtml(stackLabel(a.attackerStack))} → ${escapeHtml(tgt)}・${ATTACK_STEP_LABELS[cur]}</span>${atkStepCollapsed ? '<span class="fm-arrow">▸</span>' : ''}`;
+      mini.classList.toggle('clickable', atkStepCollapsed);
+    }
+    // 効果処理をたたんだときの見出し(待ちの数)
+    const head = ep.querySelector('.ep-head');
+    if (head) {
+      let tag = head.querySelector('.fm-tag');
+      if (effMini) {
+        const q = getEffectQueue();
+        const n = (q.current ? 1 : 0) + q.pending.filter(isEffectEntryValid).length;
+        if (!tag) { tag = document.createElement('span'); tag.className = 'fm-tag'; head.appendChild(tag); }
+        tag.textContent = `待ち${n} ▸`;
+      } else if (tag) tag.remove();
+    }
+    st.classList.toggle('fx-has-top', !!top);
+  }
+  document.getElementById('attackMini').addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (!document.getElementById('attackMini').classList.contains('clickable')) return;
+    fxPeek = 'attack';
+    layoutFxStack();
+  });
+  document.getElementById('effectPanel').addEventListener('click', (e) => {
+    const ep = document.getElementById('effectPanel');
+    if (!ep.classList.contains('fx-collapsed')) return;
+    e.stopPropagation();
+    fxPeek = 'effect';
+    layoutFxStack();
+  }, true);
   function renderAttackBar() {
     const bar = document.getElementById('attackBar');
     if (!bar) return;
@@ -15233,8 +15362,20 @@
     bar.hidden = false;
     bar.classList.toggle('ab-plain', !attackState);
     const a = attackState || null;
-    if (!a) {
-      document.getElementById('attackBarHead').innerHTML = '<span class="ab-t">⚡ 確認</span>';
+    // 帯の種類: 消滅/場を離れる確認・その他の確認・セキュリティチェック・アタックの進行 で色と見出しを分ける
+    const kind = fxBarKind(attackBarState);
+    bar.dataset.kind = kind;
+    ['k-atk', 'k-des', 'k-confirm', 'k-sec'].forEach(k => bar.classList.remove(k));
+    bar.classList.add(kind === 'sec' ? 'k-atk' : 'k-' + kind);
+    if (kind === 'sec') bar.classList.add('k-sec');
+    if (kind === 'des' || kind === 'confirm') {
+      const t = attackBarState ? attackBarState.title || '' : '';
+      document.getElementById('attackBarHead').innerHTML = kind === 'des'
+        ? `<span class="ab-t">${/離れます/.test(t) ? '↩ 場を離れる確認' : '💥 消滅の確認'}</span>`
+        : '<span class="ab-t">❔ 確認</span>';
+      document.getElementById('attackBarSteps').innerHTML = '';
+    } else if (!a) {
+      document.getElementById('attackBarHead').innerHTML = '<span class="ab-t">❔ 確認</span>';
       document.getElementById('attackBarSteps').innerHTML = '';
     } else {
     const atkName = stackLabel(a.attackerStack);
