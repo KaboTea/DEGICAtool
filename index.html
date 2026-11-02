@@ -3103,6 +3103,8 @@
       background: linear-gradient(180deg, #121729, #0a0e19);
       border-right: 1px solid rgba(255,255,255,0.1);
     }
+    .ls-ver { display: none; }
+    body.ls-mode #practiceBoardPanel .ls-ver { display: block; font-size: 8.5px; line-height: 1; color: rgba(255,255,255,0.32); text-align: center; letter-spacing: 0.04em; margin: 0 0 3px; pointer-events: none; }
     body.ls-mode #practiceBoardPanel .ls-hud-top { display: flex; flex-direction: column; gap: 5px; }
     body.ls-mode #practiceBoardPanel .ls-sp { flex: 1; min-height: 4px; }
     body.ls-mode #practiceBoardPanel .ls-hud-btns { display: flex; flex-direction: column; gap: 5px; }
@@ -3527,7 +3529,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.66.4</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.67.0</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -3710,6 +3712,7 @@
 
       <!-- スマホ横向き用: 左の操作列と右の効果パネル列(横向きのときだけ表示し、既存のボタン等をここへ移す) -->
       <div class="ls-hud" id="lsHud">
+        <div class="ls-ver mono" id="lsVer"></div>
         <div class="ls-hud-top" id="lsHudTop"></div>
         <div class="ls-sp"></div>
         <div class="ls-hud-btns" id="lsHudBtns"></div>
@@ -5265,7 +5268,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.66.4`);
+    log(`DigiCA Tool build v0.67.0`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -6275,43 +6278,66 @@
     return cardMatchesSubject(card, { filters: parseSubjectFilters(cond), colors: parseSubjectColors(cond) });
   }
   // 「自分の手札から、〜1枚を支払う登場コスト-3で登場できる」「〜をコストを支払わずに登場できる」: 手札から選んで、効果のコストで登場する
-  function playFromHandHandlersFor(e) {
-    if (!practiceState) return [];
-    const t = engineStripNotes(e.text || '').replace(/(名称|特徴)に/g, '$1\u0001');
+  // 効果で手札/トラッシュから登場・使用する(「自分の手札/トラッシュから、〜1枚をコストを支払わず登場できる」など)。
+  // 進化と同じく、場所ごとにボタンを分け、一覧から選んで、登場/使用方法の画面へ進む
+  function parsePlayFromZone(text) {
+    const t = engineStripNotes(text || '').replace(/(名称|特徴)に/g, '$1\u0001');
     const out = [];
-    const re = /自分の手札から、([^。]*?)(\d+)枚(?:まで)?を、?([^、。]*?)(登場|使用)(?:でき|させ)/g;
+    const re = /(?:自分の)?(手札\/トラッシュ|トラッシュ\/手札|手札かトラッシュ|トラッシュか手札|手札またはトラッシュ|手札|トラッシュ)から、?([^。、]*?)(\d+)枚(?:まで)?を、?([^、。]*?)(登場|使用)(?:でき|させ|する)/g;
     let m;
     while ((m = re.exec(t))) {
-      const cond = m[1].replace(/\u0001/g, 'に');
-      const mid = m[3];
+      const cond = m[2].replace(/\u0001/g, 'に');
+      const mid = m[4];
       let costRule = null, x;
       if (/コストを支払わず/.test(mid)) costRule = { type: 'free' };
       else if ((x = /コスト[-－](\d+)/.exec(mid))) costRule = { type: 'minus', n: parseInt(x[1], 10) };
       else if ((x = /コスト(\d+)で/.exec(mid))) costRule = { type: 'fixed', n: parseInt(x[1], 10) };
+      else if (/コストを支払って/.test(mid)) costRule = { type: 'normal' };
       if (!costRule) continue;
-      const verb = m[4];
+      // 「…コストを支払って登場できる。この効果で登場するとき、支払う登場コスト-N」
+      if (costRule.type === 'normal') {
+        const am = /この効果で(?:登場|使用)するとき、支払う(?:登場|使用)?コスト[-－](\d+)/.exec(t.slice(m.index));
+        if (am) costRule = { type: 'minus', n: parseInt(am[1], 10) };
+      }
+      const zw = m[1];
       out.push({
-        label: `📥 手札から${verb}(${costRule.type === 'free' ? 'コストなし' : costRule.type === 'minus' ? `コスト-${costRule.n}` : `コスト${costRule.n}`})`,
-        run: () => {
-          if (e.ownerIndex !== practiceState.viewingIndex) { showToast('この自動処理は、その効果を持つプレイヤーの視点に切り替えてから実行してください', true); return; }
-          const p = practiceState.players[e.ownerIndex];
-          const list = p.hand.map((num, idx) => ({ idx, num, card: cardIndexByNumber.get(cardEntryNum(num)) })).filter(x => x.card && x.card.category !== 'digi-egg');
-          const ok = list.filter(x => revealCondMatches(x.card, cond));
-          const ng = list.filter(x => !ok.includes(x));
-          const go = (x) => appearFromHand(x.idx, cardEntryNum(x.num), centerPoint(), false, { costRule });
-          if (ok.length === 1 && !ng.length) { go(ok[0]); return; }
-          const btn = (x, isOk) => ({ label: `${isOk ? '' : '(条件外) '}「${x.card.name}」`, onClick: () => go(x) });
-          const showAll = () => openDecisionUi('登場させるカードを選んでください(条件外も表示中)', [...ok.map(x => btn(x, true)), ...ng.map(x => btn(x, false)), { label: 'やめる', onClick: () => renderPracticeBoard() }]);
-          openDecisionUi(ok.length ? `手札から${verb}するカードを選んでください(条件: ${cond})` : `条件(${cond})に合うカードが手札にありません`, [
-            ...ok.map(x => btn(x, true)),
-            ...(ng.length ? [{ label: `条件外も選ぶ(${ng.length}枚)`, onClick: showAll }] : []),
-            { label: 'やめる', onClick: () => renderPracticeBoard() },
-          ]);
-        },
+        zones: /手札/.test(zw) && /トラッシュ/.test(zw) ? ['hand', 'trash'] : [zw === 'トラッシュ' ? 'trash' : 'hand'],
+        cond, verb: m[5], costRule,
+        colorIgnored: /色条件を無視/.test(t.slice(Math.max(0, m.index - 40), m.index + m[0].length + 10)),
       });
     }
     return out;
   }
+  const PLAY_RULE_LABEL = (r) => !r ? '' : r.type === 'free' ? 'コストなし' : r.type === 'minus' ? `コスト-${r.n}` : r.type === 'fixed' ? `コスト${r.n}` : 'コストを支払って';
+  function playFromHandHandlersFor(e) {
+    if (!practiceState) return [];
+    const out = [];
+    parsePlayFromZone(e.text).forEach(pz => pz.zones.forEach(zone => {
+      const zoneLabel = zone === 'trash' ? 'トラッシュ' : '手札';
+      out.push({
+        label: `${zone === 'trash' ? '🗑' : '📥'} ${zoneLabel}から${pz.verb}(${PLAY_RULE_LABEL(pz.costRule)})`,
+        run: () => {
+          if (e.ownerIndex !== practiceState.viewingIndex) { showToast('この自動処理は、その効果を持つプレイヤーの視点に切り替えてから実行してください', true); return; }
+          const p = practiceState.players[e.ownerIndex];
+          const list = [];
+          (zone === 'trash' ? p.trash : p.hand).forEach((entry, idx) => {
+            const num = cardEntryNum(entry);
+            const c = cardIndexByNumber.get(num);
+            if (!c || c.category === 'digi-egg') return;
+            const canVerb = pz.verb === '使用' ? (c.category === 'option' || !!c.dual) : (c.category === 'digimon' || c.category === 'tamer');
+            if (!canVerb) return;
+            list.push({ zone, idx, num, card: c, ok: revealCondMatches(c, pz.cond) });
+          });
+          if (!list.length) { showToast(`${zoneLabel}に${pz.verb}できるカードがありません`, true); return; }
+          openEffectEvolvePicker(`${zone === 'trash' ? '🗑' : '📥'}「${e.cardName}」の効果: ${zoneLabel}から${pz.verb}(${PLAY_RULE_LABEL(pz.costRule)})`, `条件: ${pz.cond}`, list,
+            (pick) => appearFromHand(pick.idx, pick.num, centerPoint(), false, { costRule: pz.costRule, source: zone, colorIgnored: pz.colorIgnored, effectName: e.cardName }),
+            pz.verb === '使用' ? '⚡使用' : '📥登場');
+        },
+      });
+    }));
+    return out;
+  }
+
   function evolveFromZoneHandlersFor(e, holderStack) {
     if (!practiceState) return [];
     const out = [];
@@ -6358,14 +6384,14 @@
   function parseMaterialFromZone(text) {
     const out = [];
     engineStripNotes(text || '').split('。').forEach(sent => {
-      const m = /(?:自分の)?(手札かトラッシュ|トラッシュか手札|手札\/トラッシュ|トラッシュ\/手札|手札|トラッシュ)から、?(.+?)(\d+)枚(まで)?を、?(.+?)の進化元の下に(裏向きで)?置/.exec(sent);
+      const m = /(?:自分の)?(手札かトラッシュ|トラッシュか手札|手札\/トラッシュ|トラッシュ\/手札|手札|トラッシュ)から、?(.+?)(\d+)枚(まで)?を、?(?:(.+?)の)?進化元の下に(裏向きで)?置/.exec(sent);
       if (!m) return;
-      const subj = m[5].replace(/^.*、/, '');
+      const subj = (m[5] || '').replace(/^.*、/, '');
       if (/相手の/.test(subj)) return;
       out.push({
         zones: /手札/.test(m[1]) && /トラッシュ/.test(m[1]) ? ['hand', 'trash'] : [m[1] === 'トラッシュ' ? 'trash' : 'hand'],
         cond: m[2].replace(/^、/, ''), n: parseInt(m[3], 10), upTo: !!m[4], subj, faceDown: !!m[6],
-        who: /^この(デジモン|テイマー)$/.test(subj) ? 'self' : /育成エリア/.test(subj) ? 'raising' : 'pick',
+        who: /^この(デジモン|テイマー)$/.test(subj) ? 'self' : /育成エリア/.test(subj) ? 'raising' : !subj ? 'holderOrPick' : 'pick',
       });
     });
     return out;
@@ -6404,7 +6430,7 @@
             actions: [{ label: '進化元の下に置く', primary: true, onClick: (idxs) => {
               const picked = idxs.map(i => list[i]);
               let fixed = null;
-              if (mz.who === 'self' && holderStack && findStackOwnerAndZone(holderStack)) fixed = holderStack;
+              if ((mz.who === 'self' || (mz.who === 'holderOrPick' && holderStack && isDigimonLikeStack(holderStack))) && holderStack && findStackOwnerAndZone(holderStack)) fixed = holderStack;
               else if (mz.who === 'raising' && p.raising) fixed = p.raising;
               if (fixed) { place(picked, fixed); return; }
               const own = [...p.battle, ...(p.raising ? [p.raising] : [])];
@@ -6423,7 +6449,7 @@
     });
   }
   // 効果で進化するカードを選ぶ一覧(手札/トラッシュ)。条件に合うものを上に、条件外はたたんでおく
-  function openEffectEvolvePicker(title, sub, list, onPick) {
+  function openEffectEvolvePicker(title, sub, list, onPick, goLabel) {
     currentDetailCard = null;
     document.getElementById('addToDeckFromDetail').style.display = 'none';
     const ok = list.filter(x => x.ok), ng = list.filter(x => !x.ok);
@@ -6431,7 +6457,7 @@
       <div class="deck-list-item eep-row${x.ok ? '' : ' eep-ng'}" style="cursor:default;${x.ok ? '' : 'opacity:.6;'}">
         <img src="${escapeHtml(miniCardImg(x.num))}" alt="" class="eep-view" data-i="${i}" style="width:34px;border-radius:3px;cursor:pointer;" onerror="this.style.opacity=0">
         <span class="dli-name eep-view" data-i="${i}" style="cursor:pointer;">${escapeHtml(x.card.name)}<span style="font-size:10px;color:var(--text-dim);margin-left:5px;">${x.card.level != null ? 'Lv.' + x.card.level : ''}${x.ok ? '' : ' (条件外)'}</span></span>
-        <span class="dli-stepper"><button type="button" class="btn eep-go" data-i="${i}" style="font-size:10.5px;padding:4px 8px;">🧬進化</button></span>
+        <span class="dli-stepper"><button type="button" class="btn eep-go" data-i="${i}" style="font-size:10.5px;padding:4px 8px;">${goLabel || '🧬進化'}</button></span>
       </div>`;
     const all = [...ok, ...ng];
     let showNg = !ok.length;
@@ -11752,6 +11778,8 @@
     t.title = lsDockOpen ? '右の列をたたんで盤面を見る' : '右の列を開く(フィールド外の操作「孵化(効果)」等もここ)';
   }
   document.body.appendChild(document.getElementById('lsDockToggle'));
+  // 横画面の左上(TURNの上)にもバージョンを小さく出す(どの版で起きたかを確認しやすくするため)
+  document.getElementById('lsVer').textContent = (document.getElementById('appVersion') || {}).textContent || '';
   document.getElementById('lsDockToggle').addEventListener('click', (e) => {
     e.stopPropagation();
     lsDockOpen = !lsDockOpen;
@@ -14037,7 +14065,10 @@
       }
       snapshotPracticeState();
       const self = practiceState.players[practiceState.viewingIndex];
-      self.hand.splice(handIndex, 1);
+      const fromZone = opts && opts.source === 'trash' ? self.trash : self.hand;
+      let zi = handIndex;
+      if (!(zi >= 0 && cardEntryNum(fromZone[zi]) === handNumber)) zi = fromZone.findIndex(x => cardEntryNum(x) === handNumber);
+      if (zi >= 0) fromZone.splice(zi, 1);
       // デュアルカードを使用した場合、アーツ進化またはディレイで場を離れるまでは
       // オプション扱い(デジモンとして数えない・下段グループ表示)にする。
       self.battle.push({ cards: [handNumber], rested: false, enteredTurn: practiceState.turn.count, dualAsOption: isDualUse || undefined });
@@ -14055,20 +14086,22 @@
     if (baseCost !== null && baseCost !== undefined) {
       if (rule) {
         const ec = applyEvolveCostRule(rule, baseCost);
-        routes.push({ label: `効果で${verb}`, sub: `効果で${verb}(${EVOLVE_COST_RULE_LABEL(rule).replace(/進化/g, verb === '使用' ? '使用' : '登場')})`, cost: ec, origCost: baseCost, effectRoute: true });
+        const effName = opts.effectName ? `「${opts.effectName}」の効果` : '効果';
+        routes.push({ label: `効果で${verb}`, sub: `${effName}で${verb}${opts.source === 'trash' ? '(トラッシュから)' : ''}`, cost: ec, origCost: baseCost, effectRoute: true,
+          reductionText: rule.type === 'minus' ? `➖ ${effName} -${rule.n}` : rule.type === 'free' ? `➖ ${effName} コストを支払わない` : rule.type === 'fixed' ? `➖ ${effName} コスト${rule.n}` : '' });
       }
       routes.push({ label: `通常の${verb}`, sub: `通常の${verb}`, cost: baseCost });
     }
     const notes = [];
     let gateLabel = null;
-    if (isOption && !opts) {
+    if (isOption && (!opts || !opts.colorIgnored)) {
       const cc = optionColorCheck(isDualUse ? Object.assign({}, card, { color: card.color }) : card, pi);
       notes.push({ cls: cc.ok ? 'ok' : 'ng', html: cc.html });
       if (!cc.ok) gateLabel = 'それでも使用する';
     }
     const reductions = rule && rule.type === 'free' ? [] : collectCostReductions(isOption ? 'use' : 'play', card, { pi, source: 'hand' });
     const extraButtons = [];
-    if (card.category === 'digimon' && !card.dual) {
+    if (card.category === 'digimon' && !card.dual && !(opts && opts.source === 'trash')) {
       const txt = `${card.effect || ''}\n${card.inherited || ''}`;
       if (/デジクロス/.test(txt)) extraButtons.push({ label: '🔗 デジクロスにする', onClick: () => enterMultiEvolveMode(handIndex, handNumber, 'digixros') });
       if (/アセンブリ/.test(txt)) extraButtons.push({ label: '🧩 アセンブリにする', onClick: () => enterAssemblyMode(handIndex, handNumber) });
