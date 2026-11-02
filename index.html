@@ -3529,7 +3529,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.67.0</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.67.1</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -5268,7 +5268,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.67.0`);
+    log(`DigiCA Tool build v0.67.1`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -14747,7 +14747,14 @@
       if ((x = /コスト[-－](\d+)/.exec(mid))) return { type: 'minus', n: parseInt(x[1], 10) };
       return null;
     };
-    const push = (cond, count, upTo, v, ud, mid, extra) => steps.push(Object.assign({ cond: (cond || '').trim(), count, upTo: !!upTo, act: actOf(v, ud), costRule: ruleOf(mid || ''), restedPlay: /レスト状態で/.test(mid || ''), ignoreCond: /進化条件を無視/.test(mid || '') }, extra || {}));
+    const destOf = (v, mid) => {
+      const act = actOf(v, null);
+      if (act !== 'tamerUnder' && act !== 'material') return {};
+      // 「特徴「セイバーズ」を持つ自分のテイマーの下に裏向きで置く」→ 置き先の条件「特徴「セイバーズ」を持つ」
+      const d = (mid || '').replace(/^、/, '').replace(/(?:自分の)?(?:(?:この)?(?:デジモン|テイマー)の)?$/, '').replace(/自分の$/, '').trim();
+      return { destCond: d, destSelf: /この(デジモン|テイマー)/.test(mid || ''), faceDown: /裏向き/.test(v) };
+    };
+    const push = (cond, count, upTo, v, ud, mid, extra) => steps.push(Object.assign({ cond: (cond || '').trim(), count, upTo: !!upTo, act: actOf(v, ud), costRule: ruleOf(mid || ''), restedPlay: /レスト状態で/.test(mid || ''), ignoreCond: /進化条件を無視/.test(mid || '') }, destOf(v, mid), extra || {}));
     // 「〜を手札に加える」の前まで(「残り」「オープンしたカードは」より前)
     const body = after.split(/残(?:り|った)|オープンしたカード(?:は|を)/)[0];
     body.split('。').forEach(sent0 => {
@@ -15200,7 +15207,7 @@
       const restBtns = (i) => !restPerCard ? '' : (spec.rest === 'topOrBottom' ? ['top', 'bottom'] : [spec.rest]).map(d =>
         `<button type="button" class="btn rg-rest" data-idx="${i}" data-dest="${d}" style="font-size:10.5px;padding:4px 7px;white-space:nowrap;">${num(steps.length)}山札${d === 'top' ? '上' : '下'}</button>`).join('');
       const REST_TEXT = { bottom: 'デッキの下に戻す', top: 'デッキの上に戻す', topOrBottom: 'デッキの上か下に戻す', trash: '破棄する', hand: '手札に加える' };
-      const instr = steps.map((st, i) => `<div>${num(i)} <b>${escapeHtml(st.cond || 'カード')}</b> ${st.costSum ? `登場コスト合計${st.costSum}まで` : st.count === Infinity ? '全て' : `${st.count}枚${st.upTo ? 'まで' : ''}`}${st.act === 'evolve' ? 'に' : 'を'} <b>${st.costRule ? EVOLVE_COST_RULE_LABEL(st.costRule).replace(/進化/, '') : ''}${REVEAL_ACT_TEXT[st.act]}${st.alt ? `か、${REVEAL_ACT_TEXT[st.alt]}` : ''}</b> <span style="color:#7fe0a0;">(${spec.taken[i]}/${st.count === Infinity ? '全' : st.count})</span></div>`).join('')
+      const instr = steps.map((st, i) => `<div>${num(i)} <b>${escapeHtml(st.cond || 'カード')}</b> ${st.costSum ? `登場コスト合計${st.costSum}まで` : st.count === Infinity ? '全て' : `${st.count}枚${st.upTo ? 'まで' : ''}`}${st.act === 'evolve' ? 'に' : 'を'} <b>${st.costRule ? EVOLVE_COST_RULE_LABEL(st.costRule).replace(/進化/, '') : ''}${st.destCond ? `${escapeHtml(st.destCond)}自分の${st.act === 'tamerUnder' ? '' : 'デジモンの'}` : ''}${REVEAL_ACT_TEXT[st.act].replace(/置く$/, st.faceDown ? '裏向きで置く' : '置く')}${st.alt ? `か、${REVEAL_ACT_TEXT[st.alt]}` : ''}</b> <span style="color:#7fe0a0;">(${spec.taken[i]}/${st.count === Infinity ? '全' : st.count})</span></div>`).join('')
         + (spec.rest ? `<div>${restPerCard ? num(steps.length) + ' ' : ''}残り: <b>${REST_TEXT[spec.rest]}</b></div>` : '');
       const rows = revealed.map((number, i) => {
         const card = cardIndexByNumber.get(number);
@@ -15301,11 +15308,33 @@
           return;
         }
         if (st.act === 'material' || st.act === 'tamerUnder') {
+          const isTamer = st.act === 'tamerUnder';
+          const own = [...self.battle, ...(self.raising ? [self.raising] : [])];
+          const kindOk = (sx) => { const c = getStackTopCard(sx); return !!c && (isTamer ? c.category === 'tamer' : isDigimonLikeStack(sx)); };
+          const cands = own.filter(sx => kindOk(sx) && (!st.destCond || revealCondMatches(getStackTopCard(sx), st.destCond)));
           revealed.splice(idx, 1);
           done();
           cardDetailModal.classList.remove('open');
-          reopen();
-          enterMaterialTargetMode(number, 'reveal', null);
+          const card = cardIndexByNumber.get(number);
+          const place = (target, faceDown) => {
+            snapshotPracticeState();
+            target.cards.unshift(faceDown ? { n: number, d: true } : number);
+            renderPracticeBoard();
+            showToast(`「${card ? card.name : '?'}」を「${stackLabel(target)}」の${isTamer ? '下' : '進化元の下'}に置きました${faceDown ? '(裏向き)' : ''}`);
+            reopen();
+            resumeRevealSessionIfAny();
+          };
+          startFieldPick({
+            title: `「${card ? card.name : '?'}」を置く${st.destCond ? st.destCond : ''}${isTamer ? 'テイマー' : 'デジモン'}をタップ`,
+            sub: cands.length ? '' : '条件に合うカードがいません(条件外も選べます)',
+            candidates: cands, extra: own, max: 1,
+            onDone: (sel) => {
+              if (!sel.length) return;
+              if (st.faceDown || isTamer) place(sel[0], st.faceDown);
+              else askFaceOrientation((fd) => place(sel[0], fd));
+            },
+            onCancel: () => { revealed.splice(Math.min(idx, revealed.length), 0, number); spec.taken[si]--; renderPracticeBoard(); reopen(); resumeRevealSessionIfAny(); },
+          });
           return;
         }
         if (st.act === 'evolve') {
