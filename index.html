@@ -3157,14 +3157,16 @@
     }
     body.ls-mode #practiceBoardPanel .ls-dock-toggle.has-items { color: #1a1204; background: linear-gradient(180deg, #ffe08a, var(--gold)); border-color: transparent; }
     /* 開いているときも、右端の帯(たたむボタン)はそのままの場所に残す。右の列はその左に出す */
+    /* 開いているときは、たたむボタンを列の左端に「引き出しの取っ手」として付ける。列は画面の右端まで使う */
     body.ls-mode.ls-dock-open #practiceBoardPanel .ls-dock-toggle {
-      position: fixed; top: 6px; bottom: 6px; right: calc(4px + env(safe-area-inset-right, 0px)); width: 32px; z-index: 82;
+      position: fixed; top: 50%; transform: translateY(-50%); height: min(150px, 60vh); right: calc(var(--ls-r) + 40px + env(safe-area-inset-right, 0px)); width: 26px; z-index: 82;
       writing-mode: vertical-rl; letter-spacing: 0.15em; padding: 8px 0; min-height: 0; margin: 0;
-      color: rgba(255,255,255,0.85); background: rgba(30,36,56,0.98); border: 1px solid rgba(255,255,255,0.25);
+      color: rgba(255,255,255,0.9); background: rgba(30,36,56,0.98); border: 1px solid rgba(255,255,255,0.25); border-right: none;
+      border-radius: 10px 0 0 10px; box-shadow: -6px 0 14px rgba(0,0,0,0.45);
     }
     body.ls-mode.ls-dock-open #practiceBoardPanel .ls-dock {
-      position: absolute; top: 0; bottom: 0; right: calc(40px + env(safe-area-inset-right, 0px));
-      width: var(--ls-r); z-index: 80; padding-left: 6px;
+      position: absolute; top: 0; bottom: 0; right: env(safe-area-inset-right, 0px);
+      width: calc(var(--ls-r) + 40px); z-index: 80; padding-left: 6px;
       box-shadow: -14px 0 30px rgba(0,0,0,0.65);
     }
     /* 右の列に入れたポップアップ・カード選択の案内(画面に浮かせず、列の中に並べる) */
@@ -3340,6 +3342,7 @@
     body.ls-mode #evolveRouteModal .modal { width: min(400px, calc(100% - 24px)); padding: 10px 12px; }
     body.ls-mode #evolveRouteModal h2 { font-size: 13px; margin: 0 0 4px; }
     body.ls-mode #evolveRouteModal #evolveRouteSubtitle { font-size: 11px !important; margin-bottom: 6px !important; }
+    #attackBarActs button, #attackBarActs .ab-btn { white-space: normal !important; max-width: 100%; overflow-wrap: anywhere; }
     .cmp-row.on { border-color: var(--accent) !important; background: rgba(143,202,255,.08); }
     .cmp-check { width: 18px; height: 18px; flex-shrink: 0; border: 1.5px solid var(--border); border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; color: var(--accent); }
     .cmp-row.on .cmp-check { border-color: var(--accent); }
@@ -3521,7 +3524,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.66.0</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.66.3</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -5259,7 +5262,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.66.0`);
+    log(`DigiCA Tool build v0.66.3`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
