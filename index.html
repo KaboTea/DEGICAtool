@@ -3142,23 +3142,26 @@
     }
     body.ls-mode #practiceBoardPanel .ls-dock-phase #raisingPhaseActions button.btn:disabled { background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.4); border: 1px solid rgba(255,255,255,0.15); }
     /* 右の列の開閉 */
-    body.ls-mode #practiceBoardPanel .ls-dock-toggle {
+    /* たたむ/開くボタンは、スクロールする列の中に置くとスマホのブラウザで消えることがあるため、body直下に置いて画面に固定する */
+    .ls-dock-toggle { display: none; }
+    body.ls-mode .ls-dock-toggle {
       display: block; flex: none; min-height: 32px; border-radius: 8px; cursor: pointer;
       font-size: 11px; font-weight: 700; color: rgba(255,255,255,0.75);
       background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15);
     }
-    body.ls-mode #practiceBoardPanel .ls-dock-toggle[hidden] { display: none; }
+    body.ls-mode .ls-dock-toggle[hidden] { display: none; }
     /* 盤面は常に同じ幅(右端に40pxの帯)。右の列は開いたときだけ盤面の上に重ねて出す */
     body.ls-mode #practiceBoardPanel.panel { grid-template-columns: var(--ls-l) minmax(0, 1fr) 40px; position: relative; }
     body.ls-mode:not(.ls-dock-open) #practiceBoardPanel .ls-dock { padding: 6px 4px; }
     body.ls-mode:not(.ls-dock-open) #practiceBoardPanel .ls-dock > :not(.ls-dock-toggle) { display: none !important; }
-    body.ls-mode:not(.ls-dock-open) #practiceBoardPanel .ls-dock-toggle {
-      flex: 1; writing-mode: vertical-rl; letter-spacing: 0.15em; padding: 8px 0; min-height: 0;
+    body.ls-mode:not(.ls-dock-open) .ls-dock-toggle {
+      position: fixed; top: 6px; bottom: 6px; right: calc(4px + env(safe-area-inset-right, 0px)); width: 32px; z-index: 82; margin: 0;
+      writing-mode: vertical-rl; letter-spacing: 0.15em; padding: 8px 0; min-height: 0;
     }
-    body.ls-mode #practiceBoardPanel .ls-dock-toggle.has-items { color: #1a1204; background: linear-gradient(180deg, #ffe08a, var(--gold)); border-color: transparent; }
+    body.ls-mode .ls-dock-toggle.has-items { color: #1a1204; background: linear-gradient(180deg, #ffe08a, var(--gold)); border-color: transparent; }
     /* 開いているときも、右端の帯(たたむボタン)はそのままの場所に残す。右の列はその左に出す */
     /* 開いているときは、たたむボタンを列の左端に「引き出しの取っ手」として付ける。列は画面の右端まで使う */
-    body.ls-mode.ls-dock-open #practiceBoardPanel .ls-dock-toggle {
+    body.ls-mode.ls-dock-open .ls-dock-toggle {
       position: fixed; top: 50%; transform: translateY(-50%); height: min(150px, 60vh); right: calc(var(--ls-r) + 40px + env(safe-area-inset-right, 0px)); width: 26px; z-index: 82;
       writing-mode: vertical-rl; letter-spacing: 0.15em; padding: 8px 0; min-height: 0; margin: 0;
       color: rgba(255,255,255,0.9); background: rgba(30,36,56,0.98); border: 1px solid rgba(255,255,255,0.25); border-right: none;
@@ -3524,7 +3527,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.66.3</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.66.4</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -5262,7 +5265,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.66.3`);
+    log(`DigiCA Tool build v0.66.4`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -11748,6 +11751,7 @@
     t.textContent = lsDockOpen ? '▶ たたむ' : (sig ? '◀ 効果・操作あり' : '◀ 効果パネル');
     t.title = lsDockOpen ? '右の列をたたんで盤面を見る' : '右の列を開く(フィールド外の操作「孵化(効果)」等もここ)';
   }
+  document.body.appendChild(document.getElementById('lsDockToggle'));
   document.getElementById('lsDockToggle').addEventListener('click', (e) => {
     e.stopPropagation();
     lsDockOpen = !lsDockOpen;
