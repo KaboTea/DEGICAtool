@@ -3340,6 +3340,15 @@
     body.ls-mode #evolveRouteModal .modal { width: min(400px, calc(100% - 24px)); padding: 10px 12px; }
     body.ls-mode #evolveRouteModal h2 { font-size: 13px; margin: 0 0 4px; }
     body.ls-mode #evolveRouteModal #evolveRouteSubtitle { font-size: 11px !important; margin-bottom: 6px !important; }
+    .cmp-row.on { border-color: var(--accent) !important; background: rgba(143,202,255,.08); }
+    .cmp-check { width: 18px; height: 18px; flex-shrink: 0; border: 1.5px solid var(--border); border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; color: var(--accent); }
+    .cmp-row.on .cmp-check { border-color: var(--accent); }
+    .cmp-bar { display: flex; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+    .cmp-count { font-size: 12px; font-weight: 700; }
+    .cmp-bar .btn { font-size: 10.5px; padding: 4px 8px; }
+    .cmp-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; position: sticky; bottom: 0; background: var(--panel, #111); padding: 6px 0; }
+    .cmp-actions .btn { flex: 1; }
+    .cmp-actions .btn[disabled] { opacity: .45; }
     #evolveRouteNote { font-size: 11.5px; line-height: 1.45; padding: 6px 9px; border-radius: 7px; margin: -4px 0 8px; }
     #evolveRouteNote.ok { background: rgba(63,210,143,.10); color: #7fe3b5; border: 1px solid rgba(63,210,143,.35); }
     #evolveRouteNote.ng { background: rgba(255,120,80,.12); color: #ffb08a; border: 1px solid rgba(255,120,80,.4); }
@@ -3512,7 +3521,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.64.0</span>
+    <span class="mono" style="font-size:10px;color:var(--text-dim);">v0.66.0</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -5250,7 +5259,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.64.0`);
+    log(`DigiCA Tool build v0.66.0`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -6299,59 +6308,150 @@
   }
   function evolveFromZoneHandlersFor(e, holderStack) {
     if (!practiceState) return [];
-    return parseEvolveFromZone(e.text).map(ev => {
-      const zoneLabel = ev.zones.map(z => z === 'trash' ? 'トラッシュ' : '手札').join('/');
-      const label = ev.jogress
-        ? `🧬 ${zoneLabel}の${ev.cond}にジョグレス進化`
-        : `🧬 ${zoneLabel}から進化${ev.costRule.type !== 'normal' ? `(${EVOLVE_COST_RULE_LABEL(ev.costRule).replace(/で$|に$/, '')})` : ''}`;
+    const out = [];
+    parseEvolveFromZone(e.text).forEach(ev => {
+      const ruleLabel = ev.costRule && ev.costRule.type !== 'normal' ? `(${EVOLVE_COST_RULE_LABEL(ev.costRule).replace(/で$|に$/, '')})` : '';
+      // 手札/トラッシュの両方から選べる効果は、場所ごとにボタンを分ける
+      (ev.jogress ? ['hand'] : ev.zones).forEach(zone => {
+        const zoneLabel = zone === 'trash' ? 'トラッシュ' : '手札';
+        out.push({
+          label: ev.jogress ? `🧬 手札の${ev.cond}にジョグレス進化` : `🧬 ${zoneLabel}から進化${ruleLabel}`,
+          run: () => {
+            if (e.ownerIndex !== practiceState.viewingIndex) { showToast('この自動処理は、その効果を持つプレイヤーの視点に切り替えてから実行してください', true); return; }
+            const p = practiceState.players[e.ownerIndex];
+            const list = [];
+            (zone === 'trash' ? p.trash : p.hand).forEach((entry, idx) => {
+              const num = cardEntryNum(entry);
+              const c = cardIndexByNumber.get(num);
+              if (c && c.category === 'digimon') list.push({ zone, idx, num, card: c, ok: evolveCondMatches(c, ev.cond, e.cardNumber) });
+            });
+            const go = (pick) => {
+              if (ev.jogress) { enterMultiEvolveMode(pick.idx, pick.num, 'jogress'); return; }
+              const own = [...p.battle, ...(p.raising ? [p.raising] : [])].filter(st => isDigimonLikeStack(st) || (/テイマー/.test(ev.subj) && (getStackTopCard(st) || {}).category === 'tamer'));
+              let allowed = null;
+              let fixed = null;
+              if (ev.who === 'self' && holderStack && findStackOwnerAndZone(holderStack)) fixed = holderStack;
+              else if (ev.who === 'raising' && p.raising) fixed = p.raising;
+              else {
+                const cond = { filters: parseSubjectFilters(ev.subj), colors: parseSubjectColors(ev.subj) };
+                allowed = own.filter(st => cardMatchesSubject(getStackTopCard(st), cond) && !(/他の/.test(ev.subj) && st === holderStack));
+                if (!allowed.length) allowed = null; // 条件に合うものがいなければ全て選べる
+              }
+              enterEvolveMode(pick.idx, pick.num, false, { source: pick.zone, costRule: ev.costRule, ignoreCond: ev.ignoreCond, allowedTargets: allowed, effectName: e.cardName });
+              if (fixed) performEvolve(fixed);
+            };
+            if (!list.length) { showToast(`${zoneLabel}に進化できるデジモンカードがありません`, true); return; }
+            openEffectEvolvePicker(`🧬「${e.cardName}」の効果: ${zoneLabel}から進化${ruleLabel}`, `条件: ${ev.cond}`, list, go);
+          },
+        });
+      });
+    });
+    return out;
+  }
+  // 「自分のトラッシュから、〜N枚までをこのデジモンの進化元の下に置く」: まとめて選んで置く
+  function parseMaterialFromZone(text) {
+    const out = [];
+    engineStripNotes(text || '').split('。').forEach(sent => {
+      const m = /(?:自分の)?(手札かトラッシュ|トラッシュか手札|手札\/トラッシュ|トラッシュ\/手札|手札|トラッシュ)から、?(.+?)(\d+)枚(まで)?を、?(.+?)の進化元の下に(裏向きで)?置/.exec(sent);
+      if (!m) return;
+      const subj = m[5].replace(/^.*、/, '');
+      if (/相手の/.test(subj)) return;
+      out.push({
+        zones: /手札/.test(m[1]) && /トラッシュ/.test(m[1]) ? ['hand', 'trash'] : [m[1] === 'トラッシュ' ? 'trash' : 'hand'],
+        cond: m[2].replace(/^、/, ''), n: parseInt(m[3], 10), upTo: !!m[4], subj, faceDown: !!m[6],
+        who: /^この(デジモン|テイマー)$/.test(subj) ? 'self' : /育成エリア/.test(subj) ? 'raising' : 'pick',
+      });
+    });
+    return out;
+  }
+  function materialFromZoneHandlersFor(e, holderStack) {
+    if (!practiceState) return [];
+    return parseMaterialFromZone(e.text).map(mz => {
+      const zoneLabel = mz.zones.map(z => z === 'trash' ? 'トラッシュ' : '手札').join('/');
       return {
-        label,
+        label: `📥 ${zoneLabel}から進化元の下へ(${mz.n}枚${mz.upTo ? 'まで' : ''})`,
         run: () => {
           if (e.ownerIndex !== practiceState.viewingIndex) { showToast('この自動処理は、その効果を持つプレイヤーの視点に切り替えてから実行してください', true); return; }
           const p = practiceState.players[e.ownerIndex];
-          // 進化させるカードの候補(手札/トラッシュ)
-          const all = [];
-          ev.zones.forEach(z => (z === 'trash' ? p.trash : p.hand).forEach((entry, idx) => {
+          const list = [];
+          mz.zones.forEach(z => (z === 'trash' ? p.trash : p.hand).forEach((entry, idx) => {
             const num = cardEntryNum(entry);
-            const c = cardIndexByNumber.get(num);
-            if (c && c.category === 'digimon') all.push({ zone: z, idx, num, card: c, ok: evolveCondMatches(c, ev.cond, e.cardNumber) });
+            list.push({ zone: z, idx, num, ok: revealCondMatches(cardIndexByNumber.get(num), mz.cond) });
           }));
-          const seen = new Set();
-          const uniq = (list) => list.filter(x => { const k = x.zone + x.num; if (seen.has(k)) return false; seen.add(k); return true; });
-          const ok = uniq(all.filter(x => x.ok));
-          const ng = uniq(all.filter(x => !x.ok));
-          const go = (pick) => {
-            if (ev.jogress) {
-              if (pick.zone !== 'hand') { showToast('ジョグレス進化は手札のカードのみ対応しています', true); return; }
-              enterMultiEvolveMode(pick.idx, pick.num, 'jogress');
-              return;
-            }
-            // 進化するデジモン
-            const own = [...p.battle, ...(p.raising ? [p.raising] : [])].filter(st => isDigimonLikeStack(st) || (/テイマー/.test(ev.subj) && (getStackTopCard(st) || {}).category === 'tamer'));
-            let allowed = null;
-            let fixed = null;
-            if (ev.who === 'self' && holderStack && findStackOwnerAndZone(holderStack)) fixed = holderStack;
-            else if (ev.who === 'raising' && p.raising) fixed = p.raising;
-            else {
-              const cond = { filters: parseSubjectFilters(ev.subj), colors: parseSubjectColors(ev.subj) };
-              allowed = own.filter(st => cardMatchesSubject(getStackTopCard(st), cond) && !(/他の/.test(ev.subj) && st === holderStack));
-              if (!allowed.length) allowed = null; // 条件に合うものがいなければ全て選べる
-            }
-            enterEvolveMode(pick.idx, pick.num, false, { source: pick.zone, costRule: ev.costRule, ignoreCond: ev.ignoreCond, allowedTargets: allowed, effectName: e.cardName });
-            if (fixed) performEvolve(fixed);
+          if (!list.length) { showToast(`${zoneLabel}にカードがありません`, true); return; }
+          const place = (picked, target) => {
+            snapshotPracticeState();
+            const nums = [];
+            ['hand', 'trash'].forEach(z => {
+              const idxs = picked.filter(x => x.zone === z).map(x => x.idx);
+              if (idxs.length) nums.push(...spliceMany(z === 'trash' ? p.trash : p.hand, idxs).map(cardEntryNum));
+            });
+            placeCardsUnderStack(target, nums, mz.faceDown);
+            renderPracticeBoard();
+            showToast(`${nums.length}枚を「${stackLabel(target)}」の進化元の下に置きました${mz.faceDown ? '(裏向き)' : ''}`);
           };
-          if (!ok.length && !ng.length) { showToast(`${zoneLabel}に進化できるデジモンカードがありません`, true); return; }
-          if (ok.length === 1 && !ng.length) { go(ok[0]); return; }
-          const btnOf = (x) => ({ label: `${x.ok ? '' : '(条件外) '}「${x.card.name}」${ev.zones.length > 1 ? `(${x.zone === 'trash' ? 'トラッシュ' : '手札'})` : ''}`, onClick: () => go(x) });
-          const showAll = () => openDecisionUi(`進化させるカードを選んでください(条件外も表示中)`, [...ok.map(btnOf), ...ng.map(btnOf), { label: 'やめる', onClick: () => renderPracticeBoard() }]);
-          openDecisionUi(ok.length ? `進化させるカードを選んでください(条件: ${ev.cond})` : `条件(${ev.cond})に合うカードがありません`, [
-            ...ok.map(btnOf),
-            ...(ng.length ? [{ label: `条件外も選ぶ(${ng.length}枚)`, onClick: showAll }] : []),
-            { label: 'やめる', onClick: () => renderPracticeBoard() },
-          ]);
+          openCardMultiPicker({
+            title: `📥「${e.cardName}」の効果: ${zoneLabel}から進化元の下へ`,
+            sub: `条件: ${mz.cond}(${mz.n}枚${mz.upTo ? 'まで' : ''})`,
+            entries: list.map(x => ({ num: x.num, ok: x.ok, tag: mz.zones.length > 1 ? (x.zone === 'trash' ? 'トラッシュ' : '手札') : '' })),
+            max: mz.n, min: mz.upTo ? 1 : Math.min(mz.n, list.filter(x => x.ok).length || 1),
+            actions: [{ label: '進化元の下に置く', primary: true, onClick: (idxs) => {
+              const picked = idxs.map(i => list[i]);
+              let fixed = null;
+              if (mz.who === 'self' && holderStack && findStackOwnerAndZone(holderStack)) fixed = holderStack;
+              else if (mz.who === 'raising' && p.raising) fixed = p.raising;
+              if (fixed) { place(picked, fixed); return; }
+              const own = [...p.battle, ...(p.raising ? [p.raising] : [])];
+              const cond = { filters: parseSubjectFilters(mz.subj), colors: parseSubjectColors(mz.subj) };
+              const cands = own.filter(st => isDigimonLikeStack(st) && cardMatchesSubject(getStackTopCard(st), cond));
+              startFieldPick({
+                title: `${picked.length}枚を進化元の下に置くデジモンをタップ`,
+                candidates: cands.length ? cands : own, extra: own, max: 1,
+                onDone: (sel) => { if (sel.length) place(picked, sel[0]); },
+                onCancel: () => renderPracticeBoard(),
+              });
+            } }],
+          });
         },
       };
     });
+  }
+  // 効果で進化するカードを選ぶ一覧(手札/トラッシュ)。条件に合うものを上に、条件外はたたんでおく
+  function openEffectEvolvePicker(title, sub, list, onPick) {
+    currentDetailCard = null;
+    document.getElementById('addToDeckFromDetail').style.display = 'none';
+    const ok = list.filter(x => x.ok), ng = list.filter(x => !x.ok);
+    const row = (x, i) => `
+      <div class="deck-list-item eep-row${x.ok ? '' : ' eep-ng'}" style="cursor:default;${x.ok ? '' : 'opacity:.6;'}">
+        <img src="${escapeHtml(miniCardImg(x.num))}" alt="" class="eep-view" data-i="${i}" style="width:34px;border-radius:3px;cursor:pointer;" onerror="this.style.opacity=0">
+        <span class="dli-name eep-view" data-i="${i}" style="cursor:pointer;">${escapeHtml(x.card.name)}<span style="font-size:10px;color:var(--text-dim);margin-left:5px;">${x.card.level != null ? 'Lv.' + x.card.level : ''}${x.ok ? '' : ' (条件外)'}</span></span>
+        <span class="dli-stepper"><button type="button" class="btn eep-go" data-i="${i}" style="font-size:10.5px;padding:4px 8px;">🧬進化</button></span>
+      </div>`;
+    const all = [...ok, ...ng];
+    let showNg = !ok.length;
+    const render = () => {
+      detailBody.innerHTML = `
+        <div class="detail-info" style="width:100%;">
+          <div class="d-title">${escapeHtml(title)}</div>
+          <div class="d-number">${escapeHtml(sub)}</div>
+          <div class="deck-list" style="margin-top:8px;">
+            ${ok.length ? ok.map((x) => row(x, all.indexOf(x))).join('') : '<div class="empty-state" style="padding:6px 0;">条件に合うカードがありません</div>'}
+            ${ng.length && !showNg ? `<button type="button" class="btn eep-showng" style="font-size:10.5px;padding:4px 8px;margin-top:6px;">条件外も表示(${ng.length}枚)</button>` : ''}
+            ${showNg ? ng.map((x) => row(x, all.indexOf(x))).join('') : ''}
+          </div>
+          <button type="button" class="btn eep-cancel" style="margin-top:10px;">やめる</button>
+        </div>`;
+      detailBody.querySelectorAll('.eep-go').forEach(b => b.addEventListener('click', () => {
+        cardDetailModal.classList.remove('open');
+        onPick(all[parseInt(b.dataset.i, 10)]);
+      }));
+      detailBody.querySelectorAll('.eep-view').forEach(el => el.addEventListener('click', () => { const x = all[parseInt(el.dataset.i, 10)]; openLightbox(miniCardImg(x.num), x.card.name); }));
+      const sn = detailBody.querySelector('.eep-showng');
+      if (sn) sn.addEventListener('click', () => { showNg = true; render(); });
+      detailBody.querySelector('.eep-cancel').addEventListener('click', () => { cardDetailModal.classList.remove('open'); renderPracticeBoard(); });
+    };
+    render();
+    cardDetailModal.classList.add('open');
   }
 
   // 盤面: 制限を受けている側のプレイヤー名の横にチップ、🌐ボタンに件数バッジ
@@ -8262,6 +8362,92 @@
       });
     });
     cardDetailModal.classList.add('open');
+  }
+
+  // 複数枚をまとめて選ぶ一覧。entries: [{ num, ok }]、条件外(ok=false)はたたんでおく。
+  // o: { title, sub, entries, max, min, actions: [{ label, primary, onClick(selIdxs, ev) }], onCancel }
+  function openCardMultiPicker(o) {
+    currentDetailCard = null;
+    document.getElementById('addToDeckFromDetail').style.display = 'none';
+    const entries = o.entries;
+    const max = o.max || Infinity, min = o.min == null ? 1 : o.min;
+    const sel = new Set(o.initial || []);
+    const okIdx = entries.map((x, i) => i).filter(i => entries[i].ok !== false);
+    const ngIdx = entries.map((x, i) => i).filter(i => entries[i].ok === false);
+    let showNg = !okIdx.length;
+    const allOn = () => sel.size > 0 && sel.size >= Math.min(max, okIdx.length);
+    const row = (i) => {
+      const x = entries[i], on = sel.has(i);
+      return `
+      <div class="deck-list-item cmp-row${on ? ' on' : ''}" data-i="${i}" style="cursor:pointer;${x.ok === false ? 'opacity:.6;' : ''}">
+        <span class="cmp-check">${on ? '✔' : ''}</span>
+        <img src="${escapeHtml(miniCardImg(x.num))}" alt="" class="cmp-img" data-i="${i}" style="width:34px;border-radius:3px;" onerror="this.style.opacity=0">
+        <span class="dli-name">${escapeHtml(miniCardName(x.num))}${x.tag ? `<span style="font-size:10px;color:var(--text-dim);margin-left:5px;">${escapeHtml(x.tag)}</span>` : ''}${x.ok === false ? '<span style="font-size:10px;color:var(--text-dim);margin-left:5px;">(条件外)</span>' : ''}</span>
+      </div>`;
+    };
+    const render = () => {
+      const cnt = `選択中 ${sel.size}${max !== Infinity ? ` / ${max}` : ''}枚`;
+      detailBody.innerHTML = `
+        <div class="detail-info" style="width:100%;">
+          <div class="d-title">${escapeHtml(o.title)}</div>
+          ${o.sub ? `<div class="d-number">${escapeHtml(o.sub)}</div>` : ''}
+          <div class="cmp-bar">
+            <span class="cmp-count">${cnt}</span>
+            ${okIdx.length > 1 && max !== 1 ? `<button type="button" class="btn cmp-all">${allOn() ? '全て外す' : max === Infinity || okIdx.length <= max ? '条件に合うものを全て選ぶ' : `上から${max}枚選ぶ`}</button>` : ''}
+          </div>
+          <div class="deck-list" style="margin-top:6px;">
+            ${okIdx.length ? okIdx.map(row).join('') : '<div class="empty-state" style="padding:6px 0;">条件に合うカードがありません</div>'}
+            ${ngIdx.length && !showNg ? `<button type="button" class="btn cmp-showng" style="font-size:10.5px;padding:4px 8px;margin-top:6px;">条件外も表示(${ngIdx.length}枚)</button>` : ''}
+            ${showNg ? ngIdx.map(row).join('') : ''}
+          </div>
+          <div class="cmp-actions">
+            <button type="button" class="btn cmp-cancel">やめる</button>
+            ${(o.actions || []).map((a, k) => `<button type="button" class="btn${a.primary ? ' primary' : ''} cmp-act" data-k="${k}"${sel.size < min ? ' disabled' : ''}>${escapeHtml(a.label)}</button>`).join('')}
+          </div>
+        </div>`;
+      detailBody.querySelectorAll('.cmp-row').forEach(r => r.addEventListener('click', () => {
+        const i = parseInt(r.dataset.i, 10);
+        if (sel.has(i)) sel.delete(i);
+        else if (max === 1) { sel.clear(); sel.add(i); }
+        else if (sel.size < max) sel.add(i);
+        else { showToast(`選べるのは${max}枚までです`, true); return; }
+        render();
+      }));
+      const all = detailBody.querySelector('.cmp-all');
+      if (all) all.addEventListener('click', () => {
+        if (allOn()) sel.clear();
+        else { sel.clear(); okIdx.slice(0, max).forEach(i => sel.add(i)); }
+        render();
+      });
+      const sn = detailBody.querySelector('.cmp-showng');
+      if (sn) sn.addEventListener('click', () => { showNg = true; render(); });
+      detailBody.querySelector('.cmp-cancel').addEventListener('click', () => { cardDetailModal.classList.remove('open'); if (o.onCancel) o.onCancel(); else renderPracticeBoard(); });
+      detailBody.querySelectorAll('.cmp-act').forEach(b => b.addEventListener('click', (ev) => {
+        if (sel.size < min) return;
+        const a = o.actions[parseInt(b.dataset.k, 10)];
+        const idxs = [...sel].sort((x, y) => x - y);
+        if (!a.keepOpen) cardDetailModal.classList.remove('open');
+        a.onClick(idxs, ev);
+      }));
+    };
+    render();
+    cardDetailModal.classList.add('open');
+  }
+  // 手札/トラッシュなどの配列から、指定した位置のカードをまとめて抜く(元の並び順で返す)
+  function spliceMany(arr, idxs) {
+    const out = [];
+    [...idxs].sort((a, b) => b - a).forEach(i => out.unshift(arr.splice(i, 1)[0]));
+    return out;
+  }
+  // 「「A」×「B」」「特徴「X」を持つカード×3」のような条件文に、そのカードが合うか(条件文が無ければ全て合う扱い)
+  function condTextMentionsCard(card, condText) {
+    if (!condText || !card) return true;
+    const parts = condText.split(/[×＋+]/).map(x => x.replace(/[\[\]［］]/g, '').replace(/\d+枚?$/, '').trim()).filter(Boolean);
+    return parts.some(pt => { try { return revealCondMatches(card, pt); } catch (e) { return true; } });
+  }
+  // まとめて進化元の下に置く(進化元の一番下に、選んだ順で)
+  function placeCardsUnderStack(target, numbers, faceDown) {
+    for (let i = numbers.length - 1; i >= 0; i--) target.cards.unshift(faceDown ? { n: numbers[i], d: true } : numbers[i]);
   }
 
   // A face-down pile (deck, digi-egg deck, security, opponent's hand): shows an
@@ -11032,7 +11218,7 @@
     if (e.deferred) return deferredHandlersFor(e);
     const extra = () => {
       const f = e.stackUid ? findStackByUid(e.stackUid) : null;
-      const list = [...reductionCostHandlersFor(e), ...restrictHandlersFor(e), ...evolveFromZoneHandlersFor(e, f && f.stack), ...playFromHandHandlersFor(e)];
+      const list = [...reductionCostHandlersFor(e), ...restrictHandlersFor(e), ...evolveFromZoneHandlersFor(e, f && f.stack), ...materialFromZoneHandlersFor(e, f && f.stack), ...playFromHandHandlersFor(e)];
       // 進化元効果・セキュリティ効果・消滅時などの「デッキの上からN枚オープン」(【効果】欄のものは基本の処理で出している)
       const rm = /(?<!相手の)デッキの上から(\d+)枚オープン/.exec(e.text || '');
       if (rm && e.timing !== 'ディレイ' && (!f || e.field !== 'effect')) {
@@ -12523,11 +12709,7 @@
       showToast('アセンブリを中断し、カードを手札とトラッシュに戻しました');
       assemblyMode = null;
     }
-    if (multiEvolveMode && multiEvolveMode.handMaterials && multiEvolveMode.handMaterials.length > 0) {
-      const self = practiceState.players[practiceState.viewingIndex];
-      multiEvolveMode.handMaterials.forEach(n => self.hand.push(n));
-      showToast('選択していた手札の材料を戻しました');
-    }
+    if (multiEvolveMode) returnMultiEvolveMaterials();
     exitEvolveMode();
     exitMaterialTargetMode();
     multiEvolveMode = null;
@@ -13205,7 +13387,6 @@
     // 手入力は普段はたたむ(効果のコストはルートに反映済み)。選べるルートが無いときだけ最初から開く
     const hasRoute = !!evolveRouteList.querySelector('.evolve-route-item:not([disabled])');
     setEvolveManualOpen(!hasRoute);
-    if (mo.manualFromRoutes && routes.length) evolveManualCost.value = String(Math.min(...routes.filter(r => !r.scalingNote).map(r => r.cost)));
     // 色条件を満たさない等: 「それでも〜する」を押すまでルートと手入力を隠す
     const manualField = document.getElementById('evolveManualField');
     const gated = !!mo.gateLabel;
@@ -13245,7 +13426,9 @@
     const rule = evolveMode.costRule;
     if (rule || evolveMode.ignoreCond) {
       const base = buildEvolveRoutes(evolveMode.card, topCard);
-      routesOverride = base.map(r => Object.assign({}, r, { cost: applyEvolveCostRule(rule, r.cost), origCost: r.cost }));
+      const effName = evolveMode.effectName ? `「${evolveMode.effectName}」の効果` : '効果';
+      const ruleText = rule && rule.type === 'minus' ? `${effName} -${rule.n}` : rule && rule.type === 'free' ? `${effName} コストを支払わない` : rule && rule.type === 'fixed' ? `${effName} コスト${rule.n}` : '';
+      routesOverride = base.map(r => Object.assign({}, r, { cost: applyEvolveCostRule(rule, r.cost), origCost: r.cost, ruleText, reductionText: ruleText ? '➖ ' + ruleText : '' }));
       const evoCosts = (evolveMode.card.evo || []).map(x => x.cost ?? 0);
       const baseCost = base.length ? Math.min(...base.map(r => r.cost)) : (evoCosts.length ? Math.min(...evoCosts) : 0);
       manualDefault = applyEvolveCostRule(rule, baseCost);
@@ -13260,7 +13443,6 @@
       !isRaisingTarget, null, routesOverride, targetStack,
       { manualFromRoutes: true, reductions: rule && rule.type === 'free' ? [] : collectCostReductions('evolve', evolveMode.card, { pi: practiceState.viewingIndex, target: targetStack, source: evolveMode.source }) }
     );
-    if (manualDefault != null) evolveManualCost.value = String(manualDefault);
   }
 
   // 進化させるカードを、元の場所(手札/トラッシュ)から取り出す
@@ -13324,13 +13506,68 @@
 
   function cancelMultiEvolve() {
     if (!multiEvolveMode) return;
-    if (multiEvolveMode.handMaterials.length > 0) {
-      const self = practiceState.players[practiceState.viewingIndex];
-      multiEvolveMode.handMaterials.forEach(n => self.hand.push(n));
-      showToast('選択していた手札の材料を戻しました');
-    }
+    returnMultiEvolveMaterials();
     multiEvolveMode = null;
     renderPracticeBoard();
+  }
+  // 選んでいた材料(手札/トラッシュ/テイマーの下)を元の場所へ戻し、代償でレストしたテイマーもアクティブに戻す
+  function returnMultiEvolveMaterials() {
+    const mm = multiEvolveMode;
+    if (!mm || !practiceState) return;
+    const self = practiceState.players[practiceState.viewingIndex];
+    const origins = mm.materialOrigins || [];
+    let n = 0;
+    mm.handMaterials.forEach((num, i) => {
+      const o = origins[i] || { from: 'hand' };
+      if (o.from === 'trash') self.trash.push(num);
+      else if (o.from === 'tamer') { const f = findStackByUid(o.uid); if (f) f.stack.cards.splice(Math.min(o.pos || 0, f.stack.cards.length - 1), 0, num); else self.trash.push(num); }
+      else self.hand.push(num);
+      n++;
+    });
+    (mm.restedTamers || []).forEach(uid => { const f = findStackByUid(uid); if (f) f.stack.rested = false; });
+    mm.handMaterials = []; mm.materialOrigins = []; mm.restedTamers = [];
+    if (n) showToast('選択していた材料を元の場所に戻しました');
+  }
+  // デジクロスで手札以外(トラッシュ/テイマーの下)から材料を置ける効果を探す
+  function digixrosExtraSources(card, pi) {
+    const out = [];
+    const self = practiceState.players[pi];
+    const condText = (/≪≪デジクロス[^≫]*≫≫[:：]\s*([^\n]+)/.exec(card.effect || '') || [])[1] || null;
+    // ① このカード自身: 「〜間、このカードのデジクロスで自分のトラッシュのカードも置ける」
+    (card.effect || '').split('\n').forEach(line => {
+      const body = engineStripNotes(line).trim();
+      if (!/トラッシュのカードもデジクロス|デジクロスで自分のトラッシュのカードも/.test(body)) return;
+      if (!/このカード/.test(body)) return;
+      const cm = /^(.+?)間、/.exec(body);
+      const costm = /、(.+?)ことで、/.exec(body);
+      const h = costm ? null : cm ? evalFieldCondition(cm[1], pi) : true;
+      if (h === false) return;
+      out.push({ kind: 'trash', label: `🗑 トラッシュから材料を選ぶ${h == null ? ' ❓' : ''}`, reason: `「${card.name}」の効果${cm ? `(${cm[1]}間)` : ''}${costm ? `(代償: ${costm[1]}は手で処理)` : ''}${h == null && !costm ? ' ※条件を確認' : ''}`, max: Infinity, condText });
+    });
+    // ③ 処理中の効果: 「この効果でデジクロス条件を持つデジモンカードを登場させるとき、トラッシュのカードもデジクロスで進化元に置ける」
+    const q = practiceState.effectQueue;
+    const cur = q && q.current;
+    if (cur && cur.ownerIndex === pi && /この効果で[^。]*トラッシュのカードもデジクロス/.test(cur.text || '') && !out.some(x => x.kind === 'trash')) {
+      out.push({ kind: 'trash', label: '🗑 トラッシュから材料を選ぶ', reason: `「${cur.cardName}」の効果`, max: Infinity, condText });
+    }
+    // ② テイマー: 「デジクロス条件を持つ自分のデジモンカードが登場するとき、このテイマーをレストさせることで、(そのカードのデジクロスで)自分のテイマーの下(とトラッシュ)のカードも置ける」
+    self.battle.forEach(st => {
+      const top = getStackTopCard(st);
+      if (!top || top.category !== 'tamer' || st.rested) return;
+      getStackEffectSources(st).forEach(src => src.text.split('\n').forEach(line => {
+        const parsed = parseEffectLine(line);
+        if (parsed.prefix || !engineTurnLabelOk(parsed.labels, pi)) return;
+        const body = engineStripNotes(parsed.text);
+        if (!/デジクロス/.test(body) || !/テイマーの下/.test(body) || !/このテイマーをレストさせることで/.test(body)) return;
+        const tm = /特徴に(.+?)を持ち、デジクロス条件/.exec(body);
+        if (tm && !revealCondMatches(card, `特徴に${tm[1]}を持つ`)) return;
+        const each = /1枚ずつ/.test(body);
+        const withTrash = /テイマーの下と(?:自分の)?トラッシュ/.test(body);
+        out.push({ kind: 'tamer', holderUid: ensureStackUid(st), label: `👤「${top.name}」をレストしてテイマーの下から選ぶ${each ? '(1枚)' : ''}`, reason: `「${top.name}」の効果`, max: each ? 1 : Infinity, condText,
+          alsoTrash: withTrash ? { kind: 'trash', label: '🗑 トラッシュから材料を選ぶ(1枚)', reason: `「${top.name}」の効果`, max: 1, condText } : null });
+      }));
+    });
+    return out;
   }
 
   function showMultiEvolvePicker() {
@@ -13342,27 +13579,119 @@
     // デジクロスは手札のデジモンも材料にできる(ジョグレスは場のデジモン限定)
     if (!isJogress && self.hand.length > 0) {
       buttons.push({
-        label: `🃏 手札から材料を選ぶ${handN ? `(手札${handN}枚選択中)` : ''}`,
+        label: `🃏 手札から材料を選ぶ${(() => { const k = multiEvolveMode.handMaterials.filter((x, i) => !((multiEvolveMode.materialOrigins || [])[i]) || multiEvolveMode.materialOrigins[i].from === 'hand').length; return k ? `(手札${k}枚選択中)` : ''; })()}`,
         onClick: (sel) => {
           multiEvolveMode.selected = sel;
-          openCardListPicker('手札から選択', self.hand, (idx) => {
-            const [num] = self.hand.splice(idx, 1);
-            multiEvolveMode.handMaterials.push(num);
-            renderPracticeBoard();
-            showMultiEvolvePicker();
+          const condText = (/≪≪デジクロス[^≫]*≫≫[:：]\s*([^\n]+)/.exec(multiEvolveMode.card.effect || '') || [])[1] || null;
+          openCardMultiPicker({
+            title: `デジクロス「${multiEvolveMode.card.name}」: 手札から材料を選ぶ`,
+            sub: condText ? `条件: ${condText}` : '',
+            entries: self.hand.map(n => { const c = cardIndexByNumber.get(cardEntryNum(n)); return { num: cardEntryNum(n), ok: !!c && c.category === 'digimon' && condTextMentionsCard(c, condText) }; }),
+            actions: [{ label: '材料に加える', primary: true, onClick: (idxs) => {
+              const nums = spliceMany(self.hand, idxs);
+              multiEvolveMode.materialOrigins = multiEvolveMode.materialOrigins || [];
+              while (multiEvolveMode.materialOrigins.length < multiEvolveMode.handMaterials.length) multiEvolveMode.materialOrigins.push({ from: 'hand' });
+              multiEvolveMode.handMaterials.push(...nums);
+              multiEvolveMode.materialOrigins.push(...nums.map(() => ({ from: 'hand' })));
+              renderPracticeBoard();
+              showMultiEvolvePicker();
+            } }],
+            onCancel: () => showMultiEvolvePicker(),
           });
         },
+      });
+    }
+    if (!isJogress) {
+      const mm = multiEvolveMode;
+      mm.materialOrigins = mm.materialOrigins || [];
+      mm.restedTamers = mm.restedTamers || [];
+      mm.usedSources = mm.usedSources || {};
+      const addMaterials = (nums, origins) => { mm.handMaterials.push(...nums); mm.materialOrigins.push(...origins); };
+      // 手札から選んだものは origin=hand(配列の長さを揃える)
+      while (mm.materialOrigins.length < mm.handMaterials.length) mm.materialOrigins.push({ from: 'hand' });
+      const openTrash = (src) => {
+        const used = mm.materialOrigins.filter(o => o.from === 'trash' && o.key === src.key).length;
+        const max = src.max === Infinity ? Infinity : src.max - used;
+        if (max <= 0) { showToast('この効果ではもう選べません', true); return; }
+        openCardMultiPicker({
+          title: `デジクロス「${mm.card.name}」: トラッシュから材料を選ぶ`,
+          sub: `${src.reason}${src.condText ? ` — 条件: ${src.condText}` : ''}`,
+          entries: self.trash.map(n => { const c = cardIndexByNumber.get(cardEntryNum(n)); return { num: cardEntryNum(n), ok: !!c && c.category === 'digimon' && condTextMentionsCard(c, src.condText) }; }),
+          max,
+          actions: [{ label: '材料に加える', primary: true, onClick: (idxs) => {
+            const nums = spliceMany(self.trash, idxs).map(cardEntryNum);
+            addMaterials(nums, nums.map(() => ({ from: 'trash', key: src.key })));
+            renderPracticeBoard(); showMultiEvolvePicker();
+          } }],
+          onCancel: () => showMultiEvolvePicker(),
+        });
+      };
+      const openTamer = (src) => {
+        const tamers = self.battle.filter(st => (getStackTopCard(st) || {}).category === 'tamer' && st.cards.length > 1);
+        const list = [];
+        tamers.forEach(st => st.cards.slice(0, -1).forEach((entry, pos) => list.push({ st, pos, num: cardEntryNum(entry) })));
+        if (!list.length) { showToast('テイマーの下にカードがありません', true); return; }
+        const used = mm.materialOrigins.filter(o => o.from === 'tamer' && o.key === src.key).length;
+        const max = src.max === Infinity ? Infinity : src.max - used;
+        if (max <= 0) { showToast('この効果ではもう選べません', true); return; }
+        const pick = () => openCardMultiPicker({
+          title: `デジクロス「${mm.card.name}」: テイマーの下から材料を選ぶ`,
+          sub: `${src.reason}${src.condText ? ` — 条件: ${src.condText}` : ''}`,
+          entries: list.map(x => { const c = cardIndexByNumber.get(x.num); return { num: x.num, ok: !!c && c.category === 'digimon' && condTextMentionsCard(c, src.condText), tag: `(${stackLabel(x.st)}の下)` }; }),
+          max,
+          actions: [{ label: '材料に加える', primary: true, onClick: (idxs) => {
+            const picked = idxs.map(i => list[i]);
+            // 同じスタックから複数抜くときは後ろから抜いてずれを防ぐ
+            [...picked].sort((a, b) => b.pos - a.pos).forEach(x => x.st.cards.splice(x.pos, 1));
+            addMaterials(picked.map(x => x.num), picked.map(x => ({ from: 'tamer', uid: ensureStackUid(x.st), pos: x.pos, key: src.key })));
+            renderPracticeBoard(); showMultiEvolvePicker();
+          } }],
+          onCancel: () => showMultiEvolvePicker(),
+        });
+        if (!mm.restedTamers.includes(src.holderUid)) {
+          const f = findStackByUid(src.holderUid);
+          if (!f || f.stack.rested) { showToast('このテイマーはレストできません', true); return; }
+          if (hasLock(f.stack, 'noRest')) { showToast('このテイマーはレストできません(ロック)', true); return; }
+          f.stack.rested = true;
+          mm.restedTamers.push(src.holderUid);
+          showToast(`「${stackLabel(f.stack)}」をレストしました`);
+        }
+        pick();
+      };
+      const sources = digixrosExtraSources(mm.card, practiceState.viewingIndex);
+      // 代償でレスト済みのテイマーの分も、ボタンは残す(続けて選べるように)
+      (mm.restedTamers || []).forEach(uid => { const f = findStackByUid(uid); if (f && !sources.some(x => x.holderUid === uid)) { f.stack.rested = false; const again = digixrosExtraSources(mm.card, practiceState.viewingIndex).filter(x => x.holderUid === uid); f.stack.rested = true; sources.push(...again); } });
+      const flat = [];
+      sources.forEach((src, i) => { src.key = `${src.kind}${i}`; flat.push(src); if (src.alsoTrash) { src.alsoTrash.key = `${src.key}t`; src.alsoTrash.needRest = src.holderUid; flat.push(src.alsoTrash); } });
+      flat.forEach(src => {
+        const usedN = mm.materialOrigins.filter(o => o.key === src.key).length;
+        buttons.push({
+          label: src.label.replace(/^👤「([^」]+)」をレストして/, mm.restedTamers.includes(src.holderUid) ? '👤「$1」(レスト済み): ' : '👤「$1」をレストして') + (usedN ? `(${usedN}枚選択中)` : ''),
+          onClick: (sel) => {
+            mm.selected = sel;
+            if (src.kind === 'tamer') openTamer(src);
+            else {
+              if (src.needRest && !mm.restedTamers.includes(src.needRest)) {
+                const f = findStackByUid(src.needRest);
+                if (!f || f.stack.rested) { showToast('このテイマーはレストできません', true); return; }
+                f.stack.rested = true; mm.restedTamers.push(src.needRest);
+                showToast(`「${stackLabel(f.stack)}」をレストしました`);
+              }
+              openTrash(src);
+            }
+          },
+        });
       });
     }
     startFieldPick({
       title: isJogress
         ? `ジョグレス進化「${multiEvolveMode.card.name}」: 材料にするデジモンを2体タップ`
         : `デジクロス「${multiEvolveMode.card.name}」: 材料にするデジモンをタップして「決定」`,
-      sub: !isJogress && handN ? `手札から${handN}枚を材料に選択中` : '',
+      sub: !isJogress && multiEvolveMode && multiEvolveMode.handMaterials.length ? `手札など場以外から${multiEvolveMode.handMaterials.length}枚を材料に選択中` : '',
       candidates: pool,
       initialSelected: multiEvolveMode.selected,
       max: isJogress ? Math.max(1, 2 - handN) : Infinity,
-      canFinish: (sel) => !isJogress && sel.length + handN >= 1,
+      canFinish: (sel) => !isJogress && !!multiEvolveMode && sel.length + multiEvolveMode.handMaterials.length >= 1,
       buttons,
       onDone: (sel) => {
         multiEvolveMode.selected = sel;
@@ -13491,55 +13820,18 @@
   // 選択ではなく、トラッシュの中身をチェックボックスで複数選択し、まとめてOKする形式にする。
   function showAssemblyPicker() {
     const self = practiceState.players[practiceState.viewingIndex];
-    currentDetailCard = null;
-    document.getElementById('addToDeckFromDetail').style.display = 'none';
-    const checked = new Set();
-
-    function render() {
-      const rows = self.trash.map((number, idx) => `
-        <div class="deck-list-item assembly-row" data-idx="${idx}" style="cursor:pointer;${checked.has(idx) ? 'border-color:var(--accent);' : ''}">
-          <input type="checkbox" class="assembly-check" data-idx="${idx}" ${checked.has(idx) ? 'checked' : ''} style="width:16px;height:16px;flex-shrink:0;">
-          <img src="${escapeHtml(miniCardImg(number))}" alt="" style="width:34px;border-radius:3px;" onerror="this.style.opacity=0">
-          <span class="dli-name">${escapeHtml(miniCardName(number))}</span>
-        </div>`).join('');
-      detailBody.innerHTML = `
-        <div class="detail-info" style="width:100%;">
-          <div class="d-title">アセンブリ「${assemblyMode.card.name}」</div>
-          <div class="d-number mono">トラッシュから材料を選択(選択中: ${checked.size}枚)</div>
-          <div class="deck-list" style="margin-top:8px;max-height:360px;overflow-y:auto;">${rows || '<div class="empty-state">トラッシュにカードがありません</div>'}</div>
-          <div style="display:flex;gap:8px;margin-top:12px;">
-            <button type="button" class="btn" id="assemblyCancelBtn">キャンセル</button>
-            <button type="button" class="btn primary" id="assemblyOkBtn">この内容でOK</button>
-          </div>
-        </div>
-      `;
-      const toggle = (idx) => {
-        if (checked.has(idx)) checked.delete(idx); else checked.add(idx);
-        render();
-      };
-      detailBody.querySelectorAll('.assembly-check').forEach(cb => {
-        cb.addEventListener('click', (e) => { e.stopPropagation(); toggle(parseInt(cb.dataset.idx, 10)); });
-      });
-      detailBody.querySelectorAll('.assembly-row').forEach(row => {
-        row.addEventListener('click', (e) => {
-          if (e.target.classList.contains('assembly-check')) return;
-          toggle(parseInt(row.dataset.idx, 10));
-        });
-      });
-      detailBody.querySelector('#assemblyCancelBtn').addEventListener('click', (e) => { e.stopPropagation(); cancelAssembly(); });
-      detailBody.querySelector('#assemblyOkBtn').addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (checked.size === 0) { showToast('材料にするカードを選んでください', true); return; }
-        const indices = [...checked].sort((a, b) => b - a); // 後ろから抜いてインデックスずれを防ぐ
-        const removed = [];
-        indices.forEach(idx => { removed.push(self.trash.splice(idx, 1)[0]); });
-        assemblyMode.materialNumbers = removed.reverse(); // 元の並び順に戻す
-        cardDetailModal.classList.remove('open');
+    const m = /【アセンブリ[^】]*】([^\n]+)/.exec(assemblyMode.card.effect || '');
+    const condText = m ? engineStripNotes(m[1]).trim() : null;
+    openCardMultiPicker({
+      title: `アセンブリ「${assemblyMode.card.name}」`,
+      sub: `トラッシュから材料を選択${condText ? ` — 条件: ${condText}` : ''}`,
+      entries: self.trash.map(n => ({ num: cardEntryNum(n), ok: condTextMentionsCard(cardIndexByNumber.get(cardEntryNum(n)), condText) })),
+      actions: [{ label: 'この内容でOK', primary: true, onClick: (idxs) => {
+        assemblyMode.materialNumbers = spliceMany(self.trash, idxs);
         finalizeAssemblySelection();
-      });
-    }
-    render();
-    cardDetailModal.classList.add('open');
+      } }],
+      onCancel: () => cancelAssembly(),
+    });
   }
 
   function cancelAssembly() {
@@ -14554,6 +14846,9 @@
   // 「緑の自分のテイマー」「特徴に「CS」を持つ自分のデジモン/テイマー」「自分の「天野ネネ」」に合うスタックを数える
   function splitFieldSubject(pi, subj) {
     let s2 = subj.replace(/^(?:バトル)?エリアに/, '').trim();
+    let excl = [];
+    const em = /((?:「[^」]+」(?:\/|か)?)+)以外の/.exec(s2);
+    if (em) { excl = (em[1].match(/「([^」]+)」/g) || []).map(x => x.slice(1, -1)); s2 = s2.replace(em[0], ''); }
     const owners = /相手の/.test(s2) ? [1 - pi] : /自分の/.test(s2) ? [pi] : [pi, 1 - pi];
     let cats = ['digimon', 'tamer'];
     const cm = /(デジモン|テイマー)(?:\/|と|か)?(デジモン|テイマー)?$/.exec(s2);
@@ -14568,13 +14863,13 @@
       .replace(/Lv\.\d+(以上|以下)?/g, '').replace(/DP\d+(以上|以下)/g, '').replace(/レスト状態/g, '')
       .replace(/(\d色|多色)(以上)?/g, '').replace(/[赤青黄緑黒紫白]/g, '').replace(/[\/のかを含]/g, '').trim();
     if (rest) return null;
-    return { owners, cats, filter };
+    return { owners, cats, filter, excl };
   }
   function countFieldSubject(pi, subj) {
     const sp = splitFieldSubject(pi, subj);
     if (!sp) return null;
     let n = 0;
-    sp.owners.forEach(o => fieldStacksOf(o).forEach(st => { if (stackMatchesFilterText(st, sp.filter, sp.cats)) n++; }));
+    sp.owners.forEach(o => fieldStacksOf(o).forEach(st => { if (sp.excl.length && sp.excl.includes((getStackTopCard(st) || {}).name)) return; if (stackMatchesFilterText(st, sp.filter, sp.cats)) n++; }));
     return n;
   }
   function evalFieldCondition(cond, pi) {
@@ -14758,7 +15053,7 @@
       const base = r0.cost;
       return Object.assign({}, r0, {
         cost: Math.max(0, base - n), origCost: r0.origCost != null ? r0.origCost : base,
-        reductionText: (warn ? '❓ ' : '➖ ') + list.map(x => `${x.label} -${x.n}${x.cond ? `(${x.cond}なら)` : ''}`).join('、') + (warn ? ' ※条件を確認' : ''),
+        reductionText: (warn ? '❓ ' : '➖ ') + [r0.ruleText, ...list.map(x => `${x.label} -${x.n}${x.cond ? `(${x.cond}なら)` : ''}`)].filter(Boolean).join('、') + (warn ? ' ※条件を確認' : ''),
         onPick: () => list.forEach(x => x.once && markOnceUsed(x.once)),
       });
     };
@@ -15210,9 +15505,12 @@
       detailBody.innerHTML = `
         <div class="detail-info" style="width:100%;">
           <div class="d-title">トラッシュ(${self.trash.length}枚)</div>
+          ${self.trash.length > 1 ? '<button type="button" class="btn trash-multi" style="font-size:10.5px;padding:4px 8px;margin-top:6px;">☑ まとめて選ぶ</button>' : ''}
           <div class="deck-list" style="margin-top:8px;">${rows || '<div class="empty-state">トラッシュは空です</div>'}</div>
         </div>
       `;
+      const tm = detailBody.querySelector('.trash-multi');
+      if (tm) tm.addEventListener('click', () => openZoneMultiSelect(self, 'trash'));
       detailBody.querySelectorAll('.trash-row-link').forEach(btn => {
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
@@ -15275,6 +15573,50 @@
     }
     render();
     cardDetailModal.classList.add('open');
+  }
+
+  // トラッシュ等からまとめて選んで、進化元へ/別の場所へ送る
+  function openZoneMultiSelect(self, zone) {
+    const arr = zone === 'trash' ? self.trash : self.hand;
+    const zoneLabel = zone === 'trash' ? 'トラッシュ' : '手札';
+    openCardMultiPicker({
+      title: `${zoneLabel}からまとめて選ぶ`,
+      entries: arr.map(n => ({ num: cardEntryNum(n) })),
+      actions: [
+        { label: '進化元へ', primary: true, onClick: (idxs) => {
+          const nums = idxs.map(i => cardEntryNum(arr[i]));
+          const own = [...self.battle, ...(self.raising ? [self.raising] : [])];
+          startFieldPick({
+            title: `${nums.length}枚を進化元の下に置くカードをタップ`,
+            candidates: own, max: 1,
+            onDone: (sel) => {
+              if (!sel.length) return;
+              askFaceOrientation((faceDown) => {
+                snapshotPracticeState();
+                const moved = spliceMany(arr, idxs).map(cardEntryNum);
+                placeCardsUnderStack(sel[0], moved, faceDown);
+                renderPracticeBoard();
+                showToast(`${moved.length}枚を「${stackLabel(sel[0])}」の進化元の下に置きました`);
+              });
+            },
+            onCancel: () => renderPracticeBoard(),
+          });
+        } },
+        { label: '送る▾', onClick: (idxs, ev) => {
+          openHierarchicalDestinationPicker(ev, `${idxs.length}枚を送る`, (dest) => {
+            const finish = (faceUp) => {
+              snapshotPracticeState();
+              const moved = spliceMany(arr, idxs).map(cardEntryNum);
+              moved.forEach(n => sendCardToDestination(self, n, dest, faceUp));
+              renderPracticeBoard();
+              showToast(`${moved.length}枚を${DESTINATION_LABEL[dest]}移動しました`);
+            };
+            if (dest === 'secTop' || dest === 'secBottom') askFaceOrientation((faceDown) => finish(!faceDown));
+            else finish(false);
+          }, { excludeTrash: zone === 'trash', ownerPlayer: self });
+        } },
+      ],
+    });
   }
 
   // ---------- Evolution material add (進化元に追加) ----------
