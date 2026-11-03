@@ -3529,7 +3529,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.68.1</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.69.0</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -5268,7 +5268,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.68.1`);
+    log(`DigiCA Tool build v0.69.0`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -10590,8 +10590,8 @@
         }
         if (m[7] === 'の進化元を') {
           // 「相手のデジモン1体の進化元を上から2枚破棄する」
-          if ((am = /^(上|下)から(\d+)枚破棄/.exec(rest))) action = { type: 'matTrash', from: am[1] === '上' ? 'top' : 'bottom', n: parseInt(am[2], 10) };
-          else if (/^全て破棄/.test(rest)) action = { type: 'matTrash', from: 'top', n: 99 };
+          if ((am = /^、?(上|下)から(\d+)枚破棄/.exec(rest))) action = { type: 'matTrash', from: am[1] === '上' ? 'top' : 'bottom', n: parseInt(am[2], 10) };
+          else if (/^、?全て破棄/.test(rest)) action = { type: 'matTrash', from: 'top', n: 99 };
         }
         // 「相手のデジモン1体を、ターン終了まで、DP-3000」のように期間が対象のあとに来る形も読む
         else if ((am = /^、?(?:((?:次の)?(?:相手の|自分の)?ターン終了時?まで|このターンの間|このターン中)、?)?DP([+\-]\d+)/.exec(rest))) action = { type: 'dp', amount: parseInt(am[2], 10), durPhrase: am[1] || null };
@@ -11364,6 +11364,91 @@
     }
     return [];
   }
+  // ---------- 1〜2タップで済む処理: このデジモンをアクティブ / 相手のセキュリティ破棄 / デッキの上から破棄 / 相手の進化元を選んで破棄 ----------
+  function simpleActionHandlersFor(e, holderStack) {
+    if (!practiceState) return [];
+    const t = engineStripNotes(e.text || '');
+    const out = [];
+    const pi = e.ownerIndex;
+    const notCost = (idx, len) => !/^(?:する|できる|し|す|る)?ことで/.test(t.slice(idx + len, idx + len + 8));
+    const guard = () => { if (pi !== practiceState.viewingIndex) { showToast('この自動処理は、その効果を持つプレイヤーの視点に切り替えてから実行してください', true); return false; } return true; };
+    let m;
+    // このデジモンをアクティブにする/できる
+    const am = /(?<!その)(?<!相手の)このデジモンをアクティブに(する|できる)/.exec(t);
+    if (am && notCost(am.index, am[0].length - 2)) {
+      out.push({ label: '🔄 このデジモンをアクティブにする', run: () => {
+        const f = holderStack && findStackOwnerAndZone(holderStack);
+        if (!f) { showToast('このデジモンが場にいません', true); return; }
+        if (hasLock(holderStack, 'noActive')) { showToast('このデジモンはアクティブにならない状態です', true); return; }
+        if (!holderStack.rested) { showToast('このデジモンはもうアクティブです'); return; }
+        snapshotPracticeState();
+        holderStack.rested = false;
+        renderPracticeBoard();
+        showToast(`「${stackLabel(holderStack)}」をアクティブにしました`);
+      } });
+    }
+    // 相手のセキュリティを上からN枚破棄する
+    const sre = /相手のセキュリティを上から(\d+)枚破棄(する|できる|し)/g;
+    while ((m = sre.exec(t))) {
+      if (!notCost(m.index, m[0].length - m[2].length)) continue;
+      const n = parseInt(m[1], 10);
+      out.push({ label: `🛡 相手のセキュリティを上から${n}枚破棄`, run: () => {
+        if (!guard()) return;
+        const op = practiceState.players[1 - pi];
+        if (!op.security.length) { showToast('相手のセキュリティがありません', true); return; }
+        snapshotPracticeState();
+        const nums = op.security.splice(0, n).map(cardEntryNum);
+        nums.forEach(x => { op.trash.push(x); checkOverflow(x, op); });
+        renderPracticeBoard();
+        showToast(`相手のセキュリティを上から${nums.length}枚破棄しました`);
+      } });
+    }
+    // (自分|相手|お互い)のデッキの上からN枚破棄する
+    const dre = /(自分|相手|お互い)のデッキの上から(\d+)枚破棄(する|できる|し)/g;
+    while ((m = dre.exec(t))) {
+      if (!notCost(m.index, m[0].length - m[3].length)) continue;
+      const who = m[1], n = parseInt(m[2], 10);
+      out.push({ label: `🗑 ${who}のデッキの上から${n}枚破棄`, run: () => {
+        if (!guard()) return;
+        const targets = who === '自分' ? [pi] : who === '相手' ? [1 - pi] : [pi, 1 - pi];
+        snapshotPracticeState();
+        targets.forEach(q => { const pl = practiceState.players[q]; pl.library.splice(0, n).forEach(x => { pl.trash.push(cardEntryNum(x)); checkOverflow(cardEntryNum(x), pl); }); });
+        renderPracticeBoard();
+        showToast(`${who}のデッキの上から${n}枚破棄しました`);
+      } });
+    }
+    // 相手のデジモンの進化元を選んでN枚破棄する
+    const mre = /相手のデジモン(?:1体)?の進化元を、?選んで(\d+)枚破棄/g;
+    while ((m = mre.exec(t))) {
+      if (!notCost(m.index, m[0].length)) continue;
+      const n = parseInt(m[1], 10);
+      out.push({ label: `🧩 相手のデジモンの進化元を選んで${n}枚破棄`, run: () => {
+        if (!guard()) return;
+        const op = practiceState.players[1 - pi];
+        const cands = [...op.battle, ...(op.raising ? [op.raising] : [])].filter(st => isDigimonLikeStack(st) && st.cards.length > 1);
+        if (!cands.length) { showToast('進化元を持つ相手のデジモンがいません', true); return; }
+        startFieldPick({
+          title: `進化元を${n}枚破棄する相手のデジモンをタップ`, candidates: cands, max: 1,
+          onDone: (sel) => {
+            const st = sel[0]; if (!st) return;
+            const list = st.cards.slice(0, -1).map((x, i) => ({ num: cardEntryNum(x), pos: i }));
+            openCardMultiPicker({
+              title: `「${stackLabel(st)}」の進化元から${n}枚破棄`, entries: list.map(x => ({ num: x.num })), max: n, min: 1,
+              actions: [{ label: '破棄する', primary: true, onClick: (idxs) => {
+                snapshotPracticeState();
+                const owner = findStackOwnerAndZone(st);
+                idxs.map(i => list[i].pos).sort((a, b) => b - a).forEach(pos => { const [x] = st.cards.splice(pos, 1); owner.player.trash.push(cardEntryNum(x)); checkOverflow(cardEntryNum(x), owner.player); });
+                renderPracticeBoard();
+                showToast(`「${stackLabel(st)}」の進化元を${idxs.length}枚破棄しました`);
+              } }],
+            });
+          },
+          onCancel: () => renderPracticeBoard(),
+        });
+      } });
+    }
+    return out;
+  }
   // 効果を持つスタック(場を離れた後の効果なら、離れる直前のスタックが残っていればそれ)
   function holderOf(e, f) {
     if (f && f.stack) return f.stack;
@@ -11374,7 +11459,7 @@
     if (e.deferred) return deferredHandlersFor(e);
     const extra = () => {
       const f = e.stackUid ? findStackByUid(e.stackUid) : null;
-      const list = [...reductionCostHandlersFor(e), ...restrictHandlersFor(e), ...evolveFromZoneHandlersFor(e, f && f.stack), ...materialFromZoneHandlersFor(e, f && f.stack), ...playFromHandHandlersFor(e, holderOf(e, f)), ...toHandFromZoneHandlersFor(e, holderOf(e, f))];
+      const list = [...reductionCostHandlersFor(e), ...restrictHandlersFor(e), ...evolveFromZoneHandlersFor(e, f && f.stack), ...materialFromZoneHandlersFor(e, f && f.stack), ...playFromHandHandlersFor(e, holderOf(e, f)), ...toHandFromZoneHandlersFor(e, holderOf(e, f)), ...simpleActionHandlersFor(e, holderOf(e, f))];
       // 進化元効果・セキュリティ効果・消滅時などの「デッキの上からN枚オープン」(【効果】欄のものは基本の処理で出している)
       const rm = /(?<!相手の)デッキの上から(\d+)枚オープン/.exec(e.text || '');
       if (rm && e.timing !== 'ディレイ' && (!f || e.field !== 'effect')) {
