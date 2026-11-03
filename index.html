@@ -3533,7 +3533,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.72.0</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.73.0</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -5272,7 +5272,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.72.0`);
+    log(`DigiCA Tool build v0.73.0`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -6861,9 +6861,10 @@
     if (!top) return null;
     let m;
     // 「Aがいる間か、Bがある」「Aがいるか、Bがある」: どちらか
-    const orParts = c.split(/(?:の)?間か、|(?<=いる|ある|いない|ない)か、/);
+    const orParts = c.split(/(?:の)?間か、|(?<=いる|ある|いない|ない)か、?(?!どうか)/);
     if (orParts.length > 1) {
-      const rs = orParts.map(x => evalStackCondition(x.trim(), stack, pi));
+      // 「このデジモンに「X」の記述があるか特徴に「Y」を持つ」: 後ろの主語は前と同じ
+      const rs = orParts.map((x, i) => evalStackCondition((i > 0 && /^(?:特徴|名称)に|^≪/.test(x.trim()) && /^このデジモン/.test(orParts[0]) ? 'このデジモンが' : '') + x.trim(), stack, pi));
       if (rs.some(r => r === true)) return true;
       return rs.some(r => r == null) ? null : false;
     }
@@ -6889,6 +6890,14 @@
       return stack.cards.slice(0, -1).filter(e => !cardEntryFaceDown(e) && names.some(n => (miniCardName(cardEntryNum(e)) || '').includes(n))).length >= +m[2];
     }
     if (/^このデジモンが進化元を持たない$/.test(c)) return stack.cards.length <= 1;
+    if ((m = /^このデジモンの名称が((?:「[^」]+」(?:\/|か)?)+)$/.exec(c))) return (m[1].match(/「([^」]+)」/g) || []).map(x => x.slice(1, -1)).includes(top.name);
+    if ((m = /^このデジモンのリンクカードが(\d+)枚(以上|以下)?$/.exec(c))) { const k = (stack.links || []).length; return m[2] === '以上' ? k >= +m[1] : m[2] === '以下' ? k <= +m[1] : k === +m[1]; }
+    if ((m = /^自分のセキュリティ(?:の)?枚数がこのデジモンの(裏向きの)?進化元(?:の)?枚数(以上|以下)$/.exec(c))) {
+      const mats = stack.cards.slice(0, -1);
+      const k = m[1] ? mats.filter(cardEntryFaceDown).length : mats.length;
+      const sec = practiceState.players[pi].security.length;
+      return m[2] === '以上' ? sec >= k : sec <= k;
+    }
     if (/^このデジモンが進化元を持つ$/.test(c)) return stack.cards.length > 1;
     if (/^このテイマーがレスト状態$/.test(c)) return !!stack.rested;
     if (/^このテイマーがアクティブ状態$/.test(c)) return !stack.rested;
@@ -6899,9 +6908,10 @@
       return stack.cards.slice(0, -1).some(e => !cardEntryFaceDown(e) && names.some(n => (miniCardName(cardEntryNum(e)) || '').includes(n)));
     }
     if ((m = /^このデジモンの進化元が(\d+)枚(以上|以下)(?:ある)?$/.exec(c))) { const k = stack.cards.length - 1; return m[2] === '以上' ? k >= +m[1] : k <= +m[1]; }
-    if ((m = /^このデジモンの進化元に、?(.+?)がある$/.exec(c))) {
+    if ((m = /^このデジモンの進化元に、?(.+?)が(ある|ない)$/.exec(c))) {
       const f2 = m[1];
-      return stack.cards.slice(0, -1).some(e => !cardEntryFaceDown(e) && revealCondMatches(cardIndexByNumber.get(cardEntryNum(e)), f2));
+      const has = stack.cards.slice(0, -1).some(e => !cardEntryFaceDown(e) && revealCondMatches(cardIndexByNumber.get(cardEntryNum(e)), f2));
+      return m[2] === 'ある' ? has : !has;
     }
     if ((m = /^このデジモンのDPが(\d+)(以上|以下)$/.exec(c))) { const dp = getEffectiveDP(stack); return dp == null ? null : (m[2] === '以上' ? dp >= +m[1] : dp <= +m[1]); }
     if ((m = /^このデジモンが≪([^≫]+)≫を持つ$/.exec(c))) return hasInnateKeywordLine(top, m[1]);
@@ -9816,13 +9826,14 @@
     const pi = practiceState.players.indexOf(f.player);
     return {
       pi, uid: ensureStackUid(stack),
-      pseudo: { cards: stack.cards.slice(), links: (stack.links || []).slice(), dualAsOption: stack.dualAsOption },
+      pseudo: { cards: stack.cards.slice(), links: (stack.links || []).slice(), dualAsOption: stack.dualAsOption, entryInfo: stack.entryInfo },
+      destroyCause: stack.destroyCause || 'other',
       event: engineStackEvent('destroy', stack, pi),
     };
   }
   function engineOnDestroyed(info) {
     if (!info) return;
-    const own = collectStackTriggers(info.pseudo, info.pi, 'battle', ['消滅時'], { event: '消滅' }).map(e => Object.assign(e, { lki: true, lkiUid: info.uid, stackUid: null }));
+    const own = collectStackTriggers(info.pseudo, info.pi, 'battle', ['消滅時'], { event: '消滅' }).map(e => Object.assign(e, { lki: true, lkiUid: info.uid, stackUid: null, destroyCause: info.destroyCause, entryInfo: info.pseudo.entryInfo }));
     engineFireEvents([info.event], own, { extraHolders: [{ stack: info.pseudo, pi: info.pi, uid: info.uid }] });
   }
   // ---------- 【メイン】(起動型)効果: 自分のメインフェイズ中に任意で使える ----------
@@ -10148,10 +10159,24 @@
     const immediate = [];
     const events = []; // 「〜したとき」推定用の出来事
     const evOf = (kind, cur, uid) => ({ kind, pi: cur.pi, uid, category: cur.category, num: cur.top });
+    // 「ジョグレス進化していた」「効果で登場していた」「トラッシュから進化していた」などの判定用に、登場/進化の仕方を記録する
+    const qNow = getEffectQueue();
+    const recordEntry = (st, kind, extra) => {
+      const pend = st.pendingEntry || {};
+      delete st.pendingEntry;
+      // 処理中の効果が「登場/進化させる」ものなら、その効果で出たとみなす(効果のボタンを使わず手で出した場合も拾う)
+      const curTxt = qNow.current ? engineStripNotes(qNow.current.text || '') : '';
+      const byEffectGuess = !!qNow.current && /登場(?:させ|でき|する)|進化(?:させ|でき|する)|ジョグレス|デジクロス|アセンブリ/.test(curTxt);
+      const info = { kind, method: 'normal', fromZone: null, byEffect: byEffectGuess, turn: practiceState.turn.count };
+      Object.keys(pend).forEach(k => { if (pend[k] !== undefined) info[k] = pend[k]; });
+      Object.assign(info, extra || {});
+      st.entryInfo = info;
+    };
     snap.stacks.forEach((cur, uid) => {
       const old = prev.stacks.get(uid);
       if (!old) {
         if (cur.zone !== 'battle') return; // 孵化などは登場ではない
+        if (!cur.isOption) recordEntry(cur.stack, effectEvolveHint.has(cur.stack) ? 'evolve' : 'play');
         if (cur.isOption) {
           // オプションの使用: 1つ目の【メイン】効果を即座に発揮する(9-1-2。キューを通さない)
           const list = collectStackTriggers(cur.stack, cur.pi, 'battle', ['メイン'], { fields: ['effect'], event: '使用' });
@@ -10170,6 +10195,8 @@
         found.push(...collectStackTriggers(cur.stack, cur.pi, 'battle', ['移動時'], { fields: ['effect'], event: '移動' }));
       }
       if (old.top !== cur.top && cur.len > old.len) {
+        recordEntry(cur.stack, 'evolve', { method: cur.stack.burstEvolved ? 'burst' : ((cur.stack.pendingEntry || {}).method || 'normal'),
+          sameLv: (cardIndexByNumber.get(old.top) || {}).level != null && (cardIndexByNumber.get(old.top) || {}).level === (cardIndexByNumber.get(cur.top) || {}).level });
         // 🔒「【進化時】効果を発揮しない」が付いていれば、進化しても【進化時】効果を出さない
         if (hasLock(cur.stack, 'noEvolveEffect')) setTimeout(() => showToast('🔒「【進化時】効果を発揮しない」のため、【進化時】効果は出していません'), 0);
         else found.push(...collectStackTriggers(cur.stack, cur.pi, cur.zone, ['進化時'], { fields: ['effect'], event: '進化' }));
@@ -11730,7 +11757,7 @@
     try {
       const f = e.stackUid ? findStackByUid(e.stackUid) : null;
       const holder = holderOf(e, f);
-      conds = extractEffectConditions(e.text, holder, e.ownerIndex).filter(x => x.result != null);
+      conds = extractEffectConditions(e.text, holder, e.ownerIndex, { entry: e }).filter(x => x.result != null);
       const stripped = engineStripNotes(e.text || '');
       conds.filter(x => x.result === false).forEach(x => {
         const reduced = stripped.slice(0, x.from) + stripped.slice(x.to);
@@ -14059,6 +14086,7 @@
     // 「ターン終了時に破棄」の保留は解消される。
     if (targetStack.burstEvolved) targetStack.burstEvolved = false;
     targetStack.cards.push(evolveMode.handNumber);
+    targetStack.pendingEntry = { method: isBurst ? 'burst' : 'normal', fromZone: evolveMode.source || 'hand', byEffect: evolveMode.effectName ? true : undefined };
     payMemory(practiceState.turn.playerIndex, cost);
     if (self.library.length > 0) self.hand.push(self.library.shift()); // 進化解決時に1ドロー(【進化時】効果より先)
     // ≪進撃≫の判定はコスト支払い後のメモリー状況で行う必要があるため、payMemoryの後に呼ぶ。
@@ -14341,6 +14369,7 @@
     // ドローは【進化時】効果(自動オープン含む)より先に行う。
     if (mode === 'jogress' && self.library.length > 0) self.hand.push(self.library.shift());
     if (mode === 'jogress') effectEvolveHint.add(newStack); // ジョグレスは「進化」として誘発を検出する
+    newStack.pendingEntry = { method: mode, count: selected.length + (handMaterials || []).length };
 
     multiEvolveMode = null;
     renderPracticeBoard();
@@ -14572,6 +14601,7 @@
     if (self.library.length > 0) self.hand.push(self.library.shift()); // 進化解決時に1ドロー(【進化時】効果より先)
     setAdvanceAvailable(newStack, hasAdvanceKeyword(newStack) && memoryTowardOpponent() >= 1);
     effectEvolveHint.add(newStack); // ジョグレスは「進化」として誘発を検出する
+    newStack.pendingEntry = { method: 'jogress', count: 2, byEffect: !!evolveMode.effectName || undefined };
     const evolvedName = evolveMode.card.name;
 
     evolveRouteTarget = null;
@@ -14627,7 +14657,8 @@
       }
       // デュアルカードを使用した場合、アーツ進化またはディレイで場を離れるまでは
       // オプション扱い(デジモンとして数えない・下段グループ表示)にする。
-      self.battle.push({ cards: [handNumber], rested: false, enteredTurn: practiceState.turn.count, dualAsOption: isDualUse || undefined });
+      self.battle.push({ cards: [handNumber], rested: false, enteredTurn: practiceState.turn.count, dualAsOption: isDualUse || undefined,
+        pendingEntry: { fromZone: opts && opts.source === 'ref' && opts.ref ? opts.ref.zone : (opts && opts.source) || 'hand', byEffect: opts && opts.effectName ? true : undefined } });
       payMemory(practiceState.turn.playerIndex, cost);
       renderPracticeBoard();
       showToast(`「${displayName}」を${verb}しました(コスト${cost})`);
@@ -15468,6 +15499,8 @@
       if (def ? !def.has(st) : !getStackEffectSources(st).some(src => (src.text || '').includes('≪' + km[1]))) return false;
       c = c.replace(km[0], '');
     }
+    const mn = /進化元を(\d+)枚以上持(?:つ|ち、)/.exec(c);
+    if (mn) { if (st.cards.length - 1 < +mn[1]) return false; c = c.replace(mn[0], ''); }
     if (/進化元を持たない/.test(c)) { if (st.cards.length > 1) return false; c = c.replace(/進化元を持たない/g, ''); }
     else if (/進化元を持つ/.test(c)) { if (st.cards.length <= 1) return false; c = c.replace(/進化元を持つ/g, ''); }
     const src = /進化元に((?:「[^」]+」(?:\/|か)?)+)がある/.exec(c);
@@ -15504,7 +15537,7 @@
       .replace(/進化元に(「[^」]+」(\/|か)?)+がある/g, '')
       .replace(/(名称に|特徴に|特徴)?(「[^」]+」(\/|か(?=「))?)+(を含む|を持つ|の記述がある)?/g, '')
       .replace(/≪[^≫]+≫の記述がある/g, '').replace(/≪[^≫]+≫を持つ/g, '').replace(/進化元に(「[^」]+」(\/|か)?)+がある/g, '').replace(/進化元効果を持つ/g, '')
-      .replace(/Lv\.\d+(以上|以下)?/g, '').replace(/DP\d+(以上|以下)/g, '').replace(/レスト状態|アクティブ状態|進化元を持たない|進化元を持つ/g, '')
+      .replace(/進化元を\d+枚以上持(?:つ|ち、)/g, '').replace(/Lv\.\d+(以上|以下)?/g, '').replace(/DP\d+(以上|以下)/g, '').replace(/レスト状態|アクティブ状態|進化元を持たない|進化元を持つ/g, '')
       .replace(/(\d色|多色)(以上)?/g, '').replace(/[赤青黄緑黒紫白]/g, '').replace(/[\/のかを含]/g, '').trim();
     if (rest) return null;
     return { owners, cats, filter, excl };
@@ -15564,6 +15597,39 @@
     if (/^自分の表向きのセキュリティがある$/.test(c)) return P.security.some(e => e && typeof e === 'object' && e.u);
     if ((m = /^自分のトラッシュに(.+?)が(ある|ない)$/.exec(c))) { const has = P.trash.some(n => revealCondMatches(cardIndexByNumber.get(cardEntryNum(n)), m[1])); return m[2] === 'ある' ? has : !has; }
     if (/^自分の育成エリアが空いている$/.test(c)) return !P.raising;
+    if ((m = /^自分のセキュリティに(.*?)表向きの(.*?)カードが(ある|ない)$/.exec(c))) {
+      const f = (m[1] + m[2]).replace(/の$/, '');
+      const has = P.security.some(e => e && typeof e === 'object' && e.u && (!f || revealCondMatches(cardIndexByNumber.get(cardEntryNum(e)), f + 'のカード')));
+      return m[3] === 'ある' ? has : !has;
+    }
+    if ((m = /^自分のトラッシュと(?:自分の)?デジモンの進化元に((?:「[^」]+」\/?)+)が合計(\d+)枚以上ある$/.exec(c))) {
+      const names = (m[1].match(/「([^」]+)」/g) || []).map(x => x.slice(1, -1));
+      const hit = (n) => names.some(x => (miniCardName(cardEntryNum(n)) || '') === x);
+      const k = P.trash.filter(hit).length + fieldStacksOf(pi).reduce((a, st) => a + (isDigimonLikeStack(st) ? st.cards.slice(0, -1).filter(x => !cardEntryFaceDown(x) && hit(x)).length : 0), 0);
+      return k >= +m[2];
+    }
+    if ((m = /^自分のバトルエリアに置かれている((?:「[^」]+」\/?)+)が(\d+)枚(以上)?(?:ある)?$/.exec(c))) {
+      const names = (m[1].match(/「([^」]+)」/g) || []).map(x => x.slice(1, -1));
+      const k = P.battle.filter(st => names.includes((getStackTopCard(st) || {}).name)).length;
+      return m[3] ? k >= +m[2] : k === +m[2];
+    }
+    // 「「X」の記述があるデジモン以外の自分のデジモンがいない」= 自分のデジモンは全て条件に合う
+    if ((m = /^(.+?)(デジモン|テイマー)以外の自分の(デジモン|テイマー)がいない$/.exec(c)) && !/^「[^」]+」$/.test(m[1])) {
+      const cat = m[3] === 'デジモン' ? 'digimon' : 'tamer';
+      const mine = fieldStacksOf(pi).filter(st => cat === 'digimon' ? isDigimonLikeStack(st) : (getStackTopCard(st) || {}).category === 'tamer');
+      return mine.every(st => stackMatchesFilterText(st, m[1].replace(/の$/, ''), null));
+    }
+    if ((m = /^自分のデジモンとテイマー全てが(.+)$/.exec(c))) {
+      const mine = P.battle.filter(st => { const t = getStackTopCard(st); return t && !st.dualAsOption && (t.category === 'digimon' || t.category === 'tamer'); });
+      return mine.every(st => stackMatchesFilterText(st, m[1], null));
+    }
+    if ((m = /^(.+?)の色合計が(\d+)色(以上|以下)$/.exec(c))) {
+      const sp = splitFieldSubject(pi, m[1]);
+      if (!sp) return null;
+      const cols = new Set();
+      sp.owners.forEach(o => fieldStacksOf(o).forEach(st => { if (stackMatchesFilterText(st, sp.filter, sp.cats)) ((getStackTopCard(st) || {}).color || []).forEach(x => cols.add(x)); }));
+      return m[3] === '以上' ? cols.size >= +m[2] : cols.size <= +m[2];
+    }
     if ((m = /^育成エリアに自分の(.+?)がいる$/.exec(c))) return !!P.raising && stackMatchesFilterText(P.raising, m[1], null);
     if (/^自分のデジモン体数が相手より少ない$/.test(c)) return P.battle.filter(isDigimonLikeStack).length < O.battle.filter(isDigimonLikeStack).length;
     if (/^自分の表向きのセキュリティがない$/.test(c)) return !P.security.some(e => e && typeof e === 'object' && e.u);
@@ -15594,9 +15660,47 @@
     if (cut >= 0) c = c.slice(c.indexOf('、', cut) + 1);
     return c.replace(/^[、・]/, '').replace(/(?:の)?(?:場合|間)$/, '').replace(/の$/, '').trim();
   }
-  function evalEffectCondition(cond, holder, pi) {
+  // 登場/進化/消滅の「仕方」で決まる条件(記録がなければ null)
+  // ctx: { entry(効果パネルの効果) }
+  function evalHistoryCondition(c, holder, ctx) {
+    const e = ctx && ctx.entry;
+    const info = (holder && holder.entryInfo) || (e && e.entryInfo) || null;
+    let m;
+    if (/^バトル以外で消滅していた$/.test(c)) return e && e.destroyCause ? e.destroyCause !== 'battle' : null;
+    if (/^バトルで消滅していた$/.test(c)) return e && e.destroyCause ? e.destroyCause === 'battle' : null;
+    if ((m = /^2種のカードによるリンク状態$/.exec(c))) {
+      if (!holder) return null;
+      return new Set((holder.links || []).map(n => (cardIndexByNumber.get(n) || {}).name || n)).size >= 2;
+    }
+    if (/^(?:このデジモンが)?ジョグレス進化していた$/.test(c)) return info ? info.method === 'jogress' : null;
+    if ((m = /^(?:このデジモンが)?(?:(\d+)枚(以上)?)?デジクロスしていた$/.exec(c))) return info ? info.method === 'digixros' && (!m[1] || (info.count || 0) >= +m[1]) : null;
+    if (/^(?:このデジモンが)?バースト進化していた$/.test(c)) return info ? info.method === 'burst' : null;
+    if ((m = /^(?:このデジモンが)?効果で(登場\/進化|登場|進化)していた$/.exec(c))) {
+      if (!info) return null;
+      const kindOk = m[1] === '登場/進化' || (m[1] === '登場' ? info.kind === 'play' : info.kind === 'evolve');
+      return kindOk && !!info.byEffect;
+    }
+    if ((m = /^(?:このデジモンが)?(トラッシュ|手札|進化元|セキュリティ)から(登場|進化)していた$/.exec(c))) {
+      if (!info) return null;
+      const z = { トラッシュ: 'trash', 手札: 'hand', 進化元: 'sources', セキュリティ: 'security' }[m[1]];
+      return info.kind === (m[2] === '登場' ? 'play' : 'evolve') && info.fromZone === z;
+    }
+    if (/^(?:このデジモンが)?同じLv\.に進化していた$/.test(c)) return info && info.kind === 'evolve' ? !!info.sameLv : null;
+    return undefined; // 履歴の条件ではない
+  }
+  function evalEffectCondition(cond, holder, pi, ctx) {
     const c = normalizeEffectCond(cond);
     if (!c) return null;
+    const h = evalHistoryCondition(c, holder, ctx);
+    if (h !== undefined) return h;
+    // 「Aがあり、Bがいる」「Aがいて、Bがある」: 両方
+    const andM = /(があり|がいて|があって|であり)、/.exec(c);
+    if (andM) {
+      const a = c.slice(0, andM.index) + ({ があり: 'がある', がいて: 'がいる', があって: 'がある', であり: '' }[andM[1]]);
+      const rs = [evalEffectCondition(a, holder, pi, ctx), evalEffectCondition(c.slice(andM.index + andM[0].length), holder, pi, ctx)];
+      if (rs.includes(false)) return false;
+      return rs.every(r => r === true) ? true : null;
+    }
     try {
       if (holder && getStackTopCard(holder)) return evalStackCondition(c, holder, pi);
       if (/このデジモン|このテイマー/.test(c)) return null;
@@ -15607,7 +15711,7 @@
   // 返り値: [{ raw(元の文), cond(判定に使う文), result, from(条件の始まり), to(その文の終わり) }]
   // 「この効果で〜」「そうした場合」など、処理の結果に依存するものは判定しない(result=null)。
   const EFFECT_COND_DEPENDENT_RE = /この効果で|そうした|そうしなかった|そのデジモン|その(?:カード|テイマー)|選んだ|公開した|破棄した|戻した|置いた|加えた|登場させた|進化させた|消滅させた|していた|ていた$|だった$|された|した$|しなかった|アタック中|リンク状態|このターンに/;
-  function extractEffectConditions(text, holder, pi) {
+  function extractEffectConditions(text, holder, pi, ctx) {
     const t = engineStripNotes(text || '');
     const out = [];
     let base = 0;
@@ -15622,13 +15726,16 @@
         let pick = null;
         for (const k of cuts) {
           // 「Aがいて、Bがある場合」のような「かつ」の条件は、後ろだけで判定しない
-          if (k > 0 && /(いて|あり|あって|持ち|であり|おり|含み|で|かつ)$/.test(head.slice(0, k - 1))) break;
+          if (k > 0 && /(いて|あり|あって|持ち|であり|おり|含み|(?<!ま)で|かつ)$/.test(head.slice(0, k - 1))) break;
           const raw = head.slice(k).trim();
           if (!raw) continue;
           const norm = normalizeEffectCond(raw);
           if (!norm) continue;
+          const hist = evalHistoryCondition(norm, holder, ctx);
+          if (hist === true || hist === false) { pick = { raw, k, result: hist }; break; }
+          if (hist === null) { pick = pick || { raw, k, result: null, dependent: true }; break; }
           if (EFFECT_COND_DEPENDENT_RE.test(norm)) { pick = pick || { raw, k, result: null, dependent: true }; break; }
-          const r = evalEffectCondition(raw, holder, pi);
+          const r = evalEffectCondition(raw, holder, pi, ctx);
           if (r === true || r === false) { pick = { raw, k, result: r }; break; }
           if (!pick) pick = { raw, k, result: null };
         }
@@ -17389,7 +17496,7 @@
       // 回避系が使えなかったとき、同じ消滅の確認を出し直す(そのまま消滅を選ぶまで消さない)
       const reshow = () => { lastAttackStepFn = show; show(); };
       const actions = [
-        { label: `「${name}」をそのまま消滅させる`, onClick: () => resolveFinalDestruction(stack, next) },
+        { label: `「${name}」をそのまま消滅させる`, onClick: () => { stack.destroyCause = battleContext ? 'battle' : 'other'; resolveFinalDestruction(stack, next); } },
       ];
       if (allowEvasion && isDigimonLikeStack(stack)) {
         if (hasEvadeKeyword(stack)) {
