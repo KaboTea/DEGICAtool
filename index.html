@@ -3529,7 +3529,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.70.3</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.71.0</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -5268,7 +5268,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.70.3`);
+    log(`DigiCA Tool build v0.71.0`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -6770,7 +6770,75 @@
     return securityStaticRulesFor(stack).some(r => r.kws.includes(keyword));
   }
   function hasInnateOrLinkedKeyword(stack, keyword) {
-    return hasInnateKeywordLine(getStackTopCard(stack), keyword) || stackHasLinkedKeyword(stack, keyword) || securityStaticGrantsKeyword(stack, keyword);
+    return hasInnateKeywordLine(getStackTopCard(stack), keyword) || stackHasLinkedKeyword(stack, keyword) || securityStaticGrantsKeyword(stack, keyword) || conditionalKeywordOn(stack, keyword);
+  }
+  // ---------- 条件つきで得るキーワード(「このデジモンが特徴に「X」を持つ間、このデジモンは≪ブロッカー≫を得る」) ----------
+  const COND_KW_CACHE = new Map();
+  function parseConditionalKeywordLines(text) {
+    if (COND_KW_CACHE.has(text)) return COND_KW_CACHE.get(text);
+    const out = [];
+    (text || '').split('\n').forEach(line => {
+      const parsed = parseEffectLine(line);
+      if (parsed.labels.some(l => !/^(自分のターン|相手のターン|お互いのターン)$/.test(l))) return;
+      const body = engineStripNotes(parsed.text).replace(/^(【[^】]+】)+/, '');
+      if (/とき、/.test(body)) return; // 誘発して一時的に得るものは対象外
+      const m = /^(.+?)(?:の)?(?:間|なら)、このデジモン(?:は|に)((?:≪[^≫]+≫(?:と|、)?)+)を得る/.exec(body);
+      if (!m) return;
+      const names = (m[2].match(/≪([^≫]+)≫/g) || []).map(k => k.slice(1, -1).replace(/《[^》]*》/g, '').replace(/[+\-－＋]\d+$/, ''));
+      out.push({ prefix: parsed.prefix, labels: parsed.labels, cond: m[1].split('。').pop().replace(/の$/, '').trim(), names });
+    });
+    COND_KW_CACHE.set(text, out);
+    return out;
+  }
+  let condKwBusy = false;
+  function conditionalKeywordOn(stack, keyword) {
+    if (condKwBusy || !practiceState || !stack) return false;
+    const f = findStackOwnerAndZone(stack);
+    if (!f) return false;
+    const pi = practiceState.players.indexOf(f.player);
+    condKwBusy = true;
+    try {
+      return getStackEffectSources(stack).some(src => parseConditionalKeywordLines(src.text).some(cl => {
+        if (!cl.names.includes(keyword)) return false;
+        if (!lineAllowedInZone({ prefix: cl.prefix }, f.zone)) return false;
+        if (cl.labels.includes('自分のターン') && practiceState.turn.playerIndex !== pi) return false;
+        if (cl.labels.includes('相手のターン') && practiceState.turn.playerIndex === pi) return false;
+        return evalStackCondition(cl.cond, stack, pi) === true;
+      }));
+    } finally { condKwBusy = false; }
+  }
+  // 「このデジモンが〜」「このデジモンの進化元に〜」などそのデジモン自身の条件 + 場の条件
+  function evalStackCondition(cond, stack, pi) {
+    const c = (cond || '').trim();
+    const top = getStackTopCard(stack);
+    if (!top) return null;
+    let m;
+    if (/^このデジモンがレスト状態$/.test(c)) return !!stack.rested;
+    if (/^このデジモンがアクティブ状態$/.test(c)) return !stack.rested;
+    if ((m = /^このデジモンの進化元に((?:「[^」]+」(?:\/|か)?)+)がある$/.exec(c))) {
+      const names = (m[1].match(/「([^」]+)」/g) || []).map(x => x.slice(1, -1));
+      return stack.cards.slice(0, -1).some(e => !cardEntryFaceDown(e) && names.some(n => (miniCardName(cardEntryNum(e)) || '').includes(n)));
+    }
+    if ((m = /^このデジモンの進化元が(\d+)枚(以上|以下)(?:ある)?$/.exec(c))) { const k = stack.cards.length - 1; return m[2] === '以上' ? k >= +m[1] : k <= +m[1]; }
+    if ((m = /^このデジモンの進化元に、?(.+?)がある$/.exec(c))) {
+      const f2 = m[1];
+      return stack.cards.slice(0, -1).some(e => !cardEntryFaceDown(e) && revealCondMatches(cardIndexByNumber.get(cardEntryNum(e)), f2));
+    }
+    if ((m = /^このデジモンのDPが(\d+)(以上|以下)$/.exec(c))) { const dp = getEffectiveDP(stack); return dp == null ? null : (m[2] === '以上' ? dp >= +m[1] : dp <= +m[1]); }
+    if ((m = /^このデジモンが≪([^≫]+)≫を持つ$/.exec(c))) return hasInnateKeywordLine(top, m[1]);
+    if ((m = /^このデジモンに((?:≪[^≫]+≫|「[^」]+」)(?:\/(?:≪[^≫]+≫|「[^」]+」))*)の記述がある$/.exec(c))) return revealCondMatches(top, m[1] + 'の記述がある');
+    if ((m = /^このデジモンが(.+)$/.exec(c))) {
+      const rest = m[1].replace(/の$/, '');
+      if (/DP|レスト|アクティブ|進化元|いる|ある/.test(rest)) return null;
+      return revealCondMatches(top, rest);
+    }
+    if ((m = /^メモリーが(\d+)以上$/.exec(c))) { const mem = practiceState.memory * (pi === 0 ? 1 : -1); return mem >= +m[1]; }
+    if ((m = /^自分の(手札|トラッシュ|セキュリティ)が(\d+)枚(以上|以下)$/.exec(c))) {
+      const P = practiceState.players[pi];
+      const k = m[1] === '手札' ? P.hand.length : m[1] === 'トラッシュ' ? P.trash.length : P.security.length;
+      return m[3] === '以上' ? k >= +m[2] : k <= +m[2];
+    }
+    return evalFieldCondition(c, pi);
   }
 
   // ≪ブロッカー≫はデフォルト所持を自動判定しつつ、効果による一時的な付与/剥奪は
@@ -15230,6 +15298,9 @@
     if (st.dualAsOption) return false;
     let c = filter;
     if (/レスト状態の/.test(c)) { if (!st.rested) return false; c = c.replace(/レスト状態の/g, ''); }
+    if (/アクティブ状態の/.test(c)) { if (st.rested) return false; c = c.replace(/アクティブ状態の/g, ''); }
+    if (/進化元を持たない/.test(c)) { if (st.cards.length > 1) return false; c = c.replace(/進化元を持たない/g, ''); }
+    else if (/進化元を持つ/.test(c)) { if (st.cards.length <= 1) return false; c = c.replace(/進化元を持つ/g, ''); }
     const src = /進化元に((?:「[^」]+」(?:\/|か)?)+)がある/.exec(c);
     if (src) {
       const names = (src[1].match(/「([^」]+)」/g) || []).map(x => x.slice(1, -1));
@@ -15263,7 +15334,7 @@
       .replace(/進化元に(「[^」]+」(\/|か)?)+がある/g, '')
       .replace(/(名称に|特徴に|特徴)?(「[^」]+」(\/|か(?=「))?)+(を含む|を持つ|の記述がある)?/g, '')
       .replace(/≪[^≫]+≫の記述がある/g, '').replace(/進化元に(「[^」]+」(\/|か)?)+がある/g, '').replace(/進化元効果を持つ/g, '')
-      .replace(/Lv\.\d+(以上|以下)?/g, '').replace(/DP\d+(以上|以下)/g, '').replace(/レスト状態/g, '')
+      .replace(/Lv\.\d+(以上|以下)?/g, '').replace(/DP\d+(以上|以下)/g, '').replace(/レスト状態|アクティブ状態|進化元を持たない|進化元を持つ/g, '')
       .replace(/(\d色|多色)(以上)?/g, '').replace(/[赤青黄緑黒紫白]/g, '').replace(/[\/のかを含]/g, '').trim();
     if (rest) return null;
     return { owners, cats, filter, excl };
