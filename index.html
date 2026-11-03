@@ -3529,7 +3529,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.70.0</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.70.1</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -5268,7 +5268,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.70.0`);
+    log(`DigiCA Tool build v0.70.1`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -16572,6 +16572,11 @@
     }
     updateFxStackClasses();
   }
+  // 「次へ」を押した時点で、まだ残っている効果は飛ばしたものとして片付ける(貫通の待ち合わせ用)
+  function clearEffectQueueIfIdle() {
+    const q = getEffectQueue();
+    if (q.current || (q.pending && q.pending.length)) { clearEffectQueue(); renderEffectPanel(); }
+  }
   function resumeAttackStepIfAny() {
     if (attackState && lastAttackStepFn) lastAttackStepFn();
   }
@@ -17144,6 +17149,21 @@
   // 複数回発動しても1回のアタックにつき1回のみ。チェックする相手のセキュリティがなければ不発。
   function triggerPierceThenEndAttack(shouldTrigger) {
     if (!shouldTrigger || !attackState) { endAttack(); return; }
+    // 16-7-4: ≪貫通≫はアタック終了時の直前に処理する保留処理。そのバトルで誘発した効果
+    // (「バトルで消滅させたとき」【消滅時】など)を全て解決してからチェックする
+    const q = getEffectQueue();
+    if (q.current || (q.pending && q.pending.length)) {
+      const waitStep = () => {
+        const q2 = getEffectQueue();
+        if (!q2.current && !(q2.pending && q2.pending.length)) { lastAttackStepFn = null; triggerPierceThenEndAttack(true); return; }
+        openStepUi('🗡 ≪貫通≫は、このバトルで誘発した効果を全て処理してからセキュリティチェックします(16-7-4)。先に効果パネルの効果を処理してください', [
+          { label: '効果の処理が終わったので≪貫通≫のチェックへ ▶', onClick: () => { lastAttackStepFn = null; clearEffectQueueIfIdle(); triggerPierceThenEndAttack(true); } },
+        ]);
+      };
+      lastAttackStepFn = waitStep;
+      waitStep();
+      return;
+    }
     // 16-7-6: 処理する時点でチェックするデジモン(アタック中のデジモン)がいなければ不発。
     if (!findStackOwnerAndZone(attackState.attackerStack)) {
       showToast('≪貫通≫が誘発しましたが、アタック中のデジモンが消滅しているためチェックできません(16-7-6)', true);
