@@ -3529,7 +3529,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.69.0</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.70.0</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -5268,7 +5268,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.69.0`);
+    log(`DigiCA Tool build v0.70.0`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -8217,6 +8217,7 @@
     const mainOwner = findStackOwnerAndZone(stack);
     const mainUsable = !!mainOwner && practiceState && stackHasUsableMainEffect(stack, practiceState.players.indexOf(mainOwner.player), mainOwner.zone);
     const deferredOn = (practiceState && practiceState.deferred || []).filter(d => d.targetUid && d.targetUid === stack.uid);
+    const fxGranted = (stack.kwGrants || []).filter(g => g.type === 'fx');
     const badgesHtml = (kwBadgeList.length > 0 || hasAnyLock(stack) || hasAnyResist(stack) || mainUsable || deferredOn.length)
       ? `<div class="status-badges-row">
           ${kwVisible.map(def => `<span class="kw-pill" title="${escapeHtml(def.label)}">${def.icon}</span>`).join('')}
@@ -8225,6 +8226,7 @@
           ${hasAnyResist(stack) ? `<span class="st-lock st-resist" title="耐性: ${escapeHtml(resistSummary(stack))}">${RESIST_ICON_HTML}</span>` : ''}
           ${mainUsable ? '<span class="st-lock st-main-usable" title="【メイン】効果を使えます(タップして詳細から)">⚡</span>' : ''}
           ${deferredOn.length ? `<span class="st-lock st-deferred" title="${escapeHtml(deferredOn.map(deferredLabel).join(' / '))}">⏰</span>` : ''}
+          ${fxGranted.length ? `<span class="st-lock st-fxgrant" title="${escapeHtml(fxGranted.map(g => g.text).join(' / '))}">✨</span>` : ''}
         </div>`
       : '';
     el.innerHTML = `
@@ -8256,6 +8258,8 @@
     }
     const dfEl = el.querySelector('.st-deferred');
     if (dfEl) dfEl.addEventListener('click', (e) => { e.stopPropagation(); showToast(`⏰ 保留処理: ${deferredOn.map(deferredLabel).join(' / ')}`); });
+    const fgEl = el.querySelector('.st-fxgrant');
+    if (fgEl) fgEl.addEventListener('click', (e) => { e.stopPropagation(); showToast(`✨ 付与された効果: ${fxGranted.map(g => g.text).join(' / ')}`); });
     const kwMoreEl = el.querySelector('.kw-pill-more');
     if (kwMoreEl) {
       kwMoreEl.addEventListener('click', (e) => {
@@ -9386,6 +9390,8 @@
       const c = cardIndexByNumber.get(num);
       if (c && c.inherited) out.push({ field: 'link', cardNumber: c.number, card: c, text: c.inherited, sourceLabel: 'リンク効果' });
     });
+    // 効果で与えられた効果(「「【〜】…」の効果を得る/与える」)
+    if (top) (stack.kwGrants || []).forEach(g => { if (g.type === 'fx' && g.text) out.push({ field: 'granted', cardNumber: top.number, card: top, text: g.text, sourceLabel: '付与された効果' }); });
     return out;
   }
   // スタック1つについて、指定タイミングのいずれかを持つ効果行を発揮待ち候補にする
@@ -11067,6 +11073,78 @@
       });
     });
   }
+  // 「相手のデジモン1体に「【自分のメインフェイズ開始時】このデジモンでアタックする。」の効果を与える」
+  // 「」の中に「。」や別の「」が入るので、かっこの深さを数えて取り出す
+  function extractQuotedEffects(t) {
+    const quotes = [];
+    let out = '', i = 0;
+    while (i < t.length) {
+      if (t[i] === '「' && t[i + 1] === '【') {
+        let depth = 0, j = i;
+        for (; j < t.length; j++) { if (t[j] === '「') depth++; else if (t[j] === '」') { depth--; if (depth === 0) break; } }
+        if (j >= t.length) { out += t.slice(i); break; }
+        quotes.push(t.slice(i + 1, j));
+        out += `「\u0003${quotes.length - 1}」`;
+        i = j + 1;
+      } else { out += t[i]; i++; }
+    }
+    return { text: out, quotes };
+  }
+  function parseEffectGrants(text) {
+    const { text: t, quotes } = extractQuotedEffects(engineStripNotes(text || ''));
+    const out = [];
+    t.split('。').forEach(sent => {
+      const re = /「\u0003(\d+)」の効果を(得|与え)/g;
+      let m;
+      while ((m = re.exec(sent))) {
+        const before = sent.slice(0, m.index);
+        const duration = durationFromText(before);
+        const until = duration === 'thisTurn' ? 'turnEnd'
+          : (duration === 'untilOpponentTurnEnd' || duration === 'untilNextOpponentTurnEnd') ? 'oppTurnEnd'
+          : (duration === 'untilOwnTurnEnd' || duration === 'untilNextOwnTurnEnd') ? 'ownTurnEnd' : 'manual';
+        const self = /この(デジモン|テイマー)/.test(before.slice(-30)) && !/他の/.test(before.slice(-30));
+        const subj = self ? null : parseGrantSubject(before);
+        out.push({ fx: quotes[parseInt(m[1], 10)], until, duration, target: self ? 'self' : (subj && subj.all ? 'all' : 'pick'), side: subj ? subj.side : null, ta: subj });
+      }
+    });
+    return out;
+  }
+  function effectGrantHandlersFor(e, holderStack) {
+    if (!practiceState) return [];
+    return parseEffectGrants(e.text).map(g => {
+      const durLabel = DURATION_LABELS[g.duration] ? `(${DURATION_LABELS[g.duration]})` : '';
+      const short = g.fx.length > 26 ? g.fx.slice(0, 26) + '…' : g.fx;
+      return {
+        label: `✨ 「${short}」の効果を与える${g.target === 'all' ? '(全て)' : ''}${durLabel}`,
+        run: () => {
+          const apply = (targets) => {
+            if (!targets.length) { showToast('対象にできるデジモンがいません', true); return; }
+            snapshotPracticeState();
+            targets.forEach(st => { if (!st.kwGrants) st.kwGrants = []; st.kwGrants.push({ type: 'fx', text: g.fx, until: g.until, owner: e.ownerIndex, label: '付与効果' }); });
+            renderPracticeBoard();
+            showToast(`✨ ${targets.map(stackLabel).join('、')} に「${short}」の効果を与えました${durLabel}`);
+          };
+          if (g.target === 'self' && holderStack && findStackOwnerAndZone(holderStack)) { apply([holderStack]); return; }
+          const sides = g.side === 'opp' ? [1 - e.ownerIndex] : g.side === 'own' ? [e.ownerIndex] : [e.ownerIndex, 1 - e.ownerIndex];
+          const kinds = g.ta ? g.ta.kinds : ['digimon'];
+          const pool = targetPoolAll({ side: g.side, kinds }, e.ownerIndex).filter(st => sides.includes(practiceState.players.indexOf(findStackOwnerAndZone(st).player)));
+          const cands = g.ta ? targetCandidates(g.ta, e.ownerIndex, holderStack) : pool;
+          if (g.target === 'all') { if (!cands.length) { showToast('条件に合うデジモンがいません', true); return; } apply(cands); return; }
+          const everyone = targetPoolAll({ side: null, kinds: ['digimon', 'tamer'] }, e.ownerIndex);
+          const extra = everyone.filter(st => !cands.includes(st));
+          if (!cands.length && !extra.length) { showToast('対象にできるデジモンがいません', true); return; }
+          const count = g.ta && Number.isFinite(g.ta.count) ? g.ta.count : 1;
+          startFieldPick({
+            title: `「${short}」の効果を与えるカードをタップ${durLabel}`,
+            sub: g.ta ? `条件: ${(g.ta.prefix || '').trim() || '指定なし'}${g.ta.side === 'opp' ? '相手の' : g.ta.side === 'own' ? '自分の' : ''}${count > 1 ? count + '体' + (g.ta.upTo ? 'まで' : '') : ''}` : '',
+            candidates: cands, extra, extraLabel: '条件外も選ぶ',
+            max: count, upTo: g.ta ? g.ta.upTo : false,
+            onDone: (sel) => apply(sel),
+          });
+        },
+      };
+    });
+  }
   function keywordGrantHandlersFor(e, holderStack) {
     return parseKeywordGrants(e.text).map(g => {
       const names = g.kws.map(k => `≪${k.label}≫`).join('');
@@ -11387,6 +11465,16 @@
         showToast(`「${stackLabel(holderStack)}」をアクティブにしました`);
       } });
     }
+    // 「このデジモンでアタックする/できる」(付与された「【自分のメインフェイズ開始時】このデジモンでアタックする」など)
+    const atk = /(?<!「[^」]*)このデジモンでアタック(する|できる)/.exec(t);
+    if (atk && !/「\u0003|の効果を(得|与え)/.test(t.slice(atk.index, atk.index + 40))) {
+      out.push({ label: `⚔️ このデジモンでアタック${atk[1] === 'する' ? 'する' : ''}`, run: () => {
+        const f = holderStack && findStackOwnerAndZone(holderStack);
+        if (!f) { showToast('このデジモンが場にいません', true); return; }
+        if (pi !== practiceState.viewingIndex) { showToast('このデジモンの持ち主の視点に切り替えてから実行してください', true); return; }
+        declareAttack(holderStack);
+      } });
+    }
     // 相手のセキュリティを上からN枚破棄する
     const sre = /相手のセキュリティを上から(\d+)枚破棄(する|できる|し)/g;
     while ((m = sre.exec(t))) {
@@ -11502,7 +11590,7 @@
     }
     const f = findStackByUid(e.stackUid);
     // 進化元効果・リンク効果・消滅時(場を離れた後)・手札の効果などでも、ドローだけは使えるようにする
-    if (!f || e.field !== 'effect') return [...securityCardHandlersFor(e), ...keywordGrantHandlersFor(e, f && f.stack), ...effectRefHandlersFor(e), ...targetHandlersFor(e, f && f.stack), ...retargetHandlersFor(e, f && f.stack), ...memoryHandlersFor(e), ...drawHandlersFor(e)];
+    if (!f || e.field !== 'effect') return [...securityCardHandlersFor(e), ...keywordGrantHandlersFor(e, f && f.stack), ...effectGrantHandlersFor(e, f && f.stack), ...effectRefHandlersFor(e), ...targetHandlersFor(e, f && f.stack), ...retargetHandlersFor(e, f && f.stack), ...memoryHandlersFor(e), ...drawHandlersFor(e)];
     const stack = f.stack;
     const line = e.text;
     const list = [];
@@ -11532,7 +11620,7 @@
     if (tts && stack.cards.length > tts.n) {
       list.push({ label: `⚡ 一番上${tts.n > 1 ? tts.n + '枚' : ''}をセキュリティの${tts.dest === 'secTop' ? '上' : '下'}へ`, run: () => moveTopCardsOnly(stack, tts.n, tts.dest, tts.faceUp, { keepOne: true }) });
     }
-    list.push(...keywordGrantHandlersFor(e, stack), ...effectRefHandlersFor(e), ...targetHandlersFor(e, stack), ...retargetHandlersFor(e, stack), ...memoryHandlersFor(e), ...drawHandlersFor(e));
+    list.push(...keywordGrantHandlersFor(e, stack), ...effectGrantHandlersFor(e, stack), ...effectRefHandlersFor(e), ...targetHandlersFor(e, stack), ...retargetHandlersFor(e, stack), ...memoryHandlersFor(e), ...drawHandlersFor(e));
     if (checkAutoSelfEvolveDPTrigger(stack, e.timing, line, true)) {
       list.push({ label: '⚡ このデジモンのDP増減', run: () => { checkAutoSelfEvolveDPTrigger(stack, e.timing, line); renderPracticeBoard(); } });
     }
