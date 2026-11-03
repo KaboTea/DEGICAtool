@@ -3529,7 +3529,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.71.0</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.71.1</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -5268,7 +5268,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.71.0`);
+    log(`DigiCA Tool build v0.71.1`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -6813,6 +6813,18 @@
     const top = getStackTopCard(stack);
     if (!top) return null;
     let m;
+    // 「Aがいる間か、Bがある」「Aがいるか、Bがある」: どちらか
+    const orParts = c.split(/(?:の)?間か、|(?<=いる|ある|いない|ない)か、/);
+    if (orParts.length > 1) {
+      const rs = orParts.map(x => evalStackCondition(x.trim(), stack, pi));
+      if (rs.some(r => r === true)) return true;
+      return rs.some(r => r == null) ? null : false;
+    }
+    if ((m = /^(?:この)?(?:デジモンの)?進化元が(\d+)色(以上|以下)?(?:ある)?$/.exec(c))) {
+      const cols = new Set();
+      stack.cards.slice(0, -1).forEach(e => { if (cardEntryFaceDown(e)) return; ((cardIndexByNumber.get(cardEntryNum(e)) || {}).color || []).forEach(x => cols.add(x)); });
+      return m[2] === '以下' ? cols.size <= +m[1] : cols.size >= +m[1];
+    }
     if (/^このデジモンがレスト状態$/.test(c)) return !!stack.rested;
     if (/^このデジモンがアクティブ状態$/.test(c)) return !stack.rested;
     if ((m = /^このデジモンの進化元に((?:「[^」]+」(?:\/|か)?)+)がある$/.exec(c))) {
@@ -6828,7 +6840,14 @@
     if ((m = /^このデジモンが≪([^≫]+)≫を持つ$/.exec(c))) return hasInnateKeywordLine(top, m[1]);
     if ((m = /^このデジモンに((?:≪[^≫]+≫|「[^」]+」)(?:\/(?:≪[^≫]+≫|「[^」]+」))*)の記述がある$/.exec(c))) return revealCondMatches(top, m[1] + 'の記述がある');
     if ((m = /^このデジモンが(.+)$/.exec(c))) {
-      const rest = m[1].replace(/の$/, '');
+      let rest = m[1].replace(/の$/, '');
+      const dm = /の?DP(\d+)(以上|以下)/.exec(rest);
+      if (dm) {
+        const dp = getEffectiveDP(stack);
+        if (dp == null || (dm[2] === '以上' ? dp < +dm[1] : dp > +dm[1])) return false;
+        rest = rest.replace(dm[0], '');
+        if (!rest.trim()) return true;
+      }
       if (/DP|レスト|アクティブ|進化元|いる|ある/.test(rest)) return null;
       return revealCondMatches(top, rest);
     }
@@ -6838,7 +6857,7 @@
       const k = m[1] === '手札' ? P.hand.length : m[1] === 'トラッシュ' ? P.trash.length : P.security.length;
       return m[3] === '以上' ? k >= +m[2] : k <= +m[2];
     }
-    return evalFieldCondition(c, pi);
+    return withCondRef(stack, () => evalFieldCondition(c, pi));
   }
 
   // ≪ブロッカー≫はデフォルト所持を自動判定しつつ、効果による一時的な付与/剥奪は
@@ -15291,6 +15310,27 @@
   // ---------- 場の条件の判定(「〜がいる」「セキュリティがN枚以下」など) ----------
   // 返り値: true / false / null(この書き方は判定できない=プレイヤーに確認してもらう)
   function fieldStacksOf(pi) { const p = practiceState.players[pi]; return [...p.battle, ...(p.raising ? [p.raising] : [])]; }
+  // 「このデジモンのDP以上の相手のデジモン」のような比べる条件の基準になるデジモン
+  let condRefStack = null;
+  function withCondRef(stack, fn) { const prev = condRefStack; condRefStack = stack; try { return fn(); } finally { condRefStack = prev; } }
+  // 比べる条件(DP/進化元の枚数/Lv.が「このデジモン」以上・以下)を取り出して判定する。残りの文を返す(合わなければ false)
+  function applyRelativeFilters(st, c) {
+    const rel = [
+      { re: /(?:このデジモンのDP|DPがこのデジモン)(以上|以下)の?/, val: (x) => getEffectiveDP(x) },
+      { re: /(?:このデジモンの進化元の?枚数|進化元の?枚数がこのデジモン)(以上|以下)の?/, val: (x) => x.cards.length - 1 },
+      { re: /(?:このデジモンのLv\.|Lv\.がこのデジモン)(以上|以下)の?/, val: (x) => (getStackTopCard(x) || {}).level },
+    ];
+    for (const r of rel) {
+      const m = r.re.exec(c);
+      if (!m) continue;
+      c = c.replace(m[0], '');
+      if (!condRefStack) continue; // 基準がなければ判定しない(条件に合う扱い)
+      const a = r.val(st), b = r.val(condRefStack);
+      if (a == null || b == null) return false;
+      if (m[1] === '以上' ? a < b : a > b) return false;
+    }
+    return c;
+  }
   function stackMatchesFilterText(st, filter, wantCats) {
     const top = getStackTopCard(st);
     if (!top) return false;
@@ -15298,6 +15338,9 @@
     if (st.dualAsOption) return false;
     let c = filter;
     if (/レスト状態の/.test(c)) { if (!st.rested) return false; c = c.replace(/レスト状態の/g, ''); }
+    const relC = applyRelativeFilters(st, c);
+    if (relC === false) return false;
+    c = relC;
     if (/アクティブ状態の/.test(c)) { if (st.rested) return false; c = c.replace(/アクティブ状態の/g, ''); }
     if (/進化元を持たない/.test(c)) { if (st.cards.length > 1) return false; c = c.replace(/進化元を持たない/g, ''); }
     else if (/進化元を持つ/.test(c)) { if (st.cards.length <= 1) return false; c = c.replace(/進化元を持つ/g, ''); }
@@ -15331,6 +15374,7 @@
     const filter = s2.replace(/(自分|相手|お互い)の/g, '').replace(/他の/g, '').replace(/^の|の$/g, '');
     // 知っている言い回しだけで出来ているか(残りがあれば判定しない)
     const rest = filter
+      .replace(/(?:このデジモンのDP|DPがこのデジモン|このデジモンの進化元の?枚数|進化元の?枚数がこのデジモン|このデジモンのLv\.|Lv\.がこのデジモン)(以上|以下)/g, '')
       .replace(/進化元に(「[^」]+」(\/|か)?)+がある/g, '')
       .replace(/(名称に|特徴に|特徴)?(「[^」]+」(\/|か(?=「))?)+(を含む|を持つ|の記述がある)?/g, '')
       .replace(/≪[^≫]+≫の記述がある/g, '').replace(/進化元に(「[^」]+」(\/|か)?)+がある/g, '').replace(/進化元効果を持つ/g, '')
@@ -15356,6 +15400,11 @@
     if ((m = /^相手のセキュリティが(\d+)枚以下$/.exec(c))) return O.security.length <= +m[1];
     if ((m = /^お互いのセキュリティ合計が(\d+)枚以下$/.exec(c))) return P.security.length + O.security.length <= +m[1];
     if ((m = /^相手のトラッシュが(\d+)枚以上$/.exec(c))) return O.trash.length >= +m[1];
+    if ((m = /^(自分|相手)の(手札|トラッシュ|セキュリティ|デッキ)が(\d+)枚(以上|以下)$/.exec(c))) {
+      const X = m[1] === '自分' ? P : O;
+      const k = m[2] === '手札' ? X.hand.length : m[2] === 'トラッシュ' ? X.trash.length : m[2] === 'セキュリティ' ? X.security.length : X.library.length;
+      return m[4] === '以上' ? k >= +m[3] : k <= +m[3];
+    }
     if ((m = /^相手の手札またはトラッシュが(\d+)枚以上$/.exec(c))) return O.hand.length >= +m[1] || O.trash.length >= +m[1];
     if ((m = /^自分のトラッシュ(?:に|の)(.+?)が(\d+)枚以上(?:ある)?$/.exec(c))) return P.trash.filter(n => revealCondMatches(cardIndexByNumber.get(cardEntryNum(n)), m[1])).length >= +m[2];
     if (/^自分の手札が相手より少ない$/.test(c)) return P.hand.length < O.hand.length;
@@ -15366,6 +15415,7 @@
       return m[2] === 'ある' ? has : !has;
     }
     if ((m = /^(?:バトルエリアに)?自分の「([^」]+)」が(?:バトルエリアに)?ない$/.exec(c))) return !P.battle.some(st => (getStackTopCard(st) || {}).name === m[1]);
+    if ((m = /^(?:バトルエリアに)?自分の「([^」]+)」が(?:バトルエリアに)?ある$/.exec(c))) return P.battle.some(st => (getStackTopCard(st) || {}).name === m[1]);
     if ((m = /^(.+?)が(\d+)体以上いる$/.exec(c))) { const k = countFieldSubject(pi, m[1]); return k == null ? null : k >= +m[2]; }
     if ((m = /^(.+?)がいない$/.exec(c))) { const k = countFieldSubject(pi, m[1]); return k == null ? null : k === 0; }
     if ((m = /^(.+?)がいる$/.exec(c))) {
