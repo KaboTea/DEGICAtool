@@ -3529,7 +3529,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.70.2</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.70.3</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -5268,7 +5268,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.70.2`);
+    log(`DigiCA Tool build v0.70.3`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -6940,19 +6940,9 @@
         stack.kwGrants.forEach(g => { if (g.type === 'sa') g.wasAuto = true; });
       }
     }
-    // 4-8-6: リンクカードを持つカードが新しいカードになる場合、そのカードが持つ
-    // リンクカードは同時に破棄される(アプ合体は例外的にリンクをこの時点までに
-    // 吸収済みなので、ここでは既に空になっている)。
-    if (stack.links && stack.links.length > 0 && owner) {
-      let removedLinkDP = 0;
-      stack.links.forEach(num => {
-        removedLinkDP += getLinkDPBonus(cardIndexByNumber.get(num));
-        owner.trash.push(num);
-        checkOverflow(num, owner);
-      });
-      stack.links = [];
-      if (removedLinkDP) stack.dpModifier = (stack.dpModifier || 0) - removedLinkDP; // リンクによるDP加算も同時に失われる
-    }
+    // 通常の進化では「新しいカード」にならない(4-8-6はジョグレス等の場合)ので、リンクはそのまま。
+    // ただし進化後のデジモンがリンク条件を満たさなくなったリンクカードは、ルールチェックで破棄(17-1-3-2-6)。
+    discardInvalidLinks(stack, owner);
     const discarded = enforceLinkLimit(stack, owner);
     if (discarded.length > 0) {
       showToast(`進化後のリンク上限を超えたため、リンクを${discarded.length}枚破棄しました(${discarded.join('、')})`, true);
@@ -13116,6 +13106,38 @@
   // 〈リンク〉{条件}:コストN という形式でリンク効果欄(card.inherited)に書かれている
   // コストを検出する。条件の成立可否までは判定せず(自動判定が困難なため)、進化ルート
   // 選択と同じ形式で選択肢として並べ、プレイヤーに選んでもらう。
+  // リンクカードの〈リンク〉条件(「特徴に「X」を持つデジモン」など)
+  function linkConditionsOf(card) {
+    const out = [];
+    const re = /〈リンク〉([\s\S]*?)[:：]?\s*コスト(\d+)/g;
+    let m;
+    while ((m = re.exec((card && card.inherited) || ''))) out.push(m[1].replace(/\s+/g, '').replace(/[:：]$/, '').trim());
+    return out;
+  }
+  // 17-1-3-2-6: リンク条件が適切でないリンクカードを破棄する(判定できない条件は残す)
+  function discardInvalidLinks(stack, owner) {
+    if (!stack || !stack.links || !stack.links.length || !owner) return [];
+    const top = getStackTopCard(stack);
+    if (!top) return [];
+    const removed = [];
+    stack.links = stack.links.filter(num => {
+      const lc = cardIndexByNumber.get(num);
+      const conds = linkConditionsOf(lc);
+      if (!conds.length) return true;
+      let ok;
+      try { ok = conds.some(c => revealCondMatches(top, c)); } catch (e) { ok = true; }
+      if (ok) return true;
+      removed.push(num);
+      return false;
+    });
+    if (removed.length) {
+      let removedLinkDP = 0;
+      removed.forEach(num => { removedLinkDP += getLinkDPBonus(cardIndexByNumber.get(num)); owner.trash.push(num); checkOverflow(num, owner); });
+      if (removedLinkDP) stack.dpModifier = (stack.dpModifier || 0) - removedLinkDP;
+      showToast(`🔗 リンク条件を満たさなくなったため、${removed.map(n => `「${miniCardName(n)}」`).join('')}を破棄しました(ルールチェック 17-1-3-2-6)`, true);
+    }
+    return removed;
+  }
   function buildLinkRoutes(card) {
     const routes = [];
     const text = card.inherited || '';
@@ -16320,6 +16342,7 @@
       // 退化/バースト解除等で一番上のカードが変わった場合(進化元ごと離脱していない場合)、
       // 新しく露出したカードがDP0以下・デジタマ単体等のルール違反状態でないか確認する。
       if (!materialsDiscarded && stack.cards.length > 0) {
+        if (isTopRemoval && discardInvalidLinks(stack, owner.player).length) renderPracticeBoard();
         checkStackRuleViolation(stack);
       }
       if (after) after();
