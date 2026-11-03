@@ -3529,7 +3529,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.70.1</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.70.2</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -5268,7 +5268,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.70.1`);
+    log(`DigiCA Tool build v0.70.2`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -6337,21 +6337,23 @@
     // 「自分のセキュリティを上から1枚手札に加える」: 選ばずにそのまま
     const secTop = [];
     const st0 = engineStripNotes(e.text || '');
-    const sre = /(?<!相手の)自分のセキュリティ(?:の)?(?:を)?上から(\d+)枚(?:を)?手札に加え(?!(?:る|て)?ことで)/g;
+    const sre = /(?<!相手の)自分のセキュリティ(?:の)?(?:を)?(上|下)から(\d+)枚(?:を)?手札に加え(?!(?:る|て)?ことで)/g;
     let sm;
     while ((sm = sre.exec(st0))) {
-      const n = parseInt(sm[1], 10);
+      const fromBottom = sm[1] === '下';
+      const n = parseInt(sm[2], 10);
+      const ud = sm[1];
       secTop.push({
-        label: `🛡 セキュリティの上から${n}枚を手札へ`,
+        label: `🛡 セキュリティの${ud}から${n}枚を手札へ`,
         run: () => {
           if (e.ownerIndex !== practiceState.viewingIndex) { showToast('この自動処理は、その効果を持つプレイヤーの視点に切り替えてから実行してください', true); return; }
           const p = practiceState.players[e.ownerIndex];
           if (!p.security.length) { showToast('セキュリティがありません', true); return; }
           snapshotPracticeState();
-          const nums = p.security.splice(0, n).map(cardEntryNum);
+          const nums = (fromBottom ? p.security.splice(Math.max(0, p.security.length - n), n) : p.security.splice(0, n)).map(cardEntryNum);
           p.hand.push(...nums);
           renderPracticeBoard();
-          showToast(`セキュリティの上から${nums.length}枚を手札に加えました`);
+          showToast(`セキュリティの${ud}から${nums.length}枚を手札に加えました`);
         },
       });
     }
@@ -11473,6 +11475,33 @@
         if (!f) { showToast('このデジモンが場にいません', true); return; }
         if (pi !== practiceState.viewingIndex) { showToast('このデジモンの持ち主の視点に切り替えてから実行してください', true); return; }
         declareAttack(holderStack);
+      } });
+    }
+    // 「このカードを(自分の)セキュリティの下に表向きで置く」
+    const cre = /このカードを(?:自分の)?セキュリティの(上|下)に(表向きで|裏向きで)?置(く|ける|き)/.exec(t);
+    if (cre && notCost(cre.index, cre[0].length - cre[3].length)) {
+      const ud = cre[1], faceUp = cre[2] === '表向きで';
+      out.push({ label: `🛡 このカードをセキュリティの${ud}に${faceUp ? '表向きで' : ''}置く`, run: () => {
+        if (!guard()) return;
+        const pl = practiceState.players[pi];
+        const dest = ud === '上' ? 'secTop' : 'secBottom';
+        const entry = faceUp ? { n: e.cardNumber, u: true } : e.cardNumber;
+        const done = () => { renderPracticeBoard(); showToast(`「${e.cardName}」をセキュリティの${ud}に${faceUp ? '表向きで' : ''}置きました`); };
+        // 場(使用中のオプション/このデジモン)にあればそこから、なければトラッシュ→手札の順で探す
+        const f = holderStack && findStackOwnerAndZone(holderStack);
+        if (f && cardEntryNum(holderStack.cards[holderStack.cards.length - 1]) === e.cardNumber) {
+          snapshotPracticeState();
+          if (holderStack.cards.length === 1) {
+            if (f.zone === 'raising') f.player.raising = null; else f.player.battle.splice(f.player.battle.indexOf(holderStack), 1);
+          } else holderStack.cards.pop();
+          if (dest === 'secTop') pl.security.unshift(entry); else pl.security.push(entry);
+          done(); return;
+        }
+        for (const zone of [pl.trash, pl.hand]) {
+          const i = zone.map(cardEntryNum).lastIndexOf(e.cardNumber);
+          if (i >= 0) { snapshotPracticeState(); zone.splice(i, 1); if (dest === 'secTop') pl.security.unshift(entry); else pl.security.push(entry); done(); return; }
+        }
+        showToast('このカードが見つかりませんでした', true);
       } });
     }
     // 相手のセキュリティを上からN枚破棄する
