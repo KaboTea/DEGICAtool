@@ -3529,7 +3529,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.67.1</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.68.1</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -5268,7 +5268,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.67.1`);
+    log(`DigiCA Tool build v0.68.1`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -6249,11 +6249,11 @@
       let costRule = { type: 'normal' };
       let x;
       if (/コストを支払わず/.test(tail)) costRule = { type: 'free' };
-      else if ((x = /進化コスト(\d+)で/.exec(tail)) || (x = /(\d+)コスト支払って/.exec(tail))) costRule = { type: 'fixed', n: parseInt(x[1], 10) };
-      else if ((x = /進化コスト[-－](\d+)/.exec(tail))) costRule = { type: 'minus', n: parseInt(x[1], 10) };
+      else if ((x = /(?:進化)?コスト(\d+)で/.exec(tail)) || (x = /(\d+)コスト支払って/.exec(tail))) costRule = { type: 'fixed', n: parseInt(x[1], 10) };
+      else if ((x = /(?:進化)?コスト[-－](\d+)/.exec(tail))) costRule = { type: 'minus', n: parseInt(x[1], 10) }; // 新しいカードは「支払うコスト-N」(「進化」が付かない)
       // 「…進化コストを支払って進化できる。この効果で進化するとき、支払う進化コスト-2」: 後ろの文の軽減も反映する
       if (costRule.type === 'normal') {
-        const am = /この効果で(?:進化|登場)するとき、支払う(?:進化|登場)コスト[-－](\d+)/.exec(back(engineStripNotes(text || '')));
+        const am = /この効果で(?:進化|登場)するとき、支払う(?:進化|登場)?コスト[-－](\d+)/.exec(back(engineStripNotes(text || '')));
         if (am) costRule = { type: 'minus', n: parseInt(am[1], 10) };
       }
       out.push({
@@ -6278,14 +6278,121 @@
     return cardMatchesSubject(card, { filters: parseSubjectFilters(cond), colors: parseSubjectColors(cond) });
   }
   // 「自分の手札から、〜1枚を支払う登場コスト-3で登場できる」「〜をコストを支払わずに登場できる」: 手札から選んで、効果のコストで登場する
+  // ---------- 効果の「〜から」で指す場所(手札/トラッシュ/セキュリティ/進化元/テイマーの下/リンクカード) ----------
+  const ZONE_WORD = '(?:(?:この(?:デジモン|テイマー)の)?進化元|(?:自分の)?テイマーの下|(?:このデジモンの)?リンクカード|手札|トラッシュ|(?:表向きの)?セキュリティ)';
+  const ZONE_GROUP = `(?:自分の)?(${ZONE_WORD}(?:(?:\\/|か|または)(?:自分の)?${ZONE_WORD})*)から`;
+  function zonesOfWord(w) {
+    const out = [];
+    w.split(/\/|または|か(?=自分の|手札|トラッシュ|セキュリティ|表向き|この|進化元|テイマー|リンク)/).forEach(x => {
+      if (/進化元/.test(x)) out.push('sources');
+      else if (/テイマーの下/.test(x)) out.push('tamer');
+      else if (/リンクカード/.test(x)) out.push('link');
+      else if (/手札/.test(x)) out.push('hand');
+      else if (/トラッシュ/.test(x)) out.push('trash');
+      else if (/セキュリティ/.test(x)) out.push(/表向き/.test(x) ? 'securityUp' : 'security');
+    });
+    return [...new Set(out)];
+  }
+  const ZONE_JA = { hand: '手札', trash: 'トラッシュ', security: 'セキュリティ', securityUp: '表向きのセキュリティ', sources: '進化元', tamer: 'テイマーの下', link: 'リンクカード' };
+  const ZONE_ICON = { hand: '📥', trash: '🗑', security: '🛡', securityUp: '🛡', sources: '🧩', tamer: '👤', link: '🔗' };
+  // その場所にあるカードを並べる。holderStackが場を離れていたら、進化元はトラッシュから探す
+  function listZoneCards(zone, p, holderStack) {
+    const out = [];
+    const alive = holderStack && findStackOwnerAndZone(holderStack);
+    if (zone === 'hand') p.hand.forEach((e, i) => out.push({ zone, num: cardEntryNum(e), arr: p.hand, pos: i }));
+    else if (zone === 'trash') p.trash.forEach((e, i) => out.push({ zone, num: cardEntryNum(e), arr: p.trash, pos: i }));
+    else if (zone === 'security' || zone === 'securityUp') p.security.forEach((e, i) => { const up = e && typeof e === 'object' && e.u; if (zone === 'securityUp' && !up) return; out.push({ zone, num: cardEntryNum(e), arr: p.security, pos: i, tag: `(セキュリティ上から${i + 1}枚目${up ? '・表' : ''})` }); });
+    else if (zone === 'sources') {
+      if (alive) holderStack.cards.slice(0, -1).forEach((e, i) => out.push({ zone, num: cardEntryNum(e), arr: holderStack.cards, pos: i, tag: cardEntryFaceDown(e) ? '(裏向き)' : '' }));
+      else p.trash.forEach((e, i) => out.push({ zone: 'trash', num: cardEntryNum(e), arr: p.trash, pos: i, tag: '(場を離れたためトラッシュから)' }));
+    } else if (zone === 'tamer') p.battle.filter(st => (getStackTopCard(st) || {}).category === 'tamer').forEach(st => st.cards.slice(0, -1).forEach((e, i) => out.push({ zone, num: cardEntryNum(e), arr: st.cards, pos: i, tag: `(${stackLabel(st)}の下)` })));
+    else if (zone === 'link' && alive) (holderStack.links || []).forEach((n, i) => out.push({ zone, num: n, arr: holderStack.links, pos: i }));
+    return out;
+  }
+  // 選んだカードを元の場所から抜く(同じ配列から複数抜くときは後ろから)
+  function takeZoneCards(picked) {
+    const byArr = new Map();
+    picked.forEach(x => { if (!byArr.has(x.arr)) byArr.set(x.arr, []); byArr.get(x.arr).push(x.pos); });
+    byArr.forEach((poss, arr) => poss.sort((a, b) => b - a).forEach(i => arr.splice(i, 1)));
+    return picked.map(x => x.num);
+  }
+  // 「自分のトラッシュから、〜1枚を手札に戻す」「このデジモンの進化元から、〜を手札に加える」
+  function parseToHandFromZone(text) {
+    const t = engineStripNotes(text || '').replace(/(名称|特徴)に/g, '$1\u0001');
+    const out = [];
+    const re = new RegExp(ZONE_GROUP + '、?([^。、]*?)(\\d+)枚(まで)?(ずつ)?を、?手札に(?:戻|加え)', 'g');
+    let m;
+    while ((m = re.exec(t))) {
+      if (/相手の?$|デジモン1体の$/.test(t.slice(Math.max(0, m.index - 8), m.index))) continue;
+      if (/^(?:せ|られ)?(?:る|す)?ことで/.test(t.slice(m.index + m[0].length, m.index + m[0].length + 6))) continue; // 「手札に加えることで」はコスト
+      const cond = m[2].replace(/\u0001/g, 'に');
+      const each = !!m[5];
+      const names = each ? cond.split(/と(?=「|特|名)/).length : 1;
+      out.push({ zones: zonesOfWord(m[1]), cond, n: parseInt(m[3], 10) * names, upTo: !!m[4] || each });
+    }
+    return out;
+  }
+  function toHandFromZoneHandlersFor(e, holderStack) {
+    if (!practiceState) return [];
+    // 「自分のセキュリティを上から1枚手札に加える」: 選ばずにそのまま
+    const secTop = [];
+    const st0 = engineStripNotes(e.text || '');
+    const sre = /(?<!相手の)自分のセキュリティ(?:の)?(?:を)?上から(\d+)枚(?:を)?手札に加え(?!(?:る|て)?ことで)/g;
+    let sm;
+    while ((sm = sre.exec(st0))) {
+      const n = parseInt(sm[1], 10);
+      secTop.push({
+        label: `🛡 セキュリティの上から${n}枚を手札へ`,
+        run: () => {
+          if (e.ownerIndex !== practiceState.viewingIndex) { showToast('この自動処理は、その効果を持つプレイヤーの視点に切り替えてから実行してください', true); return; }
+          const p = practiceState.players[e.ownerIndex];
+          if (!p.security.length) { showToast('セキュリティがありません', true); return; }
+          snapshotPracticeState();
+          const nums = p.security.splice(0, n).map(cardEntryNum);
+          p.hand.push(...nums);
+          renderPracticeBoard();
+          showToast(`セキュリティの上から${nums.length}枚を手札に加えました`);
+        },
+      });
+    }
+    return [...secTop, ...parseToHandFromZone(e.text).map(tz => {
+      const zl = tz.zones.map(z => ZONE_JA[z]).join('/');
+      return {
+        label: `${ZONE_ICON[tz.zones[0]]} ${zl}から手札へ(${tz.n}枚${tz.upTo ? 'まで' : ''})`,
+        run: () => {
+          if (e.ownerIndex !== practiceState.viewingIndex) { showToast('この自動処理は、その効果を持つプレイヤーの視点に切り替えてから実行してください', true); return; }
+          const p = practiceState.players[e.ownerIndex];
+          const list = [];
+          tz.zones.forEach(z => list.push(...listZoneCards(z, p, holderStack)));
+          if (!list.length) { showToast(`${zl}にカードがありません`, true); return; }
+          list.forEach(x => { x.ok = revealCondMatches(cardIndexByNumber.get(x.num), tz.cond.replace(/と(?=「|特|名)/g, '/')); });
+          openCardMultiPicker({
+            title: `${ZONE_ICON[tz.zones[0]]}「${e.cardName}」の効果: ${zl}から手札へ`,
+            sub: `条件: ${tz.cond}(${tz.n}枚${tz.upTo ? 'まで' : ''})`,
+            entries: list.map(x => ({ num: x.num, ok: x.ok, tag: (tz.zones.length > 1 ? `[${ZONE_JA[x.zone]}]` : '') + (x.tag || '') })),
+            max: tz.n, min: 1,
+            actions: [{ label: '手札に加える', primary: true, onClick: (idxs) => {
+              snapshotPracticeState();
+              const nums = takeZoneCards(idxs.map(i => list[i]));
+              p.hand.push(...nums);
+              renderPracticeBoard();
+              showToast(`${nums.map(n => `「${miniCardName(n)}」`).join('')}を手札に加えました${tz.zones.some(z => z === 'security') ? '(必要ならセキュリティをシャッフルしてください)' : ''}`);
+            } }],
+          });
+        },
+      };
+    })];
+  }
+
   // 効果で手札/トラッシュから登場・使用する(「自分の手札/トラッシュから、〜1枚をコストを支払わず登場できる」など)。
   // 進化と同じく、場所ごとにボタンを分け、一覧から選んで、登場/使用方法の画面へ進む
   function parsePlayFromZone(text) {
     const t = engineStripNotes(text || '').replace(/(名称|特徴)に/g, '$1\u0001');
     const out = [];
-    const re = /(?:自分の)?(手札\/トラッシュ|トラッシュ\/手札|手札かトラッシュ|トラッシュか手札|手札またはトラッシュ|手札|トラッシュ)から、?([^。、]*?)(\d+)枚(?:まで)?を、?([^、。]*?)(登場|使用)(?:でき|させ|する)/g;
+    const re = new RegExp(ZONE_GROUP + '、?([^。、]*?)(\\d+)枚(?:まで)?(?:ずつ)?を、?([^、。]*?)(登場|使用)(?:でき|させ|する)', 'g');
     let m;
     while ((m = re.exec(t))) {
+      if (/相手の?$|デジモン1体の$/.test(t.slice(Math.max(0, m.index - 8), m.index))) continue;
       const cond = m[2].replace(/\u0001/g, 'に');
       const mid = m[4];
       let costRule = null, x;
@@ -6299,38 +6406,49 @@
         const am = /この効果で(?:登場|使用)するとき、支払う(?:登場|使用)?コスト[-－](\d+)/.exec(t.slice(m.index));
         if (am) costRule = { type: 'minus', n: parseInt(am[1], 10) };
       }
-      const zw = m[1];
       out.push({
-        zones: /手札/.test(zw) && /トラッシュ/.test(zw) ? ['hand', 'trash'] : [zw === 'トラッシュ' ? 'trash' : 'hand'],
-        cond, verb: m[5], costRule,
+        zones: zonesOfWord(m[1]),
+        cond: cond.replace(/と(?=「|特|名)/g, '/'), verb: m[5], costRule,
         colorIgnored: /色条件を無視/.test(t.slice(Math.max(0, m.index - 40), m.index + m[0].length + 10)),
       });
     }
     return out;
   }
+  // 「このデジモンのリンクカード1枚をコストを支払わずに登場できる」(「から」が付かない書き方)
+  function parsePlayFromLink(text) {
+    const t = engineStripNotes(text || '');
+    const out = [];
+    const re = /このデジモンのリンクカード(\d+)枚を、?([^、。]*?)(登場|使用)(?:でき|させ|する)/g;
+    let m;
+    while ((m = re.exec(t))) {
+      const mid = m[2];
+      const costRule = /コストを支払わず/.test(mid) ? { type: 'free' } : /コスト[-－](\d+)/.test(mid) ? { type: 'minus', n: parseInt(/コスト[-－](\d+)/.exec(mid)[1], 10) } : /コストを支払って/.test(mid) ? { type: 'normal' } : null;
+      if (costRule) out.push({ zones: ['link'], cond: '', verb: m[3], costRule, colorIgnored: false });
+    }
+    return out;
+  }
   const PLAY_RULE_LABEL = (r) => !r ? '' : r.type === 'free' ? 'コストなし' : r.type === 'minus' ? `コスト-${r.n}` : r.type === 'fixed' ? `コスト${r.n}` : 'コストを支払って';
-  function playFromHandHandlersFor(e) {
+  function playFromHandHandlersFor(e, holderStack) {
     if (!practiceState) return [];
     const out = [];
-    parsePlayFromZone(e.text).forEach(pz => pz.zones.forEach(zone => {
-      const zoneLabel = zone === 'trash' ? 'トラッシュ' : '手札';
+    [...parsePlayFromZone(e.text), ...parsePlayFromLink(e.text)].forEach(pz => pz.zones.forEach(zone => {
+      const zoneLabel = ZONE_JA[zone];
       out.push({
-        label: `${zone === 'trash' ? '🗑' : '📥'} ${zoneLabel}から${pz.verb}(${PLAY_RULE_LABEL(pz.costRule)})`,
+        label: `${ZONE_ICON[zone]} ${zoneLabel}から${pz.verb}(${PLAY_RULE_LABEL(pz.costRule)})`,
         run: () => {
           if (e.ownerIndex !== practiceState.viewingIndex) { showToast('この自動処理は、その効果を持つプレイヤーの視点に切り替えてから実行してください', true); return; }
           const p = practiceState.players[e.ownerIndex];
           const list = [];
-          (zone === 'trash' ? p.trash : p.hand).forEach((entry, idx) => {
-            const num = cardEntryNum(entry);
-            const c = cardIndexByNumber.get(num);
+          listZoneCards(zone, p, holderStack).forEach(x => {
+            const c = cardIndexByNumber.get(x.num);
             if (!c || c.category === 'digi-egg') return;
             const canVerb = pz.verb === '使用' ? (c.category === 'option' || !!c.dual) : (c.category === 'digimon' || c.category === 'tamer');
             if (!canVerb) return;
-            list.push({ zone, idx, num, card: c, ok: revealCondMatches(c, pz.cond) });
+            list.push(Object.assign(x, { idx: x.pos, card: c, ok: revealCondMatches(c, pz.cond) }));
           });
           if (!list.length) { showToast(`${zoneLabel}に${pz.verb}できるカードがありません`, true); return; }
-          openEffectEvolvePicker(`${zone === 'trash' ? '🗑' : '📥'}「${e.cardName}」の効果: ${zoneLabel}から${pz.verb}(${PLAY_RULE_LABEL(pz.costRule)})`, `条件: ${pz.cond}`, list,
-            (pick) => appearFromHand(pick.idx, pick.num, centerPoint(), false, { costRule: pz.costRule, source: zone, colorIgnored: pz.colorIgnored, effectName: e.cardName }),
+          openEffectEvolvePicker(`${ZONE_ICON[zone]}「${e.cardName}」の効果: ${zoneLabel}から${pz.verb}(${PLAY_RULE_LABEL(pz.costRule)})`, `条件: ${pz.cond}`, list,
+            (pick) => appearFromHand(pick.pos, pick.num, centerPoint(), false, { costRule: pz.costRule, source: pick.zone === 'hand' ? 'hand' : pick.zone === 'trash' ? 'trash' : 'ref', ref: pick, colorIgnored: pz.colorIgnored, effectName: e.cardName }),
             pz.verb === '使用' ? '⚡使用' : '📥登場');
         },
       });
@@ -6456,7 +6574,7 @@
     const row = (x, i) => `
       <div class="deck-list-item eep-row${x.ok ? '' : ' eep-ng'}" style="cursor:default;${x.ok ? '' : 'opacity:.6;'}">
         <img src="${escapeHtml(miniCardImg(x.num))}" alt="" class="eep-view" data-i="${i}" style="width:34px;border-radius:3px;cursor:pointer;" onerror="this.style.opacity=0">
-        <span class="dli-name eep-view" data-i="${i}" style="cursor:pointer;">${escapeHtml(x.card.name)}<span style="font-size:10px;color:var(--text-dim);margin-left:5px;">${x.card.level != null ? 'Lv.' + x.card.level : ''}${x.ok ? '' : ' (条件外)'}</span></span>
+        <span class="dli-name eep-view" data-i="${i}" style="cursor:pointer;">${escapeHtml(x.card.name)}<span style="font-size:10px;color:var(--text-dim);margin-left:5px;">${x.card.level != null ? 'Lv.' + x.card.level : ''}${x.tag ? ' ' + escapeHtml(x.tag) : ''}${x.ok ? '' : ' (条件外)'}</span></span>
         <span class="dli-stepper"><button type="button" class="btn eep-go" data-i="${i}" style="font-size:10.5px;padding:4px 8px;">${goLabel || '🧬進化'}</button></span>
       </div>`;
     const all = [...ok, ...ng];
@@ -9577,7 +9695,7 @@
         return { kind: 'manual' };
       };
       const perNote = (s2) => { const pm = /([^、。]*ごとに)、支払う/.exec(s2); return pm ? `(${pm[1]}。下げる量は手で調整してください)` : ''; };
-      let m = /^(.+?)が(.+?)に進化するとき、(.+?)ことで、(?:[^、。]*ごとに、)?支払う進化コスト[-－](\d+)/.exec(body);
+      let m = /^(.+?)が(.+?)に進化するとき、(.+?)ことで、(?:[^、。]*ごとに、)?支払う(?:進化)?コスト[-－](\d+)/.exec(body);
       if (m && !/このカード/.test(m[2])) {
         const ci = costInfo(m[3]);
         out.push(Object.assign({}, e, { timing: 'メイン', sourceLabel: '進化コスト軽減', restReduction: ci.kind, lki: ci.kind === 'destroy' || ci.kind === 'deckBottom',
@@ -11246,11 +11364,17 @@
     }
     return [];
   }
+  // 効果を持つスタック(場を離れた後の効果なら、離れる直前のスタックが残っていればそれ)
+  function holderOf(e, f) {
+    if (f && f.stack) return f.stack;
+    if (e.lkiUid) { const g = findStackByUid(e.lkiUid); if (g) return g.stack; }
+    return null;
+  }
   function getEffectHandlers(e) {
     if (e.deferred) return deferredHandlersFor(e);
     const extra = () => {
       const f = e.stackUid ? findStackByUid(e.stackUid) : null;
-      const list = [...reductionCostHandlersFor(e), ...restrictHandlersFor(e), ...evolveFromZoneHandlersFor(e, f && f.stack), ...materialFromZoneHandlersFor(e, f && f.stack), ...playFromHandHandlersFor(e)];
+      const list = [...reductionCostHandlersFor(e), ...restrictHandlersFor(e), ...evolveFromZoneHandlersFor(e, f && f.stack), ...materialFromZoneHandlersFor(e, f && f.stack), ...playFromHandHandlersFor(e, holderOf(e, f)), ...toHandFromZoneHandlersFor(e, holderOf(e, f))];
       // 進化元効果・セキュリティ効果・消滅時などの「デッキの上からN枚オープン」(【効果】欄のものは基本の処理で出している)
       const rm = /(?<!相手の)デッキの上から(\d+)枚オープン/.exec(e.text || '');
       if (rm && e.timing !== 'ディレイ' && (!f || e.field !== 'effect')) {
@@ -14065,10 +14189,18 @@
       }
       snapshotPracticeState();
       const self = practiceState.players[practiceState.viewingIndex];
-      const fromZone = opts && opts.source === 'trash' ? self.trash : self.hand;
-      let zi = handIndex;
-      if (!(zi >= 0 && cardEntryNum(fromZone[zi]) === handNumber)) zi = fromZone.findIndex(x => cardEntryNum(x) === handNumber);
-      if (zi >= 0) fromZone.splice(zi, 1);
+      if (opts && opts.source === 'ref' && opts.ref) {
+        // 進化元/テイマーの下/リンクカード/セキュリティから
+        const r = opts.ref;
+        let zi = r.pos;
+        if (!(zi >= 0 && cardEntryNum(r.arr[zi]) === handNumber)) zi = r.arr.findIndex(x => cardEntryNum(x) === handNumber);
+        if (zi >= 0) r.arr.splice(zi, 1);
+      } else {
+        const fromZone = opts && opts.source === 'trash' ? self.trash : self.hand;
+        let zi = handIndex;
+        if (!(zi >= 0 && cardEntryNum(fromZone[zi]) === handNumber)) zi = fromZone.findIndex(x => cardEntryNum(x) === handNumber);
+        if (zi >= 0) fromZone.splice(zi, 1);
+      }
       // デュアルカードを使用した場合、アーツ進化またはディレイで場を離れるまでは
       // オプション扱い(デジモンとして数えない・下段グループ表示)にする。
       self.battle.push({ cards: [handNumber], rested: false, enteredTurn: practiceState.turn.count, dualAsOption: isDualUse || undefined });
@@ -14087,7 +14219,7 @@
       if (rule) {
         const ec = applyEvolveCostRule(rule, baseCost);
         const effName = opts.effectName ? `「${opts.effectName}」の効果` : '効果';
-        routes.push({ label: `効果で${verb}`, sub: `${effName}で${verb}${opts.source === 'trash' ? '(トラッシュから)' : ''}`, cost: ec, origCost: baseCost, effectRoute: true,
+        routes.push({ label: `効果で${verb}`, sub: `${effName}で${verb}${opts.source === 'trash' ? '(トラッシュから)' : opts.source === 'ref' && opts.ref ? `(${ZONE_JA[opts.ref.zone] || ''}から)` : ''}`, cost: ec, origCost: baseCost, effectRoute: true,
           reductionText: rule.type === 'minus' ? `➖ ${effName} -${rule.n}` : rule.type === 'free' ? `➖ ${effName} コストを支払わない` : rule.type === 'fixed' ? `➖ ${effName} コスト${rule.n}` : '' });
       }
       routes.push({ label: `通常の${verb}`, sub: `通常の${verb}`, cost: baseCost });
@@ -14101,7 +14233,7 @@
     }
     const reductions = rule && rule.type === 'free' ? [] : collectCostReductions(isOption ? 'use' : 'play', card, { pi, source: 'hand' });
     const extraButtons = [];
-    if (card.category === 'digimon' && !card.dual && !(opts && opts.source === 'trash')) {
+    if (card.category === 'digimon' && !card.dual && !(opts && opts.source && opts.source !== 'hand')) {
       const txt = `${card.effect || ''}\n${card.inherited || ''}`;
       if (/デジクロス/.test(txt)) extraButtons.push({ label: '🔗 デジクロスにする', onClick: () => enterMultiEvolveMode(handIndex, handNumber, 'digixros') });
       if (/アセンブリ/.test(txt)) extraButtons.push({ label: '🧩 アセンブリにする', onClick: () => enterAssemblyMode(handIndex, handNumber) });
