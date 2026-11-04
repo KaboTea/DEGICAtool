@@ -3533,7 +3533,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.78.3</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.79.0</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -5297,7 +5297,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.78.3`);
+    log(`DigiCA Tool build v0.79.0`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -12064,6 +12064,49 @@
           if (links.length === n) { discard(links.map((x, i) => i)); return; }
           openCardMultiPicker({ title: `💸「${e.cardName}」の代償: リンクカードを破棄`, sub: `${n}枚`, entries: links.map(x => ({ num: x, ok: true })), max: n, min: n,
             actions: [{ label: '破棄する', primary: true, onClick: (sel) => discard(sel) }] });
+        } });
+        return;
+      }
+      // 〜に重ねられているカードを上からN枚 進化元の下/セキュリティの上・下/破棄/手札
+      if ((m = /^(.*?)に重ねられているカードを上から(\d+)枚(?:を)?、?(?:(?:この|その)デジモンの(進化元の下)に置く|(?:自分の)?セキュリティの(上|下)に(表向きで|裏向きで)?置く|(破棄する)|(手札に戻す))$/.exec(cost)) && !/相手/.test(m[1])) {
+        const subj = m[1], n = +m[2];
+        const dest = m[3] ? 'bottom' : m[4] ? (m[4] === '上' ? 'secTop' : 'secBottom') : m[6] ? 'trash' : 'hand';
+        const faceUp = m[5] === '表向きで';
+        const selfOnly = /このデジモン$/.test(subj);
+        if (selfOnly && !holder) return;
+        const destJa = { bottom: '進化元の下へ', secTop: `セキュリティの上へ${faceUp ? '(表向き)' : ''}`, secBottom: `セキュリティの下へ${faceUp ? '(表向き)' : ''}`, trash: '破棄', hand: '手札に戻す' }[dest];
+        out.push({ isCost: true, label: `💸 代償: ${selfOnly ? 'このデジモン' : subj.replace(/1体$/, '')}の上から${n}枚を${destJa}`, run: () => {
+          if (!guard()) return;
+          const move = (st) => {
+            const owner = findStackOwnerAndZone(st);
+            if (!owner) { showToast('そのデジモンはもう場にいません', true); return; }
+            if (st.cards.length < (dest === 'bottom' ? 2 : 1)) { showToast('重ねられているカードが足りません', true); return; }
+            snapshotPracticeState();
+            const P = owner.player;
+            const moved = [];
+            for (let i = 0; i < n && st.cards.length; i++) {
+              const ent = st.cards.pop();
+              const num = cardEntryNum(ent);
+              moved.push(num);
+              if (dest === 'bottom') { st.cards.unshift(ent); continue; }
+              if (dest === 'secTop') P.security.unshift(faceUp ? { n: num, u: true } : num);
+              else if (dest === 'secBottom') P.security.push(faceUp ? { n: num, u: true } : num);
+              else if (dest === 'hand') P.hand.push(num);
+              else P.trash.push(num);
+              checkOverflow(num, P);
+            }
+            if (!st.cards.length) {
+              (st.links || []).forEach(x => { P.trash.push(x); checkOverflow(x, P); });
+              if (owner.zone === 'raising') P.raising = null; else P.battle.splice(owner.index, 1);
+            }
+            showToast(`代償: ${moved.map(x => `「${miniCardName(x)}」`).join('')}を${{ bottom: '進化元の下に置きました', secTop: 'セキュリティの上に置きました', secBottom: 'セキュリティの下に置きました', trash: '破棄しました', hand: '手札に戻しました' }[dest]}`);
+            paid();
+          };
+          const cands = selfOnly ? [holder] : costPlaceTargets(pi, subj, holder, false).filter(st => st.cards.length >= (dest === 'bottom' ? 2 : 1));
+          if (cands.length === 1) { move(cands[0]); return; }
+          const own = fieldStacksOf(pi).filter(st => isDigimonLikeStack(st));
+          startFieldPick({ title: `💸 代償: 上から${n}枚を${destJa}(デジモンをタップ)`, candidates: cands, extra: own, max: 1,
+            onDone: (sel) => { if (sel.length) move(sel[0]); }, onCancel: () => renderPracticeBoard() });
         } });
         return;
       }
