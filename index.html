@@ -3533,7 +3533,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.78.1</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.78.2</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -4167,7 +4167,10 @@
     const { query, colors, category, level, costMin, costMax } = opts;
     if (query) {
       const dualText = card.dual ? `${card.dual.name || ''} ${card.dual.effect || ''}` : '';
-      const haystack = `${card.number || ''} ${card.name || ''} ${card.effect || ''} ${card.inherited || ''} ${card.security_effect || ''} ${dualText}`.toLowerCase();
+      // 特徴(〈ルール〉で足したものも)・別名でも探せるようにする
+      const rc = cardIndexByNumber.get(card.number) || card;
+      const traitText = [rc.form, rc.attribute, rc.type, ...(rc.aliasNames || []), ...(rc.aliasNameIncs || [])].filter(Boolean).join(' ').replace(/\//g, ' ');
+      const haystack = `${card.number || ''} ${card.name || ''} ${traitText} ${card.effect || ''} ${card.inherited || ''} ${card.security_effect || ''} ${dualText}`.toLowerCase();
       if (!haystack.includes(query)) return false;
     }
     if (colors && colors.size > 0) {
@@ -4574,6 +4577,9 @@
   }
 
   let cardIndexByNumber = new Map();
+  // 名称の判定(〈ルール〉の「名称:「A」としても扱う」「名称:「X」を含むものとしても扱う」も含める)
+  function cardHasName(card, n) { return !!card && (card.name === n || (card.aliasNames || []).includes(n)); }
+  function cardNameHas(card, n) { return !!card && ((card.name || '').includes(n) || (card.aliasNames || []).some(a => a.includes(n)) || (card.aliasNameIncs || []).some(a => a.includes(n))); }
   // 〈ルール〉の「特徴:タイプ「鳥型」を持つ」「名称:「A」としても扱う」を、判定用のカード情報に足す
   // (DBの元データは書き換えない。練習・判定で使う cardIndexByNumber 側だけ、足した写しにする)
   function withCardRules(c) {
@@ -5289,7 +5295,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.78.1`);
+    log(`DigiCA Tool build v0.78.2`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -5670,7 +5676,7 @@
     }
     if (/^(?:「[^」]+」[か\/]?)+$/.test(condText)) {
       const names = (condText.match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
-      if (names.length) return names.some(n => materials.some(c => c.name && c.name.includes(n)));
+      if (names.length) return names.some(n => materials.some(c => cardNameHas(c, n)));
     }
     // 「赤以外のカード」のように、特定の色を持たないカードの存在を見る条件(Phase2で追加)。
     const notColorM = condText.match(/^([青赤黄緑黒紫白])以外のカード$/);
@@ -5783,7 +5789,7 @@
           if (!traits.some(t => getTraitsBC(targetCard).some(ct => ct.includes(t)))) return;
         } else if (nameList) {
           const names = (nameList.match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
-          const nameOk = names.some(n => targetCard.name && targetCard.name.includes(n));
+          const nameOk = names.some(n => cardNameHas(targetCard, n));
           let traitOk = false;
           if (nameOrTraitList) {
             const traits2 = (nameOrTraitList.match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
@@ -6908,7 +6914,7 @@
       return stack.cards.slice(0, -1).filter(e => !cardEntryFaceDown(e) && names.some(n => (miniCardName(cardEntryNum(e)) || '').includes(n))).length >= +m[2];
     }
     if (/^このデジモンが進化元を持たない$/.test(c)) return stack.cards.length <= 1;
-    if ((m = /^このデジモンの名称が((?:「[^」]+」(?:\/|か)?)+)$/.exec(c))) return (m[1].match(/「([^」]+)」/g) || []).map(x => x.slice(1, -1)).includes(top.name);
+    if ((m = /^このデジモンの名称が((?:「[^」]+」(?:\/|か)?)+)$/.exec(c))) return (m[1].match(/「([^」]+)」/g) || []).map(x => x.slice(1, -1)).some(n => cardHasName(top, n));
     if ((m = /^このデジモンのリンクカードが(\d+)枚(以上|以下)?$/.exec(c))) { const k = (stack.links || []).length; return m[2] === '以上' ? k >= +m[1] : m[2] === '以下' ? k <= +m[1] : k === +m[1]; }
     if ((m = /^自分のセキュリティ(?:の)?枚数がこのデジモンの(裏向きの)?進化元(?:の)?枚数(以上|以下)$/.exec(c))) {
       const mats = stack.cards.slice(0, -1);
@@ -10914,7 +10920,7 @@
       return Math.max(0, toward);
     }
     if ((m = /^自分の「([^」]+)」1体の進化元1枚$/.exec(per))) {
-      const hits = me.battle.filter(st => st && (getStackTopCard(st) || {}).name === m[1]);
+      const hits = me.battle.filter(st => st && cardHasName(getStackTopCard(st), m[1]));
       return hits.length ? Math.max(...hits.map(st => st.cards.length - 1)) : 0;
     }
     if ((m = /^(自分|相手)のトラッシュの(.+)を持つカード1枚$/.exec(per))) {
@@ -11624,7 +11630,7 @@
     if (d.act.type === 'trashPlay') {
       return [{ label: `📥 トラッシュの「${d.act.name}」を登場させる`, run: () => {
         const p = practiceState.players[d.ownerIndex];
-        const nums = [...new Set(p.trash.map(cardEntryNum).filter(n => (cardIndexByNumber.get(n) || {}).name === d.act.name))];
+        const nums = [...new Set(p.trash.map(cardEntryNum).filter(n => cardHasName(cardIndexByNumber.get(n), d.act.name)))];
         if (!nums.length) { showToast(`トラッシュに「${d.act.name}」がありません`, true); return; }
         const play = (num) => {
           snapshotPracticeState();
@@ -11976,7 +11982,7 @@
         if (d && (name || holder)) {
           out.push({ isCost: true, label: `💸 代償: ${name ? `「${name}」` : 'このデジモン'}の進化元から${n}枚を${SRC_DEST_JA[d.dest]}`, run: () => {
             if (!guard()) return;
-            const stacks = name ? fieldStacksOf(pi).filter(st => (getStackTopCard(st) || {}).name === name) : [holder];
+            const stacks = name ? fieldStacksOf(pi).filter(st => cardHasName(getStackTopCard(st), name)) : [holder];
             moveSourcesFlow({ title: `💸「${e.cardName}」の代償: 進化元を${SRC_DEST_JA[d.dest]}`, stacks, cond, n, upTo, dest: d.dest, faceUp: d.faceUp, onDone: paid });
           } });
         }
@@ -14252,7 +14258,7 @@
     let m;
     while ((m = colorNameRe.exec(text))) {
       matchedSpan += m[0].length;
-      const nameOk = topCard.name === m[4];
+      const nameOk = cardHasName(topCard, m[4]);
       const cardColors = topCard.color || [];
       let colorOk;
       if (m[1]) {
@@ -14272,7 +14278,7 @@
       const traits = (m[1].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
       const need = parseInt(m[2], 10);
       const names = (m[3].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
-      const nameOk = names.some(n => topCard.name === n);
+      const nameOk = names.some(n => cardHasName(topCard, n));
       const materials = targetStack.cards.slice(0, targetStack.cards.length - 1);
       const have = materials.filter(entry => {
         const mc = cardIndexByNumber.get(cardEntryNum(entry));
@@ -14285,7 +14291,7 @@
       const names = (m[1].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
       const traits = (m[2].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
       const lvOk = lvCheck(topCard, m[3] ? parseInt(m[3], 10) : null, m[0]);
-      const nameOk = names.some(n => (topCard.name || '').includes(n));
+      const nameOk = names.some(n => cardNameHas(topCard, n));
       const traitOk = traits.some(t => getCardTraits(topCard).some(ct => ct.includes(t)));
       clauses.push(lvOk && nameOk && !traitOk);
     }
@@ -14294,7 +14300,7 @@
       const names = (m[1].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
       const traits = (m[2].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
       const lvOk = lvCheck(topCard, m[3] ? parseInt(m[3], 10) : null, m[0]);
-      const nameOk = names.some(n => (topCard.name || '').includes(n));
+      const nameOk = names.some(n => cardNameHas(topCard, n));
       const traitOk = traits.some(t => getCardTraits(topCard).some(ct => ct.includes(t)));
       clauses.push(lvOk && nameOk && traitOk);
     }
@@ -14324,7 +14330,7 @@
       matchedSpan += m[0].length;
       const names = (m[1].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
       const lvOk = lvCheck(topCard, m[4] ? parseInt(m[4], 10) : null, m[0]);
-      const nameOk = names.some(n => (topCard.name || '').includes(n));
+      const nameOk = names.some(n => cardNameHas(topCard, n));
       const cardColors = topCard.color || [];
       const en = COLOR_JA_TO_EN[m[2]];
       const need = parseInt(m[3], 10);
@@ -14336,7 +14342,7 @@
       const threshold = parseInt(m[1], 10);
       const isAtLeast = m[2] === '以上';
       const names = (m[3].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
-      const nameOk = names.some(n => (topCard.name || '').includes(n));
+      const nameOk = names.some(n => cardNameHas(topCard, n));
       const entryCostOk = topCard.play_cost != null && (isAtLeast ? topCard.play_cost >= threshold : topCard.play_cost <= threshold);
       clauses.push(nameOk && entryCostOk);
     }
@@ -14355,11 +14361,11 @@
       matchedSpan += m[0].length;
       const wantedMaterial = m[1] || m[2];
       const names = (m[3].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
-      const nameOk = names.some(n => topCard.name === n);
+      const nameOk = names.some(n => cardHasName(topCard, n));
       const materials = targetStack.cards.slice(0, targetStack.cards.length - 1);
       const hasOk = materials.some(entry => {
         const mc = cardIndexByNumber.get(cardEntryNum(entry));
-        return mc && mc.name === wantedMaterial;
+        return mc && cardHasName(mc, wantedMaterial);
       });
       clauses.push(nameOk && hasOk);
     }
@@ -14367,16 +14373,16 @@
       matchedSpan += m[0].length;
       const wantedCard = m[1];
       const names = (m[2].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
-      const nameOk = names.some(n => topCard.name === n);
+      const nameOk = names.some(n => cardHasName(topCard, n));
       const self = getSelfPlayer();
-      const presentOk = !!self && battleTopCards(self).some(c => c.name === wantedCard);
+      const presentOk = !!self && battleTopCards(self).some(c => cardHasName(c, wantedCard));
       clauses.push(nameOk && presentOk);
     }
     while ((m = securityCountRe.exec(text))) {
       matchedSpan += m[0].length;
       const max = parseInt(m[1], 10);
       const names = (m[2].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
-      const nameOk = names.some(n => topCard.name === n);
+      const nameOk = names.some(n => cardHasName(topCard, n));
       const self = getSelfPlayer();
       const countOk = !!self && self.security.length <= max;
       clauses.push(nameOk && countOk);
@@ -14386,7 +14392,7 @@
       const min = parseInt(m[1], 10);
       const names = (m[2].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
       const lvOk = lvCheck(topCard, m[3] ? parseInt(m[3], 10) : null, m[0]);
-      const nameOk = names.some(n => (topCard.name || '').includes(n));
+      const nameOk = names.some(n => cardNameHas(topCard, n));
       const self = getSelfPlayer();
       const countOk = !!self && self.trash.length >= min;
       clauses.push(lvOk && nameOk && countOk);
@@ -14395,7 +14401,7 @@
       matchedSpan += m[0].length;
       const minDP = parseInt(m[1], 10);
       const names = (m[2].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
-      const nameOk = names.some(n => topCard.name === n);
+      const nameOk = names.some(n => cardHasName(topCard, n));
       const oppIndex = typeof practiceState !== 'undefined' && practiceState ? 1 - practiceState.viewingIndex : null;
       const opp = oppIndex != null ? practiceState.players[oppIndex] : null;
       const dpOk = !!opp && opp.battle.some(s => isDigimonLikeStack(s) && getEffectiveDP(s) >= minDP);
@@ -14406,14 +14412,14 @@
       const traits = (m[1].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
       const need = parseInt(m[2], 10);
       const names = (m[3].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
-      const nameOk = names.some(n => topCard.name === n);
+      const nameOk = names.some(n => cardHasName(topCard, n));
       const self = getSelfPlayer();
       const have = self ? battleTopCards(self).filter(c => c.category === 'tamer' && traits.some(t => getCardTraits(c).some(ct => ct.includes(t)))).length : 0;
       clauses.push(nameOk && have >= need);
     }
     while ((m = nameOrTraitRe.exec(text))) {
       matchedSpan += m[0].length;
-      const nameOk = topCard.name === m[1];
+      const nameOk = cardHasName(topCard, m[1]);
       const traits = (m[2].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
       const lvOk = lvCheck(topCard, m[3] ? parseInt(m[3], 10) : null, m[0]);
       const traitOk = lvOk && traits.some(t => getCardTraits(topCard).some(ct => ct.includes(t)));
@@ -14463,13 +14469,13 @@
     while ((m = lvNameRe.exec(remainingText))) {
       matchedSpan += m[0].length;
       const lvOk = lvCheck(topCard, parseInt(m[1], 10), m[0]);
-      clauses.push(lvOk && topCard.name === m[2]);
+      clauses.push(lvOk && cardHasName(topCard, m[2]));
     }
     while ((m = nameRe.exec(remainingText))) {
       matchedSpan += m[0].length;
       const names = (m[1].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
       const lvOk = lvCheck(topCard, m[2] ? parseInt(m[2], 10) : null, m[0]);
-      const nameOk = names.some(n => (topCard.name || '').includes(n));
+      const nameOk = names.some(n => cardNameHas(topCard, n));
       clauses.push(lvOk && nameOk);
     }
     while ((m = traitRe.exec(remainingText))) {
@@ -14494,7 +14500,7 @@
     if (bareNameMatch) {
       matchedSpan += text.trim().length;
       const names = (bareNameMatch[1].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
-      clauses.push(names.some(n => topCard.name === n));
+      clauses.push(names.some(n => cardHasName(topCard, n)));
     }
     if (clauses.length === 0) return null;
     if (matchedSpan < text.length * 0.6) return null; // 未知の文言が多く残っている場合は判定を諦める
@@ -16126,7 +16132,7 @@
     const src = /進化元に((?:「[^」]+」(?:\/|か)?)+)がある/.exec(c);
     if (src) {
       const names = (src[1].match(/「([^」]+)」/g) || []).map(x => x.slice(1, -1));
-      const ok = st.cards.slice(0, -1).some(e => { const cc = cardIndexByNumber.get(cardEntryNum(e)); return cc && names.some(n => (cc.name || '').includes(n)); });
+      const ok = st.cards.slice(0, -1).some(e => { const cc = cardIndexByNumber.get(cardEntryNum(e)); return cc && names.some(n => cardNameHas(cc, n)); });
       if (!ok) return false;
       c = c.replace(src[0], '');
     }
@@ -16166,7 +16172,7 @@
     const sp = splitFieldSubject(pi, subj);
     if (!sp) return null;
     let n = 0;
-    sp.owners.forEach(o => fieldStacksOf(o).forEach(st => { if (sp.excl.length && sp.excl.includes((getStackTopCard(st) || {}).name)) return; if (stackMatchesFilterText(st, sp.filter, sp.cats)) n++; }));
+    sp.owners.forEach(o => fieldStacksOf(o).forEach(st => { if (sp.excl.length && sp.excl.some(n => cardHasName(getStackTopCard(st), n))) return; if (stackMatchesFilterText(st, sp.filter, sp.cats)) n++; }));
     return n;
   }
   function evalFieldCondition(cond, pi) {
@@ -16230,7 +16236,7 @@
     }
     if ((m = /^自分のバトルエリアに置かれている((?:「[^」]+」\/?)+)が(\d+)枚(以上)?(?:ある)?$/.exec(c))) {
       const names = (m[1].match(/「([^」]+)」/g) || []).map(x => x.slice(1, -1));
-      const k = P.battle.filter(st => names.includes((getStackTopCard(st) || {}).name)).length;
+      const k = P.battle.filter(st => names.some(n => cardHasName(getStackTopCard(st), n))).length;
       return m[3] ? k >= +m[2] : k === +m[2];
     }
     // 「「X」の記述があるデジモン以外の自分のデジモンがいない」= 自分のデジモンは全て条件に合う
@@ -16257,8 +16263,8 @@
       const has = P.security.some(e => e && typeof e === 'object' && e.u && miniCardName(cardEntryNum(e)) === m[1]);
       return m[2] === 'ある' ? has : !has;
     }
-    if ((m = /^(?:バトルエリアに)?自分の「([^」]+)」が(?:バトルエリアに)?ない$/.exec(c))) return !P.battle.some(st => (getStackTopCard(st) || {}).name === m[1]);
-    if ((m = /^(?:バトルエリアに)?自分の「([^」]+)」が(?:バトルエリアに)?ある$/.exec(c))) return P.battle.some(st => (getStackTopCard(st) || {}).name === m[1]);
+    if ((m = /^(?:バトルエリアに)?自分の「([^」]+)」が(?:バトルエリアに)?ない$/.exec(c))) return !P.battle.some(st => cardHasName(getStackTopCard(st), m[1]));
+    if ((m = /^(?:バトルエリアに)?自分の「([^」]+)」が(?:バトルエリアに)?ある$/.exec(c))) return P.battle.some(st => cardHasName(getStackTopCard(st), m[1]));
     if ((m = /^(.+?)が(\d+)体以上(?:いる)?$/.exec(c))) { const k = countFieldSubject(pi, m[1]); return k == null ? null : k >= +m[2]; }
     if ((m = /^(.+?)が(\d+)体以下(?:しかいない)?$/.exec(c))) { const k = countFieldSubject(pi, m[1]); return k == null ? null : k <= +m[2]; }
     if ((m = /^(.+?)がいない$/.exec(c))) { const k = countFieldSubject(pi, m[1]); return k == null ? null : k === 0; }
