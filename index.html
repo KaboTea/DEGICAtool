@@ -3533,7 +3533,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.82.0</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.82.1</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -5297,7 +5297,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.82.0`);
+    log(`DigiCA Tool build v0.82.1`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -12165,6 +12165,51 @@
               paid();
             } }],
           });
+        } });
+        return;
+      }
+      // 相手のトラッシュから、Lv.の異なるデジモンカード1枚ずつ / Lv.合計Nになるように デッキの上・下に戻す
+      if ((m = /^相手のトラッシュから、(?:Lv\.の異なるデジモンカード1枚ずつを|デジモンカードをLv\.合計(\d+)になるように)デッキの(上|下)に戻す$/.exec(cost))) {
+        const sum = m[1] ? +m[1] : null, ud = m[2];
+        out.push({ isCost: true, label: `💸 代償: 相手のトラッシュから${sum ? `Lv.合計${sum}になるように` : 'Lv.の異なるデジモンカードを1枚ずつ'}デッキの${ud}へ`, run: () => {
+          if (!guard()) return;
+          const op = practiceState.players[1 - pi];
+          const list = op.trash.map((x, i) => ({ i, num: cardEntryNum(x), c: cardIndexByNumber.get(cardEntryNum(x)) })).filter(x => x.c && x.c.category === 'digimon' && x.c.level != null);
+          if (!list.length) { showToast('相手のトラッシュにLv.を持つデジモンカードがありません', true); return; }
+          openCardMultiPicker({
+            title: `💸「${e.cardName}」の代償: 相手のトラッシュからデッキの${ud}に戻すカード`,
+            sub: sum ? `Lv.の合計がちょうど${sum}になるように選ぶ` : 'Lv.が全部ちがうように選ぶ(何枚でも)',
+            entries: list.map(x => ({ num: x.num, ok: true, tag: `Lv.${x.c.level}` })),
+            max: list.length, min: 1,
+            actions: [{ label: `デッキの${ud}に戻す`, primary: true, keepOpen: true, onClick: (sel) => {
+              const picked = sel.map(k => list[k]);
+              const lvs = picked.map(x => x.c.level);
+              if (sum != null && lvs.reduce((a, b) => a + b, 0) !== sum) { showToast(`Lv.の合計が${lvs.reduce((a, b) => a + b, 0)}です。ちょうど${sum}になるように選び直してください`, true); return; }
+              if (sum == null && new Set(lvs).size !== lvs.length) { showToast('同じLv.のカードが含まれています。Lv.が全部ちがうように選び直してください', true); return; }
+              cardDetailModal.classList.remove('open');
+              snapshotPracticeState();
+              spliceMany(op.trash, picked.map(x => x.i));
+              const nums = picked.map(x => x.num);
+              if (ud === '下') op.library.push(...nums); else op.library.unshift(...nums.slice().reverse());
+              showToast(`代償: 相手のトラッシュから${nums.length}枚(Lv.${lvs.join('/')})をデッキの${ud}に戻しました`);
+              paid();
+            } }],
+          });
+        } });
+        return;
+      }
+      // Lv.3の相手のデジモン1体か自分のデジモン1体を手札に戻す(どちらか)
+      if ((m = /^(.*?)相手のデジモン1体か(.*?)自分のデジモン1体を手札に戻す$/.exec(cost))) {
+        const fOpp = m[1].replace(/の$/, ''), fOwn = m[2].replace(/の$/, '');
+        out.push({ isCost: true, label: `💸 代償: ${m[1]}相手のデジモン1体か${m[2]}自分のデジモン1体を手札に戻す`, run: () => {
+          if (!guard()) return;
+          const pick = (side, f) => battleStacksOf(side).filter(st => isDigimonLikeStack(st) && (() => { try { return !f || stackMatchesFilterText(st, f, null); } catch (er) { return true; } })());
+          const ok = [...pick(1 - pi, fOpp), ...pick(pi, fOwn)];
+          const all = [...battleStacksOf(1 - pi), ...battleStacksOf(pi)].filter(isDigimonLikeStack);
+          if (!all.length) { showToast('対象のデジモンがいません', true); return; }
+          startFieldPick({ title: '💸 代償: 手札に戻すデジモンをタップ', candidates: ok, extra: all, max: 1,
+            onDone: (sel) => { if (!sel.length) return; e.costPaid = true; removeCardFromStackAt(sel[0], sel[0].cards.length - 1, 'hand', undefined, () => { renderPracticeBoard(); renderEffectPanel(); }); },
+            onCancel: () => renderPracticeBoard() });
         } });
         return;
       }
