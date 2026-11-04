@@ -3533,7 +3533,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.77.0</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.78.0</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -5272,7 +5272,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.77.0`);
+    log(`DigiCA Tool build v0.78.0`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -11707,7 +11707,70 @@
   }
   // 代償をボタンで払う: この カード自身を動かす / 自分のセキュリティ / メモリー / 手札を破棄
   // 払ったら e.costPaid を立ててボタンを消す(効果のボタンは、払うまで薄く表示=2回押しで実行)
+  // 代償が2つ続く(「このテイマーをレストさせ、〜」「1コスト支払い、〜」)/どちらか(「〜するか、〜」)を分けて、1つずつボタンにする
+  const COST_AND_JOIN_RE = /(レストさせ|消滅させ|支払い|破棄し|戻し|置き|加え)、/;
+  const COST_AND_STEM = { 'レストさせ': 'レストさせる', '消滅させ': '消滅させる', '支払い': '支払う', '破棄し': '破棄する', '戻し': '戻す', '置き': '置く', '加え': '加える' };
+  function splitCompoundCost(cost) {
+    // どちらか: 「Aするか、B」「上から1枚か、…下から1枚破棄する」
+    let m = /^(.+?(?:る|す|く|う|枚))か、(.+)$/.exec(cost);
+    if (m) {
+      let a = m[1];
+      const b = m[2];
+      if (/枚$/.test(a)) { const vb = /(破棄する|手札に加える|手札に戻す|デッキの(?:上|下)に戻す)$/.exec(b); if (!vb) return null; a += vb[1]; }
+      return { kind: 'or', parts: [a, b] };
+    }
+    const parts = [];
+    let rest = cost;
+    while ((m = COST_AND_JOIN_RE.exec(rest))) {
+      parts.push(rest.slice(0, m.index) + COST_AND_STEM[m[1]]);
+      rest = rest.slice(m.index + m[0].length);
+    }
+    if (!parts.length) return null;
+    parts.push(rest);
+    return { kind: 'and', parts };
+  }
   function costHandlersFor(e, holderStack) {
+    if (!practiceState || e.costPaid) return [];
+    const costs = extractEffectCosts(e.text);
+    const splits = costs.map(c => splitCompoundCost(c.cost));
+    if (!splits.some(Boolean)) return costHandlersForSingle(e, holderStack);
+    const out = [];
+    // 代償1つ分だけのボタンを作る。払ったら onPaid を呼ぶ
+    const partHandlers = (part, onPaid) => {
+      const sub = Object.create(e);
+      Object.defineProperty(sub, 'text', { value: part + 'ことで、≪1ドロー≫。', writable: true });
+      Object.defineProperty(sub, 'costPaid', { get: () => false, set: (v) => { if (v) onPaid(); } });
+      return costHandlersForSingle(sub, holderStack);
+    };
+    costs.forEach((c, ci) => {
+      const sp = splits[ci];
+      if (!sp) {
+        out.push(...partHandlers(c.cost, () => { e.costPaid = true; }));
+        return;
+      }
+      if (sp.kind === 'or') {
+        const lists = sp.parts.map(pt => partHandlers(pt, () => { e.costPaid = true; }));
+        if (lists.some(l => !l.length)) return;
+        lists.flat().forEach(h => { h.label = h.label.replace(/^💸 代償: /, '💸 代償(どちらか): '); out.push(h); });
+        return;
+      }
+      // 続けて払う: 全部の部分がボタンにできるときだけ。今の段階の分だけ出す
+      if (!e.costSteps) e.costSteps = {};
+      let k = e.costSteps[ci] || 0;
+      // 「このテイマーをレストさせ」は効果を始めたときに自動で払っている(restPaid)ので飛ばす
+      while (k < sp.parts.length && e.restPaid && /^この(テイマー|デジモン)をレストさせる$/.test(sp.parts[k])) k++;
+      if (k >= sp.parts.length) return;
+      if (sp.parts.some((pt, i) => i >= k && !partHandlers(pt, () => {}).length && !(i === k))) return;
+      const hs = partHandlers(sp.parts[k], () => {
+        e.costSteps[ci] = k + 1;
+        if (k + 1 >= sp.parts.length) e.costPaid = true;
+      });
+      if (!hs.length) return;
+      hs.forEach(h => { h.label = h.label.replace(/^💸 代償: /, `💸 代償${k + 1}/${sp.parts.length}: `); out.push(h); });
+    });
+    return out;
+  }
+  function costHandlersForSingle(e, holderStack) {
     if (!practiceState || e.costPaid) return [];
     const out = [];
     const pi = e.ownerIndex;
@@ -11979,6 +12042,64 @@
         } });
         return;
       }
+      // このカードを(自分の〜の)進化元の下に置く(手札/トラッシュにあるこのカード)
+      if ((m = /^(?:自分の(?:手札|トラッシュ)から、?)?このカードを(.+?)の進化元の下に置く$/.exec(cost)) && !/相手/.test(m[1])) {
+        const subj = m[1];
+        out.push({ isCost: true, label: `💸 代償: このカードを${subj.replace(/1体$/, '')}の進化元の下へ`, run: () => {
+          if (!guard()) return;
+          let found = null;
+          for (const arr of [P0.hand, P0.trash]) { const i = arr.findIndex(x => cardEntryNum(x) === e.cardNumber); if (i >= 0) { found = [arr, i]; break; } }
+          if (!found) { showToast('このカードが手札/トラッシュに見つかりません', true); return; }
+          const targets = costPlaceTargets(pi, subj, holder, false);
+          const own = fieldStacksOf(pi).filter(st => isDigimonLikeStack(st));
+          if (!own.length) { showToast('置き先のデジモンがいません', true); return; }
+          const place = (st) => {
+            snapshotPracticeState();
+            const [num] = found[0].splice(found[1], 1).map(cardEntryNum);
+            st.cards.unshift(num);
+            showToast(`代償: 「${miniCardName(num)}」を「${stackLabel(st)}」の進化元の下に置きました`);
+            paid();
+          };
+          if (targets.length === 1) { place(targets[0]); return; }
+          startFieldPick({ title: '💸 代償: このカードを進化元の下に置くデジモンをタップ', candidates: targets, extra: own, max: 1,
+            onDone: (sel) => { if (sel.length) place(sel[0]); }, onCancel: () => renderPracticeBoard() });
+        } });
+        return;
+      }
+      // 自分のテイマーの下(のカード/から〜)N枚を、そのデジモン/自分の〜の進化元の下に置く
+      if ((m = /^(?:自分の|この)テイマーの下(?:から、?|の|にある)(.*?)(?:カード)?(\d+)枚(まで)?を(.+?)の進化元の下に置く$/.exec(cost)) && !/相手/.test(m[4])) {
+        const cond = m[1].replace(/(?:の)?カード$/, '').replace(/[、の]$/, ''), n = +m[2], upTo = !!m[3], subj = m[4];
+        const self = /^このテイマー/.test(cost);
+        out.push({ isCost: true, label: `💸 代償: テイマーの下のカード${n}枚を${/^その/.test(subj) ? 'そのデジモン' : subj.replace(/1体$/, '')}の進化元の下へ`, run: () => {
+          if (!guard()) return;
+          const tamers = self ? (holder ? [holder] : []) : fieldStacksOf(pi).filter(st => (getStackTopCard(st) || {}).category === 'tamer' && st.cards.length > 1);
+          const list = [];
+          tamers.forEach(st => st.cards.slice(0, -1).forEach((x, i) => list.push({ st, i, num: cardEntryNum(x) })));
+          if (!list.length) { showToast('テイマーの下にカードがありません', true); return; }
+          openCardMultiPicker({
+            title: `💸「${e.cardName}」の代償: テイマーの下から置くカード`, sub: `${cond ? `条件: ${cond}(` : '('}${n}枚${upTo ? 'まで' : ''})`,
+            entries: list.map(x => ({ num: x.num, ok: !cond || revealCondMatches(cardIndexByNumber.get(x.num), cond), tag: tamers.length > 1 ? `[${stackLabel(x.st)}]` : '' })),
+            max: n, min: upTo ? 1 : n,
+            actions: [{ label: '置く', primary: true, onClick: (sel) => {
+              const picked = sel.map(k => list[k]);
+              const targets = costPlaceTargets(pi, subj, holder, false);
+              const own = fieldStacksOf(pi).filter(st => isDigimonLikeStack(st));
+              const place = (st) => {
+                snapshotPracticeState();
+                const nums = [];
+                tamers.forEach(t => { const ix = picked.filter(x => x.st === t).map(x => x.i); nums.push(...spliceMany(t.cards, ix).map(cardEntryNum)); });
+                st.cards.unshift(...nums);
+                showToast(`代償: ${nums.length}枚を「${stackLabel(st)}」の進化元の下に置きました`);
+                paid();
+              };
+              if (targets.length === 1) { place(targets[0]); return; }
+              startFieldPick({ title: '💸 代償: カードを進化元の下に置くデジモンをタップ', candidates: targets, extra: own, max: 1,
+                onDone: (sel) => { if (sel.length) place(sel[0]); }, onCancel: () => renderPracticeBoard() });
+            } }],
+          });
+        } });
+        return;
+      }
       // このカード(手札/トラッシュ/場にあるこのカード)をデッキの上/下に戻す・破棄する
       if ((m = /^このカードを(デッキの(上|下)に戻す|破棄する|手札に戻す)$/.exec(cost))) {
         const act = m[1];
@@ -12179,6 +12300,21 @@
       } });
     }
     return out;
+  }
+  // 代償で「〜の進化元の下に置く」ときの置き先候補(「そのデジモン」など特定できないときは自分のデジモン全部)
+  function costPlaceTargets(pi, subj, holder, toTamer) {
+    if (/^この(デジモン|テイマー)$/.test(subj)) return holder ? [holder] : [];
+    return fieldStacksOf(pi).filter(st => {
+      const top = getStackTopCard(st);
+      if (!top || st.dualAsOption) return false;
+      if (toTamer ? top.category !== 'tamer' : !isDigimonLikeStack(st)) return false;
+      if (/他の/.test(subj) && st === holder) return false;
+      if (/^その/.test(subj)) return true;
+      const area = /育成エリアの/.test(subj) ? 'raising' : null;
+      if (area && practiceState.players[pi].raising !== st) return false;
+      const f2 = subj.replace(/(?:自分の)|(?:他の)|(?:1体)|(?:育成エリアの)|(?:バトルエリアの)/g, '').replace(/(デジモン|テイマー)$/, '').replace(/の$/, '');
+      try { return !f2 || stackMatchesFilterText(st, f2, null); } catch (er) { return true; }
+    });
   }
   // 効果を持つスタック(場を離れた後の効果なら、離れる直前のスタックが残っていればそれ)
   function holderOf(e, f) {
