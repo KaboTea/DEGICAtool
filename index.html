@@ -3533,7 +3533,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.78.2</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.78.3</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -4464,7 +4464,7 @@
         <div class="detail-tags">${tags.map(t => `<span>${escapeHtml(t)}</span>`).join('')}</div>
         ${evoHtml}
         ${displayEffect ? `<div class="detail-effect"><span class="label">効果</span>${escapeHtml(displayEffect)}</div>` : ''}
-        ${card.inherited ? `<div class="detail-effect"><span class="label">${card.inherited.includes('リンク') ? 'リンク効果' : '進化元効果'}</span>${escapeHtml(card.inherited)}</div>` : ''}
+        ${card.inherited ? `<div class="detail-effect"><span class="label">${/〈リンク〉/.test(card.inherited) ? 'リンク効果' : '進化元効果'}</span>${escapeHtml(card.inherited)}</div>` : ''}
         ${card.security_effect ? `<div class="detail-effect"><span class="label">セキュリティ効果</span>${escapeHtml(card.security_effect)}</div>` : ''}
         ${dualHtml}
       </div>
@@ -4577,6 +4577,8 @@
   }
 
   let cardIndexByNumber = new Map();
+  // 進化元として働く効果欄。リンクカード(〈リンク〉を持つカード)の欄はリンク効果なので、進化元にあるときは働かない
+  function matInheritedOf(card) { return card && card.inherited && !/〈リンク〉/.test(card.inherited) ? card.inherited : ''; }
   // 名称の判定(〈ルール〉の「名称:「A」としても扱う」「名称:「X」を含むものとしても扱う」も含める)
   function cardHasName(card, n) { return !!card && (card.name === n || (card.aliasNames || []).includes(n)); }
   function cardNameHas(card, n) { return !!card && ((card.name || '').includes(n) || (card.aliasNames || []).some(a => a.includes(n)) || (card.aliasNameIncs || []).some(a => a.includes(n))); }
@@ -5295,7 +5297,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.78.2`);
+    log(`DigiCA Tool build v0.78.3`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -5603,7 +5605,7 @@
     let sum = 0;
     materials.forEach(entry => {
       const card = cardIndexByNumber.get(cardEntryNum(entry));
-      const text = (card && card.inherited) || '';
+      const text = matInheritedOf(card);
       sum += sumSelfTurnDPPattern(text, isOwnersTurn);
     });
     return sum;
@@ -5726,7 +5728,7 @@
     let sum = 0;
     materials.forEach(entry => {
       const card = cardIndexByNumber.get(cardEntryNum(entry));
-      const text = (card && card.inherited) || '';
+      const text = matInheritedOf(card);
       text.split('\n').forEach(line => {
         const m = MATERIAL_COND_DP_PATTERN.exec(line.trim());
         if (!m) return;
@@ -6160,7 +6162,7 @@
     if (stack) {
       stack.cards.slice(0, -1).reverse().forEach(entry => {
         const m = cardIndexByNumber.get(cardEntryNum(entry));
-        if (m && m.inherited && !cardEntryFaceDown(entry)) secs.push([`進化元効果<small>${escapeHtml(m.name)}</small>`, 'inh', m.inherited]);
+        if (matInheritedOf(m) && !cardEntryFaceDown(entry)) secs.push([`進化元効果<small>${escapeHtml(m.name)}</small>`, 'inh', m.inherited]);
       });
       (stack.links || []).forEach(num => {
         const m = cardIndexByNumber.get(num);
@@ -6755,7 +6757,7 @@
       return true;
     }
     const materials = stack.cards.slice(0, stack.cards.length - 1);
-    return materials.some(entry => hasKeywordLineInText((cardIndexByNumber.get(cardEntryNum(entry)) || {}).inherited, keyword));
+    return materials.some(entry => hasKeywordLineInText(matInheritedOf(cardIndexByNumber.get(cardEntryNum(entry))), keyword));
   }
   // カードそのものが持つ(独立行)か、リンク/進化元が持つかのどちらかを見る、
   // という判定を1箇所にまとめたヘルパー。
@@ -7020,7 +7022,7 @@
       sum += stack.links.reduce((s, num) => s + (numericFromKeywordLine((cardIndexByNumber.get(num) || {}).inherited, patterns) || 0), 0);
     }
     const materials = stack.cards.slice(0, stack.cards.length - 1);
-    sum += materials.reduce((s, entry) => s + (numericFromKeywordLine((cardIndexByNumber.get(cardEntryNum(entry)) || {}).inherited, patterns) || 0), 0);
+    sum += materials.reduce((s, entry) => s + (numericFromKeywordLine(matInheritedOf(cardIndexByNumber.get(cardEntryNum(entry))), patterns) || 0), 0);
     return sum;
   }
   // 「Sアタック」は旧称「セキュリティアタック」表記のカードもあるため両方見る(16-4)。
@@ -7657,7 +7659,7 @@
     const add = (text) => { let m; re.lastIndex = 0; while ((m = re.exec(text || ''))) out.push(m[1]); };
     if (hasInnateKeywordLine(getStackTopCard(stack), '分離')) add((getStackTopCard(stack) || {}).effect);
     (stack.links || []).forEach(num => { const c = cardIndexByNumber.get(num); if (hasKeywordLineInText(c && c.inherited, '分離')) add(c.inherited); });
-    stack.cards.slice(0, -1).forEach(entry => { const c = cardIndexByNumber.get(cardEntryNum(entry)); if (hasKeywordLineInText(c && c.inherited, '分離')) add(c.inherited); });
+    stack.cards.slice(0, -1).forEach(entry => { const c = cardIndexByNumber.get(cardEntryNum(entry)); if (hasKeywordLineInText(matInheritedOf(c), '分離')) add(c.inherited); });
     return out;
   }
   function hasSeparationKeyword(stack) {
@@ -8207,7 +8209,7 @@
     // 「リンク」が含まれる場合に表示ラベルが切り替わる仕組みになっている(詳細表示と同じ判定)。
     // 通常の効果欄(card.effect)にたまたま「リンク」の語が出てくるだけのカードを
     // 誤検出しないよう、inheritedの方だけを見る。
-    return !!(card && card.inherited && card.inherited.includes('リンク'));
+    return !!(card && card.inherited && /〈リンク〉/.test(card.inherited));
   }
 
   // 「リンクDP」はリンク効果欄の冒頭に「DP+N000」の形式で書かれている。
@@ -8566,7 +8568,7 @@
       const reorderBtns = !isTop ? `
           <button type="button" class="btn stack-row-up" data-row-idx="${i}" style="font-size:10px;padding:3px 5px;" ${canMoveUp ? '' : 'disabled'} title="1つ上の進化元と入れ替え">▲</button>
           <button type="button" class="btn stack-row-down" data-row-idx="${i}" style="font-size:10px;padding:3px 5px;" ${canMoveDown ? '' : 'disabled'} title="1つ下の進化元と入れ替え">▼</button>` : '';
-      const effectText = c && c.inherited ? c.inherited : '';
+      const effectText = matInheritedOf(c);
       return `
         <div class="stack-row-wrap">
           <div class="deck-list-item" style="cursor:default;${isTop ? `border-color:var(--accent);background:var(--panel);` : ''}">
@@ -9563,7 +9565,7 @@
     stack.cards.slice(0, -1).forEach(entry => {
       if (cardEntryFaceDown(entry)) return;
       const c = cardIndexByNumber.get(cardEntryNum(entry));
-      if (c && c.inherited) out.push({ field: 'inherited', cardNumber: c.number, card: c, text: c.inherited, sourceLabel: '進化元効果' });
+      if (matInheritedOf(c)) out.push({ field: 'inherited', cardNumber: c.number, card: c, text: c.inherited, sourceLabel: '進化元効果' });
     });
     (stack.links || []).forEach(num => {
       const c = cardIndexByNumber.get(num);
@@ -11457,7 +11459,7 @@
         if (!from) return;
         const card = cardIndexByNumber.get(num);
         if (!card) return;
-        [['effect', card.effect], ['security_effect', card.security_effect], ['inherited', card.inherited]].forEach(([field, text]) => {
+        [['effect', card.effect], ['security_effect', card.security_effect], ['inherited', from === 'material' ? matInheritedOf(card) : card.inherited]].forEach(([field, text]) => {
           (text || '').split('\n').forEach((line, lineIndex) => {
             const parsed = parseEffectLine(line);
             const body = parsed.text || line;
@@ -16038,7 +16040,7 @@
       return revealCondMatches(card, a) || revealCondMatches(card, b);
     }
     if (/テイマー$/.test(c) && card.category !== 'tamer') return false;
-    if (/進化元効果を持つ/.test(c) && !(card.inherited || '').trim()) return false;
+    if (/進化元効果を持つ/.test(c) && !matInheritedOf(card).trim()) return false;
     if (/デジクロス条件を持つ/.test(c) && !/デジクロス/.test(card.effect || '')) return false;
     if (/多色/.test(c) && (card.color || []).length < 2) return false;
     const nc = /(\d)色(以上)?/.exec(c);
