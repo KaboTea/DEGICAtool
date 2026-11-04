@@ -3533,7 +3533,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.74.0</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.75.0</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -5272,7 +5272,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.74.0`);
+    log(`DigiCA Tool build v0.75.0`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -9882,6 +9882,7 @@
     if (!f) return [];
     const name = (getStackTopCard(f.stack) || {}).name || '?';
     return [{
+      isCost: true,
       label: e.restReduction === 'destroy' ? `💸 代償: 「${name}」を消滅させる` : `💸 代償: 「${name}」をデッキの下に戻す`,
       run: () => {
         e.costPaid = true;
@@ -11623,31 +11624,115 @@
     return [];
   }
   // ---------- 1〜2タップで済む処理: このデジモンをアクティブ / 相手のセキュリティ破棄 / デッキの上から破棄 / 相手の進化元を選んで破棄 ----------
-  // 「このテイマーをデッキの下に戻すことで、〜」: 代償(この カード自身を動かす)をボタンで払う
-  function selfCostHandlersFor(e, holderStack) {
-    if (!practiceState || e.restReduction || e.costPaid) return [];
-    const t = engineStripNotes(e.text || '');
-    const m = /(?<!「[^」]*)この(テイマー|デジモン)を(デッキの(上|下)に戻す|手札に戻す|破棄する|消滅させる|レストさせる)ことで/.exec(t);
-    if (!m) return [];
-    const st = holderStack && findStackOwnerAndZone(holderStack) ? holderStack : null;
-    if (!st) return [];
-    const what = m[2];
-    if (what === 'レストさせる' && st.rested) return [];
-    return [{
-      label: `💸 代償: この${m[1]}を${what.replace(/する$|させる$/, (x) => (x === 'する' ? 'する' : 'させる'))}`,
-      run: () => {
-        if (e.ownerIndex !== practiceState.viewingIndex) { showToast('この自動処理は、その効果を持つプレイヤーの視点に切り替えてから実行してください', true); return; }
-        if (!findStackOwnerAndZone(st)) { showToast(`この${m[1]}はもう場にいません`, true); return; }
-        e.costPaid = true;
-        const done = () => { renderPracticeBoard(); renderEffectPanel(); };
-        if (what === 'レストさせる') { snapshotPracticeState(); st.rested = true; done(); return; }
-        if (what === '破棄する') { trashStackWithLeaveCheck(st, done); return; }
-        if (what === '消滅させる') { resolveDestructionQueue([st], done); return; }
-        const dest = what === '手札に戻す' ? 'hand' : m[3] === '上' ? 'deckTop' : 'deckBottom';
-        removeCardFromStackAt(st, st.cards.length - 1, dest, undefined, done);
-        renderEffectPanel();
-      },
-    }];
+  // 効果文の「〜ことで、」の代償(〜の部分)を取り出す。返り値: [{ cost(代償の文), from(その文の始まり), to(その文の終わり) }]
+  function extractEffectCosts(text) {
+    const t = engineStripNotes(text || '');
+    const out = [];
+    let base = 0;
+    t.split('。').forEach(sent => {
+      const re = /ことで、/g;
+      let m;
+      while ((m = re.exec(sent))) {
+        let cost = sent.slice(0, m.index).replace(/^(?:【[^】]+】|［[^］]*］|\[[^\]]*\]|\{[^}]*\}|・|\s)+/, '');
+        const cut = Math.max(cost.lastIndexOf('とき、'), cost.lastIndexOf('なら、'), cost.lastIndexOf('場合、'), cost.lastIndexOf('その後、'));
+        if (cut >= 0) cost = cost.slice(cost.indexOf('、', cut) + 1);
+        out.push({ cost: cost.trim(), from: base, to: base + sent.length });
+      }
+      base += sent.length + 1;
+    });
+    return out;
+  }
+  // 代償をボタンで払う: この カード自身を動かす / 自分のセキュリティ / メモリー / 手札を破棄
+  // 払ったら e.costPaid を立ててボタンを消す(効果のボタンは、払うまで薄く表示=2回押しで実行)
+  function costHandlersFor(e, holderStack) {
+    if (!practiceState || e.costPaid) return [];
+    const out = [];
+    const pi = e.ownerIndex;
+    const guard = () => { if (pi !== practiceState.viewingIndex) { showToast('この自動処理は、その効果を持つプレイヤーの視点に切り替えてから実行してください', true); return false; } return true; };
+    const paid = () => { e.costPaid = true; renderPracticeBoard(); renderEffectPanel(); };
+    extractEffectCosts(e.text).forEach(({ cost }) => {
+      let m;
+      // このテイマー/このデジモン自身
+      if (!e.restReduction && (m = /^この(テイマー|デジモン)を(デッキの(上|下)に戻す|手札に戻す|破棄する|消滅させる|レストさせる)$/.exec(cost))) {
+        const st = holderStack && findStackOwnerAndZone(holderStack) ? holderStack : null;
+        const what = m[2];
+        if (!st || (what === 'レストさせる' && st.rested)) return;
+        out.push({ isCost: true, label: `💸 代償: この${m[1]}を${what}`, run: () => {
+          if (!guard()) return;
+          if (!findStackOwnerAndZone(st)) { showToast(`この${m[1]}はもう場にいません`, true); return; }
+          e.costPaid = true;
+          const done = () => { renderPracticeBoard(); renderEffectPanel(); };
+          if (what === 'レストさせる') { snapshotPracticeState(); st.rested = true; done(); return; }
+          if (what === '破棄する') { trashStackWithLeaveCheck(st, done); return; }
+          if (what === '消滅させる') { resolveDestructionQueue([st], done); return; }
+          const dest = what === '手札に戻す' ? 'hand' : m[3] === '上' ? 'deckTop' : 'deckBottom';
+          removeCardFromStackAt(st, st.cards.length - 1, dest, undefined, done);
+          renderEffectPanel();
+        } });
+        return;
+      }
+      // 自分のセキュリティを上(か下)からN枚破棄する / 手札に加える
+      if ((m = /^(?:自分の)?セキュリティ(?:を)?(上か下|上|下)から(\d+)枚(?:を)?(破棄する|手札に加える|手札に戻す)$/.exec(cost))) {
+        const n = parseInt(m[2], 10);
+        const toHand = m[3] !== '破棄する';
+        (m[1] === '上か下' ? ['上', '下'] : [m[1]]).forEach(ud => out.push({ isCost: true, label: `💸 代償: 自分のセキュリティを${ud}から${n}枚${toHand ? '手札に加える' : '破棄'}`, run: () => {
+          if (!guard()) return;
+          const p = practiceState.players[pi];
+          if (p.security.length < n) { showToast('セキュリティが足りません', true); return; }
+          snapshotPracticeState();
+          const nums = (ud === '下' ? p.security.splice(p.security.length - n, n) : p.security.splice(0, n)).map(cardEntryNum);
+          if (toHand) p.hand.push(...nums);
+          else nums.forEach(x => { p.trash.push(x); checkOverflow(x, p); });
+          showToast(`代償: セキュリティを${ud}から${nums.length}枚${toHand ? '手札に加えました' : '破棄しました'}`);
+          paid();
+        } }));
+        return;
+      }
+      // メモリーを支払う(「1コスト支払う」「メモリーを-2する」)
+      if ((m = /^(?:メモリーを)?(?:(\d+)コスト支払う|-(\d+)する)$/.exec(cost.replace(/[－]/g, '-')))) {
+        const n = parseInt(m[1] || m[2], 10);
+        out.push({ isCost: true, label: `💸 代償: メモリーを${n}支払う`, run: () => {
+          if (!guard()) return;
+          if (!canPayMemoryCost(pi, n)) { showToast('メモリーが上限(10)に達するため支払えません', true); return; }
+          snapshotPracticeState();
+          payMemory(pi, n);
+          showToast(`代償: メモリーを${n}支払いました`);
+          paid();
+        } });
+        return;
+      }
+      // 自分の手札を破棄する(「手札を2枚破棄する」「手札から、特徴〜を持つカード1枚を破棄する」)
+      let hd = null;
+      if (!/進化元|トラッシュ/.test(cost)) {
+        if ((m = /^(?:自分の)?手札(?:(\d+)枚を|を(\d+)枚(まで)?)破棄する$/.exec(cost))) hd = { n: +(m[1] || m[2]), upTo: !!m[3], cond: '' };
+        else if ((m = /^(?:自分の)?手札(?:の|から、?)(.+?)を?(\d+)枚(まで)?を?破棄する$/.exec(cost))) hd = { n: +m[2], upTo: !!m[3], cond: m[1].replace(/^、/, '') };
+      }
+      if (hd) {
+        const n = hd.n;
+        const cond = hd.cond;
+        m = [null, null, null, null, hd.upTo];
+        out.push({ isCost: true, label: `💸 代償: 手札${cond ? `の${cond.length > 18 ? cond.slice(0, 18) + '…' : cond}` : ''}を${n}枚破棄`, run: () => {
+          if (!guard()) return;
+          const p = practiceState.players[pi];
+          const list = p.hand.map((x, i) => ({ num: cardEntryNum(x), i, ok: !cond || revealCondMatches(cardIndexByNumber.get(cardEntryNum(x)), cond) }));
+          if (!list.length) { showToast('手札がありません', true); return; }
+          openCardMultiPicker({
+            title: `💸「${e.cardName}」の代償: 手札を破棄`,
+            sub: `${cond ? `条件: ${cond}(` : '('}${n}枚${m[4] ? 'まで' : ''})`,
+            entries: list.map(x => ({ num: x.num, ok: x.ok })),
+            max: n, min: m[4] ? 1 : Math.min(n, list.filter(x => x.ok).length || n),
+            actions: [{ label: '破棄する', primary: true, onClick: (idxs) => {
+              snapshotPracticeState();
+              const nums = spliceMany(p.hand, idxs.map(i => list[i].i)).map(cardEntryNum);
+              nums.forEach(x => { p.trash.push(x); checkOverflow(x, p); });
+              showToast(`代償: ${nums.map(x => `「${miniCardName(x)}」`).join('')}を破棄しました`);
+              paid();
+            } }],
+          });
+        } });
+      }
+    });
+    return out;
   }
   function simpleActionHandlersFor(e, holderStack) {
     if (!practiceState) return [];
@@ -11786,16 +11871,22 @@
       const holder = holderOf(e, f);
       conds = extractEffectConditions(e.text, holder, e.ownerIndex, { entry: e }).filter(x => x.result != null);
       const stripped = engineStripNotes(e.text || '');
-      conds.filter(x => x.result === false).forEach(x => {
-        const reduced = stripped.slice(0, x.from) + stripped.slice(x.to);
+      const gate = (from, to, mark) => {
+        const reduced = stripped.slice(0, from) + stripped.slice(to);
         const cnt = {};
         getEffectHandlers(Object.assign({}, e, { text: reduced })).forEach(h => { cnt[h.label] = (cnt[h.label] || 0) + 1; });
         const seen = {};
         handlers.forEach(h => {
+          if (h.isCost) return;
           seen[h.label] = (seen[h.label] || 0) + 1;
-          if (seen[h.label] > (cnt[h.label] || 0) && !h.condNg) h.condNg = x.cond;
+          if (seen[h.label] > (cnt[h.label] || 0) && !h.condNg) mark(h);
         });
-      });
+      };
+      conds.filter(x => x.result === false).forEach(x => gate(x.from, x.to, (h) => { h.condNg = x.cond; }));
+      // 代償ボタンがあってまだ払っていないなら、その文の効果のボタンは払うまで薄くする
+      if (!e.costPaid && handlers.some(h => h.isCost)) {
+        extractEffectCosts(e.text).forEach(x => gate(x.from, x.to, (h) => { h.condNg = '代償'; h.ngMsg = '先に代償(💸)を払ってください'; }));
+      }
     } catch (err) { console.warn(err); }
     return { handlers, conds };
   }
@@ -11803,7 +11894,7 @@
     if (e.deferred) return deferredHandlersFor(e);
     const extra = () => {
       const f = e.stackUid ? findStackByUid(e.stackUid) : null;
-      const list = [...reductionCostHandlersFor(e), ...selfCostHandlersFor(e, holderOf(e, f)), ...restrictHandlersFor(e), ...evolveFromZoneHandlersFor(e, f && f.stack), ...materialFromZoneHandlersFor(e, f && f.stack), ...playFromHandHandlersFor(e, holderOf(e, f)), ...toHandFromZoneHandlersFor(e, holderOf(e, f)), ...simpleActionHandlersFor(e, holderOf(e, f))];
+      const list = [...reductionCostHandlersFor(e), ...costHandlersFor(e, holderOf(e, f)), ...restrictHandlersFor(e), ...evolveFromZoneHandlersFor(e, f && f.stack), ...materialFromZoneHandlersFor(e, f && f.stack), ...playFromHandHandlersFor(e, holderOf(e, f)), ...toHandFromZoneHandlersFor(e, holderOf(e, f)), ...simpleActionHandlersFor(e, holderOf(e, f))];
       // 進化元効果・セキュリティ効果・消滅時などの「デッキの上からN枚オープン」(【効果】欄のものは基本の処理で出している)
       const rm = /(?<!相手の)デッキの上から(\d+)枚オープン/.exec(e.text || '');
       if (rm && e.timing !== 'ディレイ' && (!f || e.field !== 'effect')) {
@@ -12103,7 +12194,8 @@
     }
     if (q.current) {
       const wrap = panel.querySelector('.ep-auto-wrap');
-      const { handlers, conds } = effectHandlersWithConds(q.current);
+      const { handlers: hs0, conds } = effectHandlersWithConds(q.current);
+      const handlers = [...hs0.filter(h => h.isCost), ...hs0.filter(h => !h.isCost)]; // 代償のボタンを先に並べる
       const cw = panel.querySelector('.ep-cond-wrap');
       if (cw && conds.length) {
         const seenC = new Set();
@@ -12114,13 +12206,13 @@
         b.type = 'button';
         b.className = 'ep-btn auto' + (h.condNg ? ' cond-ng' : '');
         b.textContent = h.label;
-        if (h.condNg) b.title = `条件「${h.condNg}」を満たしていません`;
+        if (h.condNg) b.title = h.ngMsg || `条件「${h.condNg}」を満たしていません`;
         b.addEventListener('click', (ev) => {
           ev.stopPropagation();
           if (h.condNg && !b.dataset.armed) {
             b.dataset.armed = '1';
             b.textContent = '⚠ もう一度押すと実行: ' + h.label;
-            showToast(`条件「${h.condNg}」を満たしていません。それでも実行する場合はもう一度押してください`, true);
+            showToast(`${h.ngMsg || `条件「${h.condNg}」を満たしていません`}。それでも実行する場合はもう一度押してください`, true);
             return;
           }
           h.run();
