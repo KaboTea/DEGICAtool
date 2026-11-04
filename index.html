@@ -3533,7 +3533,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.82.1</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.83.0</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -5297,7 +5297,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.82.1`);
+    log(`DigiCA Tool build v0.83.0`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -5581,7 +5581,7 @@
     try {
       let sum = 0;
       getStackEffectSources(stack).forEach(src => {
-        if (!['effect', 'inherited', 'link'].includes(src.field)) return;
+        if (!['effect', 'inherited', 'link', 'keisho'].includes(src.field)) return;
         parseConditionalSelfDPLines(src.text).forEach(cl => {
           if (!lineAllowedInZone({ prefix: cl.prefix }, f.zone)) return;
           if (!engineTurnLabelOk(cl.labels, pi)) return;
@@ -5642,7 +5642,8 @@
     if (!owner) return 0;
     const ownerIndex = practiceState.players.indexOf(owner.player);
     const isOwnersTurn = practiceState.turn.playerIndex === ownerIndex;
-    return sumSelfTurnDPPattern(c.effect, isOwnersTurn);
+    const ks = keishoSourceOf(stack);
+    return sumSelfTurnDPPattern(c.effect, isOwnersTurn) + (ks ? sumSelfTurnDPPattern(keishoTextOf(ks.card), isOwnersTurn) : 0);
   }
 
   // 進化元(素材)の名称/特徴を条件とする自己DP増減(独立行の定型パターンのみ対応)。
@@ -6843,7 +6844,8 @@
     return securityStaticRulesFor(stack).some(r => r.kws.includes(keyword));
   }
   function hasInnateOrLinkedKeyword(stack, keyword) {
-    return hasInnateKeywordLine(getStackTopCard(stack), keyword) || stackHasLinkedKeyword(stack, keyword) || securityStaticGrantsKeyword(stack, keyword) || conditionalKeywordOn(stack, keyword);
+    const ks = keishoSourceOf(stack);
+    return hasInnateKeywordLine(getStackTopCard(stack), keyword) || (!!ks && hasKeywordLineInText(keishoTextOf(ks.card), keyword)) || stackHasLinkedKeyword(stack, keyword) || securityStaticGrantsKeyword(stack, keyword) || conditionalKeywordOn(stack, keyword);
   }
   // ---------- 条件つきで得るキーワード(「このデジモンが特徴に「X」を持つ間、このデジモンは≪ブロッカー≫を得る」) ----------
   const COND_KW_CACHE = new Map();
@@ -9554,6 +9556,37 @@
     return !parsed.prefix;
   }
   // スタックが持つ効果の出どころ(一番上のカード自身/進化元効果/リンクカード)を列挙する
+  // ---------- ≪継承《X》≫: 進化元の指定のカードのうち最も上にある1枚の、≪継承≫以外の効果全てを得る ----------
+  const KEISHO_RE = /≪継承《(.+?)》≫/;
+  // 継承で効果を受け取る元のカード(なければ null)。裏向きの進化元は情報を持たないので対象外(4-6-9)
+  function keishoSourceOf(stack) {
+    if (!stack || !stack.cards || stack.cards.length < 2 || stack.dualAsOption) return null;
+    const top = getStackTopCard(stack);
+    const m = top && KEISHO_RE.exec(top.effect || '');
+    if (!m) return null;
+    const cond = m[1];
+    const names = /^(?:「[^」]+」\/?)+$/.test(cond) ? (cond.match(/「([^」]+)」/g) || []).map(x => x.slice(1, -1)) : null;
+    for (let i = stack.cards.length - 2; i >= 0; i--) {
+      const entry = stack.cards[i];
+      if (cardEntryFaceDown(entry)) continue;
+      const c = cardIndexByNumber.get(cardEntryNum(entry));
+      if (!c) continue;
+      if (names ? names.some(nm => cardHasName(c, nm)) : revealCondMatches(c, cond)) return { card: c, index: i, cond };
+    }
+    return null;
+  }
+  // 継承で得る効果の文(進化条件・ルール・≪継承≫自身などの「効果ではない行」は除く)
+  const KEISHO_TEXT_CACHE = new Map();
+  function keishoTextOf(card) {
+    if (!card) return '';
+    if (KEISHO_TEXT_CACHE.has(card.number)) return KEISHO_TEXT_CACHE.get(card.number);
+    const t = (card.effect || '').split('\n').filter(l => {
+      const x = l.trim();
+      return x && !/^(【進化】|【ジョグレス】|〔|〈ルール〉|【アセンブリ|≪≪デジクロス|2種のカードによるリンク状態|指定のデジモン2体を重ね|登場するとき、(?:手札|トラッシュ))/.test(x) && !/≪継承/.test(x);
+    }).join('\n');
+    KEISHO_TEXT_CACHE.set(card.number, t);
+    return t;
+  }
   function getStackEffectSources(stack) {
     const out = [];
     const topEntry = stack.cards[stack.cards.length - 1];
@@ -9567,6 +9600,9 @@
       const c = cardIndexByNumber.get(cardEntryNum(entry));
       if (matInheritedOf(c)) out.push({ field: 'inherited', cardNumber: c.number, card: c, text: c.inherited, sourceLabel: '進化元効果' });
     });
+    // ≪継承≫で得た効果
+    const ks = keishoSourceOf(stack);
+    if (ks) { const t = keishoTextOf(ks.card); if (t) out.push({ field: 'keisho', cardNumber: ks.card.number, card: ks.card, text: t, sourceLabel: '継承した効果' }); }
     (stack.links || []).forEach(num => {
       const c = cardIndexByNumber.get(num);
       if (c && c.inherited) out.push({ field: 'link', cardNumber: c.number, card: c, text: c.inherited, sourceLabel: 'リンク効果' });
@@ -10358,6 +10394,7 @@
     if (e.field === 'effect') return cardEntryNum(f.stack.cards[f.stack.cards.length - 1]) === e.cardNumber;
     if (e.field === 'inherited') return f.stack.cards.slice(0, -1).some(x => cardEntryNum(x) === e.cardNumber);
     if (e.field === 'link') return (f.stack.links || []).includes(e.cardNumber);
+    if (e.field === 'keisho') { const ks = keishoSourceOf(f.stack); return !!ks && ks.card.number === e.cardNumber; }
     return true;
   }
   // 次に発揮できる効果のグループ(最後に誘発したもの優先、その中ではターンプレイヤー優先)
@@ -11979,6 +12016,130 @@
             },
             onCancel: () => renderPracticeBoard(),
           });
+        } });
+        return;
+      }
+      // (条件の)自分のデジモン(1体)の(裏向きの)進化元を 選んで/上から/下から N枚破棄する
+      if ((m = /^(.*?)自分のデジモン(?:1体)?の(裏向きの)?進化元を、?(選んで|上から|下から)(\d+)枚破棄する$/.exec(cost)) && !/、/.test(m[1])) {
+        const filter = m[1].replace(/の$/, ''), faceDownOnly = !!m[2], mode = m[3], n = +m[4];
+        out.push({ isCost: true, label: `💸 代償: ${m[1]}自分のデジモンの${faceDownOnly ? '裏向きの' : ''}進化元を${mode}${n}枚破棄`, run: () => {
+          if (!guard()) return;
+          const idxsOf = (st) => st.cards.slice(0, -1).map((x, i) => i).filter(i => !faceDownOnly || cardEntryFaceDown(st.cards[i]));
+          const all = battleStacksOf(pi).filter(st => isDigimonLikeStack(st) && idxsOf(st).length >= n);
+          if (!all.length) { showToast(`${faceDownOnly ? '裏向きの' : ''}進化元を${n}枚持つ自分のデジモンがいません`, true); return; }
+          const ok = all.filter(st => { try { return !filter || stackMatchesFilterText(st, filter, null); } catch (er) { return true; } });
+          const discard = (st, sel) => {
+            snapshotPracticeState();
+            const nums = spliceMany(st.cards, sel).map(cardEntryNum);
+            trashNums(nums, P0);
+            showToast(`代償: 「${stackLabel(st)}」の進化元${nums.map(x => `「${miniCardName(x)}」`).join('')}を破棄しました`);
+            paid();
+          };
+          const go = (st) => {
+            const ix = idxsOf(st);
+            if (mode !== '選んで') { discard(st, mode === '上から' ? ix.slice(-n) : ix.slice(0, n)); return; }
+            const rev = ix.slice().reverse();
+            openCardMultiPicker({ title: `💸「${e.cardName}」の代償: 「${stackLabel(st)}」の進化元を破棄`, sub: `${n}枚(上から順)`,
+              entries: rev.map(i => ({ num: cardEntryNum(st.cards[i]), ok: true, tag: cardEntryFaceDown(st.cards[i]) ? '裏向き' : '' })), max: n, min: n,
+              actions: [{ label: '破棄する', primary: true, onClick: (sel) => discard(st, sel.map(k => rev[k])) }] });
+          };
+          if (ok.length === 1 && all.length === 1) { go(ok[0]); return; }
+          startFieldPick({ title: '💸 代償: 進化元を破棄するデジモンをタップ', candidates: ok, extra: all, max: 1, onDone: (sel) => { if (sel.length) go(sel[0]); }, onCancel: () => renderPracticeBoard() });
+        } });
+        return;
+      }
+      // このデジモンの進化元の(条件の)カードN枚を破棄する
+      if (holder && (m = /^このデジモンの進化元の(.+?)(\d+)枚を破棄する$/.exec(cost))) {
+        const cond = m[1].replace(/の$/, ''), n = +m[2];
+        out.push({ isCost: true, label: `💸 代償: このデジモンの進化元の${cond}を${n}枚破棄`, run: () => {
+          if (!guard()) return;
+          const ix = holder.cards.slice(0, -1).map((x, i) => i).filter(i => !cardEntryFaceDown(holder.cards[i])).reverse();
+          if (!ix.length) { showToast('進化元がありません', true); return; }
+          openCardMultiPicker({ title: `💸「${e.cardName}」の代償: 進化元を破棄`, sub: `条件: ${cond}(${n}枚)`,
+            entries: ix.map(i => ({ num: cardEntryNum(holder.cards[i]), ok: revealCondMatches(cardIndexByNumber.get(cardEntryNum(holder.cards[i])), cond) })), max: n, min: n,
+            actions: [{ label: '破棄する', primary: true, onClick: (sel) => {
+              snapshotPracticeState();
+              const nums = spliceMany(holder.cards, sel.map(k => ix[k])).map(cardEntryNum);
+              trashNums(nums, P0);
+              showToast(`代償: 進化元${nums.map(x => `「${miniCardName(x)}」`).join('')}を破棄しました`);
+              paid();
+            } }] });
+        } });
+        return;
+      }
+      // 自分のデッキの上からN枚破棄する
+      if ((m = /^自分のデッキの上から(\d+)枚破棄する$/.exec(cost))) {
+        const n = +m[1];
+        out.push({ isCost: true, label: `💸 代償: 自分のデッキの上から${n}枚破棄`, run: () => {
+          if (!guard()) return;
+          if (P0.library.length < n) { showToast('デッキが足りません', true); return; }
+          snapshotPracticeState();
+          const nums = P0.library.splice(0, n).map(cardEntryNum);
+          trashPlain(nums, P0);
+          showToast(`代償: デッキの上から${nums.map(x => `「${miniCardName(x)}」`).join('')}を破棄しました`);
+          paid();
+        } });
+        return;
+      }
+      // 手札/トラッシュから(条件の)N枚(まで) / 「A」と「B」1枚ずつ を デッキの上・下・上か下だけ / デジタマデッキの下 に戻す
+      if ((m = /^(?:自分の)?(手札(?:\/トラッシュ|かトラッシュ)?|トラッシュ)(?:から、?|の)?(.*?)(?:(\d+)枚(まで)?|((?:「[^」]+」と?)+)1枚ずつ)を、?(?:好きな順番で)?(?:(デジタマ)デッキの下|デッキの(上か下だけ|上|下))に戻す$/.exec(cost)) && !/異なる|合計|オープン/.test(m[2] || '')) {
+        const zones = [/手札/.test(m[1]) ? 'hand' : null, /トラッシュ/.test(m[1]) ? 'trash' : null].filter(Boolean);
+        const names = m[5] ? (m[5].match(/「([^」]+)」/g) || []).map(x => x.slice(1, -1)) : null;
+        const cond = names ? '' : (m[2] || '').replace(/[、の]$/, '').replace(/^カード$/, '');
+        const n = names ? names.length : +m[3], upTo = !!m[4], egg = !!m[6];
+        const uds = egg ? ['下'] : m[7] === '上か下だけ' ? ['上', '下'] : [m[7]];
+        const zl = zones.map(z => (z === 'hand' ? '手札' : 'トラッシュ')).join('/');
+        uds.forEach(ud => out.push({ isCost: true, label: `💸 代償: ${zl}から${names ? names.map(x => `「${x}」`).join('と') + '1枚ずつ' : n + '枚' + (upTo ? 'まで' : '')}を${egg ? 'デジタマデッキ' : 'デッキ'}の${ud}へ`, run: () => {
+          if (!guard()) return;
+          const list = [];
+          zones.forEach(z => (z === 'hand' ? P0.hand : P0.trash).forEach((x, i) => list.push({ z, i, num: cardEntryNum(x), c: cardIndexByNumber.get(cardEntryNum(x)) })));
+          if (!list.length) { showToast(`${zl}にカードがありません`, true); return; }
+          const okOf = (x) => names ? names.some(nm => cardHasName(x.c, nm)) : egg && !cond ? (x.c || {}).category === 'digi-egg' : !cond || revealCondMatches(x.c, cond);
+          openCardMultiPicker({
+            title: `💸「${e.cardName}」の代償: ${egg ? 'デジタマデッキ' : 'デッキ'}の${ud}に戻すカード`, sub: `${names ? names.map(x => `「${x}」`).join('と') + 'を1枚ずつ' : (cond ? `条件: ${cond}(` : '(') + n + '枚' + (upTo ? 'まで' : '') + '・選んだ順)'}`,
+            entries: list.map(x => ({ num: x.num, ok: okOf(x), tag: zones.length > 1 ? (x.z === 'hand' ? '[手札]' : '[トラッシュ]') : '' })),
+            max: n, min: upTo ? 1 : n,
+            actions: [{ label: `${egg ? 'デジタマデッキ' : 'デッキ'}の${ud}に戻す`, primary: true, keepOpen: true, onClick: (sel) => {
+              const picked = sel.map(k => list[k]);
+              if (names && !names.every(nm => picked.filter(x => cardHasName(x.c, nm)).length === 1)) { showToast(`${names.map(x => `「${x}」`).join('と')}を1枚ずつ選んでください`, true); return; }
+              cardDetailModal.classList.remove('open');
+              snapshotPracticeState();
+              spliceMany(P0.hand, picked.filter(x => x.z === 'hand').map(x => x.i));
+              spliceMany(P0.trash, picked.filter(x => x.z === 'trash').map(x => x.i));
+              const nums = picked.map(x => x.num);
+              const dest = egg ? P0.eggLibrary : P0.library;
+              if (ud === '下') dest.push(...nums); else dest.unshift(...nums.slice().reverse());
+              showToast(`代償: ${nums.length}枚を${egg ? 'デジタマデッキ' : 'デッキ'}の${ud}に戻しました`);
+              paid();
+            } }],
+          });
+        } }));
+        return;
+      }
+      // (条件の)このデジモンを 消滅させる / デッキの下に戻す(「特徴に「X」を含むこのデジモン」など、このデジモンの条件つき)
+      if (holder && (m = /^(.+?)このデジモンを(消滅させる|デッキの(上|下)に戻す|手札に戻す)$/.exec(cost)) && !/、|自分の|相手の/.test(m[1])) {
+        const act = m[2];
+        out.push({ isCost: true, label: `💸 代償: このデジモンを${act}`, run: () => {
+          if (!guard()) return;
+          if (!findStackOwnerAndZone(holder)) { showToast('このデジモンはもう場にいません', true); return; }
+          e.costPaid = true;
+          const done = () => { renderPracticeBoard(); renderEffectPanel(); };
+          if (act === '消滅させる') { resolveDestructionQueue([holder], done); return; }
+          removeCardFromStackAt(holder, holder.cards.length - 1, act === '手札に戻す' ? 'hand' : m[3] === '上' ? 'deckTop' : 'deckBottom', undefined, done);
+        } });
+        return;
+      }
+      // (自分/相手の指定がない)条件のデジモン1体を消滅させる(「Aのデジモン1体かBのデジモン1体」も)
+      if ((m = /^(.*?)デジモン1体(?:か(.+?)デジモン1体)?を消滅させる$/.exec(cost)) && !/自分|相手|この|最も/.test(m[1] + (m[2] || ''))) {
+        const fs = [m[1], m[2]].filter(x => x != null).map(x => x.replace(/の$/, ''));
+        out.push({ isCost: true, label: `💸 代償: ${m[1]}デジモン1体${m[2] != null ? `か${m[2]}デジモン1体` : ''}を消滅させる`, run: () => {
+          if (!guard()) return;
+          const all = [...battleStacksOf(pi), ...battleStacksOf(1 - pi)].filter(isDigimonLikeStack);
+          if (!all.length) { showToast('デジモンがいません', true); return; }
+          const ok = all.filter(st => fs.some(f => { try { return !f || stackMatchesFilterText(st, f, null); } catch (er) { return true; } }));
+          startFieldPick({ title: '💸 代償: 消滅させるデジモンをタップ', candidates: ok, extra: all, max: 1,
+            onDone: (sel) => { if (!sel.length) return; e.costPaid = true; resolveDestructionQueue(sel, () => { renderPracticeBoard(); renderEffectPanel(); }); },
+            onCancel: () => renderPracticeBoard() });
         } });
         return;
       }
@@ -16880,7 +17041,7 @@
         if (/ことで|この効果で|次に|ターン終了まで/.test(body)) return;
         const entry = { ownerIndex: pi, stackUid: ensureStackUid(st), cardNumber: src.cardNumber, field: src.field, lineIndex, text: parsed.text };
         if (isOnceUsed(entry)) return;
-        const name = src.card.name + (src.field === 'inherited' ? '(進化元)' : src.field === 'link' ? '(リンク)' : '');
+        const name = src.card.name + (src.field === 'inherited' ? '(進化元)' : src.field === 'link' ? '(リンク)' : src.field === 'keisho' ? '(継承)' : '');
         let m;
         if (kind === 'evolve') {
           m = /^((?:レスト状態の|裏向きの進化元を持つ)?)(このデジモン(?:か自分のテイマー)?|(.*?)自分のデジモン)が(?:(.+?)に)?進化するとき、(?:(.+?)なら、)?支払う(?:進化)?コスト[-－](\d+)/.exec(body);
