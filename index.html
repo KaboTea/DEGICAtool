@@ -3533,7 +3533,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.79.0</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.80.0</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -5297,7 +5297,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.79.0`);
+    log(`DigiCA Tool build v0.80.0`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -12064,6 +12064,37 @@
           if (links.length === n) { discard(links.map((x, i) => i)); return; }
           openCardMultiPicker({ title: `💸「${e.cardName}」の代償: リンクカードを破棄`, sub: `${n}枚`, entries: links.map(x => ({ num: x, ok: true })), max: n, min: n,
             actions: [{ label: '破棄する', primary: true, onClick: (sel) => discard(sel) }] });
+        } });
+        return;
+      }
+      // このデジモン/テイマーを(他の)自分のデジモンの進化元の下に置く
+      // (エリアを離れるので、このカードの下に重ねられていたカードとリンクカードは同時に破棄: 4-6-7, 4-6-8)
+      if ((m = /^この(デジモン|テイマー)を(.+?)の進化元の下に置く$/.exec(cost)) && !/相手|、/.test(m[2])) {
+        const kind = m[1], subj = m[2];
+        if (!holder) return;
+        out.push({ isCost: true, label: `💸 代償: この${kind}を${/^その/.test(subj) ? 'そのデジモン' : subj.replace(/1体$/, '')}の進化元の下へ`, run: () => {
+          if (!guard()) return;
+          if (!findStackOwnerAndZone(holder)) { showToast(`この${kind}はもう場にいません`, true); return; }
+          const cands = costPlaceTargets(pi, subj, holder, false).filter(st => st !== holder);
+          const own = fieldStacksOf(pi).filter(st => st !== holder && isDigimonLikeStack(st));
+          if (!own.length) { showToast('置き先のデジモンがいません', true); return; }
+          const place = (target) => {
+            const owner = findStackOwnerAndZone(holder);
+            if (!owner || !findStackOwnerAndZone(target)) { showToast('カードが場にいません', true); return; }
+            snapshotPracticeState();
+            const P = owner.player;
+            const top = holder.cards.pop();
+            const under = holder.cards.splice(0).map(cardEntryNum);
+            const links = (holder.links || []).splice(0);
+            [...under, ...links].forEach(x => { P.trash.push(x); checkOverflow(x, P); });
+            if (owner.zone === 'raising') P.raising = null; else P.battle.splice(P.battle.indexOf(holder), 1);
+            target.cards.unshift(cardEntryNum(top));
+            showToast(`代償: 「${miniCardName(cardEntryNum(top))}」を「${stackLabel(target)}」の進化元の下に置きました${under.length + links.length ? `(下にあった${under.length + links.length}枚は破棄)` : ''}`);
+            paid();
+          };
+          if (cands.length === 1) { place(cands[0]); return; }
+          startFieldPick({ title: `💸 代償: この${kind}を進化元の下に置くデジモンをタップ`, candidates: cands, extra: own, max: 1,
+            onDone: (sel) => { if (sel.length) place(sel[0]); }, onCancel: () => renderPracticeBoard() });
         } });
         return;
       }
