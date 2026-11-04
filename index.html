@@ -3533,7 +3533,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.81.0</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.81.1</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -5297,7 +5297,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.81.0`);
+    log(`DigiCA Tool build v0.81.1`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -11833,7 +11833,7 @@
           snapshotPracticeState();
           const nums = (ud === '下' ? p.security.splice(p.security.length - n, n) : p.security.splice(0, n)).map(cardEntryNum);
           if (toHand) p.hand.push(...nums);
-          else nums.forEach(x => { p.trash.push(x); checkOverflow(x, p); });
+          else nums.forEach(x => p.trash.push(x)); // セキュリティからの破棄は≪オーバーフロー≫の対象外(4-18-1)
           showToast(`代償: セキュリティを${ud}から${nums.length}枚${toHand ? '手札に加えました' : '破棄しました'}`);
           paid();
         } }));
@@ -11855,7 +11855,9 @@
       // 自分の手札を破棄する(「手札を2枚破棄する」「手札から、特徴〜を持つカード1枚を破棄する」)
       const holder = holderStack && findStackOwnerAndZone(holderStack) ? holderStack : null;
       const P0 = practiceState.players[pi];
+      // ≪オーバーフロー≫はエリアか重ねられているカードの下から離れたときだけ(4-18-1)。手札・セキュリティ・リンクからは trashPlain
       const trashNums = (nums, pl) => nums.forEach(x => { pl.trash.push(x); checkOverflow(x, pl); });
+      const trashPlain = (nums, pl) => nums.forEach(x => pl.trash.push(x));
       // このデジモンの進化元を破棄する(上/下からN枚・選んでN枚・条件に合うカードN枚・裏向き)
       if (holder && (m = /^このデジモンの(裏向きの)?進化元を、?(?:選んで)?(?:(上|下)から)?(\d+)枚(まで)?破棄する$/.exec(cost))) {
         const faceDownOnly = !!m[1], ud = m[2], n = +m[3], upTo = !!m[4];
@@ -11889,7 +11891,7 @@
           if (!guard()) return;
           const list = [];
           if (withHand) P0.hand.forEach((x, i) => list.push({ zone: 'hand', i, num: cardEntryNum(x) }));
-          const srcStacks = /^(?:自分の)?(手札か)?デジモン/.test(cost) ? fieldStacksOf(pi).filter(isDigimonLikeStack) : (holder && findStackOwnerAndZone(holder) ? [holder] : []);
+          const srcStacks = /^(?:自分の)?(手札か)?デジモン/.test(cost) ? battleStacksOf(pi).filter(isDigimonLikeStack) : (holder && findStackOwnerAndZone(holder) ? [holder] : []);
           srcStacks.forEach(st => st.cards.slice(0, -1).forEach((x, i) => { if (!cardEntryFaceDown(x)) list.push({ zone: 'src', st, i, num: cardEntryNum(x) }); }));
           if (!list.length) { showToast('選べるカードがありません', true); return; }
           openCardMultiPicker({
@@ -11900,7 +11902,7 @@
               snapshotPracticeState();
               const picked = sel.map(k => list[k]);
               const nums = [];
-              nums.push(...spliceMany(P0.hand, picked.filter(x => x.zone === 'hand').map(x => x.i)).map(cardEntryNum));
+              trashPlain(spliceMany(P0.hand, picked.filter(x => x.zone === 'hand').map(x => x.i)).map(cardEntryNum), P0);
               new Set(picked.filter(x => x.zone === 'src').map(x => x.st)).forEach(st => nums.push(...spliceMany(st.cards, picked.filter(x => x.st === st).map(x => x.i)).map(cardEntryNum)));
               trashNums(nums, P0);
               showToast(`代償: ${nums.map(x => `「${miniCardName(x)}」`).join('')}を破棄しました`);
@@ -11945,7 +11947,7 @@
         const n = +m[4], act = m[5];
         out.push({ isCost: true, label: `💸 代償: ${fLabel}${other ? '他の' : ''}自分の${kindLabel}${n}体を${act.replace('このデジモンの', '')}`, run: () => {
           if (!guard()) return;
-          const own = (raisingOnly ? (P0.raising ? [P0.raising] : []) : fieldStacksOf(pi)).filter(st => !(other && st === holder) && !st.dualAsOption);
+          const own = (raisingOnly ? (P0.raising ? [P0.raising] : []) : P0.battle).filter(st => !(other && st === holder) && !st.dualAsOption);
           const ok = own.filter(st => { try { return stackMatchesFilterText(st, filter, cats); } catch (er) { return false; } });
           if (act === 'このデジモンの進化元の下に置く' && !holder) { showToast('このデジモンが場にいません', true); return; }
           startFieldPick({
@@ -11963,9 +11965,12 @@
                 sel.forEach(st => {
                   const f = findStackOwnerAndZone(st);
                   if (!f) return;
-                  (st.links || []).forEach(x => trashNums([x], f.player));
+                  // エリアを離れるので、一番上のカードだけを置き、その下のカードとリンクカードは破棄(4-6-7, 4-6-8)
+                  trashPlain((st.links || []).splice(0), f.player);
                   if (f.player.raising === st) f.player.raising = null; else f.player.battle.splice(f.player.battle.indexOf(st), 1);
-                  holder.cards.unshift(...st.cards);
+                  const topEnt = st.cards.pop();
+                  trashNums(st.cards.splice(0).map(cardEntryNum), f.player);
+                  holder.cards.unshift(cardEntryNum(topEnt));
                 });
                 done(); return;
               }
@@ -11984,7 +11989,7 @@
         if (d && (name || holder)) {
           out.push({ isCost: true, label: `💸 代償: ${name ? `「${name}」` : 'このデジモン'}の進化元から${n}枚を${SRC_DEST_JA[d.dest]}`, run: () => {
             if (!guard()) return;
-            const stacks = name ? fieldStacksOf(pi).filter(st => cardHasName(getStackTopCard(st), name)) : [holder];
+            const stacks = name ? battleStacksOf(pi).filter(st => cardHasName(getStackTopCard(st), name)) : [holder];
             moveSourcesFlow({ title: `💸「${e.cardName}」の代償: 進化元を${SRC_DEST_JA[d.dest]}`, stacks, cond, n, upTo, dest: d.dest, faceUp: d.faceUp, onDone: paid });
           } });
         }
@@ -12004,7 +12009,7 @@
           const zl = zones.map(z => ({ hand: '手札', trash: 'トラッシュ', deck: 'デッキの上' }[z])).join('/');
           out.push({ isCost: true, label: `💸 代償: ${zl}から${n}枚を${selfTarget ? subj : (subj || '自分のデジモン').replace(/1体$/, '')}の${toTamer ? '下' : onTop ? '進化元の上' : '進化元の下'}へ`, run: () => {
             if (!guard()) return;
-            const targets = selfTarget ? [holder] : fieldStacksOf(pi).filter(st => {
+            const targets = selfTarget ? [holder] : (/育成エリア/.test(subj) ? [P0.raising].filter(Boolean) : battleStacksOf(pi)).filter(st => {
               const top = getStackTopCard(st);
               if (!top || st.dualAsOption) return false;
               if (toTamer ? top.category !== 'tamer' : !isDigimonLikeStack(st)) return false;
@@ -12060,7 +12065,7 @@
           if (!guard()) return;
           const links = holder.links || [];
           if (links.length < n) { showToast('リンクカードが足りません', true); return; }
-          const discard = (idxs) => { snapshotPracticeState(); const nums = spliceMany(holder.links, idxs); trashNums(nums, P0); showToast(`代償: リンクカード${nums.map(x => `「${miniCardName(x)}」`).join('')}を破棄しました`); paid(); };
+          const discard = (idxs) => { snapshotPracticeState(); const nums = spliceMany(holder.links, idxs); trashPlain(nums, P0); showToast(`代償: リンクカード${nums.map(x => `「${miniCardName(x)}」`).join('')}を破棄しました`); paid(); };
           if (links.length === n) { discard(links.map((x, i) => i)); return; }
           openCardMultiPicker({ title: `💸「${e.cardName}」の代償: リンクカードを破棄`, sub: `${n}枚`, entries: links.map(x => ({ num: x, ok: true })), max: n, min: n,
             actions: [{ label: '破棄する', primary: true, onClick: (sel) => discard(sel) }] });
@@ -12077,6 +12082,7 @@
         if (f.zone === 'raising') P.raising = null; else P.battle.splice(P.battle.indexOf(st), 1);
         const ent = faceUp ? { n: t, u: true } : t;
         if (top) P.security.unshift(ent); else P.security.push(ent);
+        checkOverflow(t, P);
         return t;
       };
       // このデジモンをアクティブにする / セキュリティの上・下に置く
@@ -12114,7 +12120,7 @@
         const kindJa = m[2].replace('か', '/');
         uds.forEach(ud => out.push({ isCost: true, label: `💸 代償: ${pre}${kindJa}${n}体${upTo ? 'まで' : ''}を${sec ? `セキュリティの${ud}へ${faceUp ? '(表向き)' : ''}` : act}`, run: () => {
           if (!guard()) return;
-          const all = side.flatMap(i => fieldStacksOf(i)).filter(st => !st.dualAsOption && !(other && st === holder) && kinds.includes((getStackTopCard(st) || {}).category) && !(act === 'レストさせる' && st.rested) && !(act === 'アクティブにする' && !st.rested));
+          const all = side.flatMap(i => /育成エリア/.test(pre) ? [practiceState.players[i].raising].filter(Boolean) : practiceState.players[i].battle).filter(st => !st.dualAsOption && !(other && st === holder) && kinds.includes((getStackTopCard(st) || {}).category) && !(act === 'レストさせる' && st.rested) && !(act === 'アクティブにする' && !st.rested));
           const ok = all.filter(st => { try { return !filter || stackMatchesFilterText(st, filter, null); } catch (er) { return true; } });
           if (!all.length) { showToast('対象がいません', true); return; }
           startFieldPick({ title: `💸 代償: ${sec ? `セキュリティの${ud}に置く` : act.replace(/る$/, 'る')}${kindJa}をタップ(${n}体${upTo ? 'まで' : ''})`, candidates: ok, extra: all, max: n,
@@ -12165,7 +12171,7 @@
         } });
         return;
       }
-      const secTrash = (P, k) => { const nums = P.security.splice(0, k).map(cardEntryNum); nums.forEach(x => { P.trash.push(x); checkOverflow(x, P); }); return nums.length; };
+      const secTrash = (P, k) => { const nums = P.security.splice(0, k).map(cardEntryNum); nums.forEach(x => P.trash.push(x)); return nums.length; };
       if ((m = /^最もセキュリティ枚数が多いプレイヤー1人のセキュリティを上から(\d+)枚破棄する$/.exec(cost))) {
         const n = +m[1];
         out.push({ isCost: true, label: `💸 代償: セキュリティが最も多いプレイヤーのセキュリティを上から${n}枚破棄`, run: () => {
@@ -12288,7 +12294,7 @@
           const move = (st) => {
             const owner = findStackOwnerAndZone(st);
             if (!owner) { showToast('そのデジモンはもう場にいません', true); return; }
-            if (st.cards.length < (dest === 'bottom' ? 2 : 1)) { showToast('重ねられているカードが足りません', true); return; }
+            if (st.cards.length < 2) { showToast('1枚だけのカードは「重ねられているカード」ではないので払えません(4-6-2)', true); return; }
             snapshotPracticeState();
             const P = owner.player;
             const moved = [];
@@ -12310,7 +12316,7 @@
             showToast(`代償: ${moved.map(x => `「${miniCardName(x)}」`).join('')}を${{ bottom: '進化元の下に置きました', secTop: 'セキュリティの上に置きました', secBottom: 'セキュリティの下に置きました', trash: '破棄しました', hand: '手札に戻しました' }[dest]}`);
             paid();
           };
-          const cands = selfOnly ? [holder] : costPlaceTargets(pi, subj, holder, false).filter(st => st.cards.length >= (dest === 'bottom' ? 2 : 1));
+          const cands = selfOnly ? [holder] : costPlaceTargets(pi, subj, holder, false).filter(st => st.cards.length >= 2);
           if (cands.length === 1) { move(cands[0]); return; }
           const own = fieldStacksOf(pi).filter(st => isDigimonLikeStack(st));
           startFieldPick({ title: `💸 代償: 上から${n}枚を${destJa}(デジモンをタップ)`, candidates: cands, extra: own, max: 1,
@@ -12393,7 +12399,7 @@
           if (!found) { showToast('このカードが手札/トラッシュに見つかりません', true); return; }
           snapshotPracticeState();
           const [num] = found[1].splice(found[2], 1).map(cardEntryNum);
-          if (act === '破棄する') trashNums([num], P0);
+          if (act === '破棄する') trashPlain([num], P0);
           else if (act === '手札に戻す') P0.hand.push(num);
           else if (m[2] === '下') P0.library.push(num); else P0.library.unshift(num);
           showToast(`代償: 「${miniCardName(num)}」を${act === '破棄する' ? '破棄しました' : act.replace(/す$/, 'しました')}`);
@@ -12446,7 +12452,7 @@
             actions: [{ label: '破棄する', primary: true, onClick: (idxs) => {
               snapshotPracticeState();
               const nums = spliceMany(p.hand, idxs.map(i => list[i].i)).map(cardEntryNum);
-              nums.forEach(x => { p.trash.push(x); checkOverflow(x, p); });
+              nums.forEach(x => p.trash.push(x));
               showToast(`代償: ${nums.map(x => `「${miniCardName(x)}」`).join('')}を破棄しました`);
               paid();
             } }],
@@ -12526,7 +12532,7 @@
         if (!op.security.length) { showToast('相手のセキュリティがありません', true); return; }
         snapshotPracticeState();
         const nums = op.security.splice(0, n).map(cardEntryNum);
-        nums.forEach(x => { op.trash.push(x); checkOverflow(x, op); });
+        nums.forEach(x => op.trash.push(x));
         renderPracticeBoard();
         showToast(`相手のセキュリティを上から${nums.length}枚破棄しました`);
       } });
@@ -12540,7 +12546,7 @@
         if (!guard()) return;
         const targets = who === '自分' ? [pi] : who === '相手' ? [1 - pi] : [pi, 1 - pi];
         snapshotPracticeState();
-        targets.forEach(q => { const pl = practiceState.players[q]; pl.library.splice(0, n).forEach(x => { pl.trash.push(cardEntryNum(x)); checkOverflow(cardEntryNum(x), pl); }); });
+        targets.forEach(q => { const pl = practiceState.players[q]; pl.library.splice(0, n).forEach(x => pl.trash.push(cardEntryNum(x))); });
         renderPracticeBoard();
         showToast(`${who}のデッキの上から${n}枚破棄しました`);
       } });
@@ -12580,7 +12586,9 @@
   // 代償で「〜の進化元の下に置く」ときの置き先候補(「そのデジモン」など特定できないときは自分のデジモン全部)
   function costPlaceTargets(pi, subj, holder, toTamer) {
     if (/^この(デジモン|テイマー)$/.test(subj)) return holder ? [holder] : [];
-    return fieldStacksOf(pi).filter(st => {
+    // 育成エリアのカードは、育成エリアを指定している効果でしか選べない(3-4-7-5)
+    const pool = /育成エリア/.test(subj) ? (practiceState.players[pi].raising ? [practiceState.players[pi].raising] : []) : practiceState.players[pi].battle;
+    return pool.filter(st => {
       const top = getStackTopCard(st);
       if (!top || st.dualAsOption) return false;
       if (toTamer ? top.category !== 'tamer' : !isDigimonLikeStack(st)) return false;
@@ -16026,7 +16034,6 @@
             for (let i = 0; i < opt.count; i++) {
               const num = player.library.shift();
               player.trash.push(num);
-              checkOverflow(num, player);
             }
             applyBonus();
           },
@@ -16046,7 +16053,6 @@
         const idx = player.hand.indexOf(e.num);
         if (idx >= 0) player.hand.splice(idx, 1);
         player.trash.push(e.num);
-        checkOverflow(e.num, player);
         applyBonus();
       },
     }));
@@ -16154,7 +16160,6 @@
       snapshotPracticeState();
       const num = fromTop ? cardEntryNum(player.security.shift()) : cardEntryNum(player.security.pop());
       player.trash.push(num);
-      checkOverflow(num, player);
       applyBonus();
     };
     if (!opt.choosable) {
@@ -16333,6 +16338,8 @@
   // ---------- 場の条件の判定(「〜がいる」「セキュリティがN枚以下」など) ----------
   // 返り値: true / false / null(この書き方は判定できない=プレイヤーに確認してもらう)
   function fieldStacksOf(pi) { const p = practiceState.players[pi]; return [...p.battle, ...(p.raising ? [p.raising] : [])]; }
+  // 育成エリアを指定していない効果・条件では、育成エリアのカードは選べず、条件も満たさない(3-4-7-5, 3-4-7-7)
+  function battleStacksOf(pi) { return practiceState.players[pi].battle.slice(); }
   // 「このデジモンのDP以上の相手のデジモン」のような比べる条件の基準になるデジモン
   let condRefStack = null;
   function withCondRef(stack, fn) { const prev = condRefStack; condRefStack = stack; try { return fn(); } finally { condRefStack = prev; } }
@@ -16425,7 +16432,7 @@
     const sp = splitFieldSubject(pi, subj);
     if (!sp) return null;
     let n = 0;
-    sp.owners.forEach(o => fieldStacksOf(o).forEach(st => { if (sp.excl.length && sp.excl.some(n => cardHasName(getStackTopCard(st), n))) return; if (stackMatchesFilterText(st, sp.filter, sp.cats)) n++; }));
+    sp.owners.forEach(o => battleStacksOf(o).forEach(st => { if (sp.excl.length && sp.excl.some(n => cardHasName(getStackTopCard(st), n))) return; if (stackMatchesFilterText(st, sp.filter, sp.cats)) n++; }));
     return n;
   }
   function evalFieldCondition(cond, pi) {
@@ -16484,7 +16491,7 @@
     if ((m = /^自分のトラッシュと(?:自分の)?デジモンの進化元に((?:「[^」]+」\/?)+)が合計(\d+)枚以上ある$/.exec(c))) {
       const names = (m[1].match(/「([^」]+)」/g) || []).map(x => x.slice(1, -1));
       const hit = (n) => names.some(x => (miniCardName(cardEntryNum(n)) || '') === x);
-      const k = P.trash.filter(hit).length + fieldStacksOf(pi).reduce((a, st) => a + (isDigimonLikeStack(st) ? st.cards.slice(0, -1).filter(x => !cardEntryFaceDown(x) && hit(x)).length : 0), 0);
+      const k = P.trash.filter(hit).length + battleStacksOf(pi).reduce((a, st) => a + (isDigimonLikeStack(st) ? st.cards.slice(0, -1).filter(x => !cardEntryFaceDown(x) && hit(x)).length : 0), 0);
       return k >= +m[2];
     }
     if ((m = /^自分のバトルエリアに置かれている((?:「[^」]+」\/?)+)が(\d+)枚(以上)?(?:ある)?$/.exec(c))) {
@@ -16495,7 +16502,7 @@
     // 「「X」の記述があるデジモン以外の自分のデジモンがいない」= 自分のデジモンは全て条件に合う
     if ((m = /^(.+?)(デジモン|テイマー)以外の自分の(デジモン|テイマー)がいない$/.exec(c)) && !/^「[^」]+」$/.test(m[1])) {
       const cat = m[3] === 'デジモン' ? 'digimon' : 'tamer';
-      const mine = fieldStacksOf(pi).filter(st => cat === 'digimon' ? isDigimonLikeStack(st) : (getStackTopCard(st) || {}).category === 'tamer');
+      const mine = battleStacksOf(pi).filter(st => cat === 'digimon' ? isDigimonLikeStack(st) : (getStackTopCard(st) || {}).category === 'tamer');
       return mine.every(st => stackMatchesFilterText(st, m[1].replace(/の$/, ''), null));
     }
     if ((m = /^自分のデジモンとテイマー全てが(.+)$/.exec(c))) {
@@ -16506,7 +16513,7 @@
       const sp = splitFieldSubject(pi, m[1]);
       if (!sp) return null;
       const cols = new Set();
-      sp.owners.forEach(o => fieldStacksOf(o).forEach(st => { if (stackMatchesFilterText(st, sp.filter, sp.cats)) ((getStackTopCard(st) || {}).color || []).forEach(x => cols.add(x)); }));
+      sp.owners.forEach(o => battleStacksOf(o).forEach(st => { if (stackMatchesFilterText(st, sp.filter, sp.cats)) ((getStackTopCard(st) || {}).color || []).forEach(x => cols.add(x)); }));
       return m[3] === '以上' ? cols.size >= +m[2] : cols.size <= +m[2];
     }
     if ((m = /^育成エリアに自分の(.+?)がいる$/.exec(c))) return !!P.raising && stackMatchesFilterText(P.raising, m[1], null);
@@ -16632,7 +16639,7 @@
       const sp = splitFieldSubject(pi, part);
       if (!sp) continue;
       for (const o of sp.owners) {
-        const st = fieldStacksOf(o).find(x => stackMatchesFilterText(x, sp.filter, sp.cats));
+        const st = battleStacksOf(o).find(x => stackMatchesFilterText(x, sp.filter, sp.cats));
         if (st) return stackLabel(st);
       }
     }
@@ -16644,7 +16651,7 @@
     const eff = engineStripNotes(card.dual ? (card.dual.effect || '') : (card.effect || ''));
     const colors = card.color || [];
     const EN_JA = Object.fromEntries(Object.entries(JA_COLOR_EN).map(([k, v]) => [v, k]));
-    const stacks = fieldStacksOf(pi).filter(st => { const t = getStackTopCard(st); return t && !st.dualAsOption && (t.category === 'digimon' || t.category === 'tamer'); });
+    const stacks = battleStacksOf(pi).filter(st => { const t = getStackTopCard(st); return t && !st.dualAsOption && (t.category === 'digimon' || t.category === 'tamer'); });
     // 「このカードは紫でも色条件を満たせる」
     const alt = [...eff.matchAll(/このカードは([赤青黄緑黒紫白])でも色条件を満たせる/g)].map(x => JA_COLOR_EN[x[1]]);
     const holder = (col) => stacks.find(st => (getStackTopCard(st).color || []).includes(col));
