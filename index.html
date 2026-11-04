@@ -3533,7 +3533,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.76.1</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.77.0</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -5272,7 +5272,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.76.1`);
+    log(`DigiCA Tool build v0.77.0`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -11901,6 +11901,69 @@
           } });
         }
         return;
+      }
+      // 手札/トラッシュ(/デッキの上)のカードを、このデジモンの進化元の下(上)・このテイマーの下・自分の〜の進化元の下に置く
+      {
+        const pm = /^(?:自分の)?(手札(?:かトラッシュ|\/トラッシュ)?|トラッシュ(?:か手札|\/手札)?|デッキの上)(?:から、?|の)?(.*?)(\d+)枚(まで)?(?:ずつ)?を、?(?:好きな順番で)?(.*?)の?(進化元の(?:1番)?(?:下|上)|下)に(裏向きで)?置く$/.exec(cost);
+        if (pm && !/、/.test(pm[5]) && !/相手/.test(pm[5])) {
+          const zones = pm[1] === 'デッキの上' ? ['deck'] : [/手札/.test(pm[1]) ? 'hand' : null, /トラッシュ/.test(pm[1]) ? 'trash' : null].filter(Boolean);
+          const cond = pm[2].replace(/^、/, '').replace(/[、,]$/, ''), n = +pm[3], upTo = !!pm[4];
+          const subj = pm[5].replace(/^、/, '');
+          const onTop = /上$/.test(pm[6]), faceDown = !!pm[7];
+          const toTamer = pm[6] === '下' && /テイマー/.test(subj);
+          const selfTarget = /^この(デジモン|テイマー)$/.test(subj);
+          if (selfTarget && !holder) return;
+          const zl = zones.map(z => ({ hand: '手札', trash: 'トラッシュ', deck: 'デッキの上' }[z])).join('/');
+          out.push({ isCost: true, label: `💸 代償: ${zl}から${n}枚を${selfTarget ? subj : (subj || '自分のデジモン').replace(/1体$/, '')}の${toTamer ? '下' : onTop ? '進化元の上' : '進化元の下'}へ`, run: () => {
+            if (!guard()) return;
+            const targets = selfTarget ? [holder] : fieldStacksOf(pi).filter(st => {
+              const top = getStackTopCard(st);
+              if (!top || st.dualAsOption) return false;
+              if (toTamer ? top.category !== 'tamer' : !isDigimonLikeStack(st)) return false;
+              if (/他の/.test(subj) && st === holder) return false;
+              const f2 = subj.replace(/(?:自分の)|(?:他の)|(?:1体)|(?:エリアの)/g, '').replace(/(デジモン|テイマー)$/, '').replace(/の$/, '');
+              try { return !f2 || stackMatchesFilterText(st, f2, null); } catch (er) { return true; }
+            });
+            const place = (nums, st) => {
+              const f = findStackOwnerAndZone(st);
+              if (!f) { showToast('置き先が場にいません', true); return; }
+              const entries = nums.map(x => (faceDown ? { n: x, d: true } : x));
+              if (onTop) st.cards.splice(st.cards.length - 1, 0, ...entries); else st.cards.unshift(...entries);
+              showToast(`代償: ${nums.length}枚を「${stackLabel(st)}」の${toTamer ? '下' : '進化元'}に置きました`);
+              paid();
+            };
+            const chooseTarget = (nums, restore) => {
+              const alive = targets.filter(st => findStackOwnerAndZone(st));
+              if (alive.length === 1) { place(nums, alive[0]); return; }
+              const own = fieldStacksOf(pi).filter(st => toTamer ? (getStackTopCard(st) || {}).category === 'tamer' : isDigimonLikeStack(st));
+              startFieldPick({ title: `💸 代償: ${nums.length}枚を置く${toTamer ? 'テイマー' : 'デジモン'}をタップ`, candidates: alive, extra: own, max: 1,
+                onDone: (sel) => { if (sel.length) place(nums, sel[0]); else if (restore) restore(); }, onCancel: () => { if (restore) restore(); renderPracticeBoard(); } });
+            };
+            if (zones[0] === 'deck') {
+              if (P0.library.length < n) { showToast('デッキが足りません', true); return; }
+              snapshotPracticeState();
+              const top = P0.library.splice(0, n);
+              chooseTarget(top.map(cardEntryNum), () => { P0.library.unshift(...top); showToast('置くのをやめました(デッキの上に戻しました)'); });
+              return;
+            }
+            const list = [];
+            zones.forEach(z => (z === 'hand' ? P0.hand : P0.trash).forEach((x, i) => list.push({ z, i, num: cardEntryNum(x) })));
+            if (!list.length) { showToast(`${zl}にカードがありません`, true); return; }
+            openCardMultiPicker({
+              title: `💸「${e.cardName}」の代償: ${zl}から置くカード`, sub: `${cond ? `条件: ${cond}(` : '('}${n}枚${upTo ? 'まで' : ''})`,
+              entries: list.map(x => ({ num: x.num, ok: !cond || revealCondMatches(cardIndexByNumber.get(x.num), cond.replace(/と(?=「|特|名)/g, '/')), tag: zones.length > 1 ? (x.z === 'hand' ? '[手札]' : '[トラッシュ]') : '' })),
+              max: n, min: upTo ? 1 : n,
+              actions: [{ label: '置く', primary: true, onClick: (sel) => {
+                snapshotPracticeState();
+                const picked = sel.map(k => list[k]);
+                const fromHand = spliceMany(P0.hand, picked.filter(x => x.z === 'hand').map(x => x.i));
+                const fromTrash = spliceMany(P0.trash, picked.filter(x => x.z === 'trash').map(x => x.i));
+                chooseTarget(picked.map(x => x.num), () => { P0.hand.push(...fromHand); P0.trash.push(...fromTrash); showToast('置くのをやめました(カードを元の場所に戻しました)'); });
+              } }],
+            });
+          } });
+          return;
+        }
       }
       // このデジモンのリンクカードN枚を破棄する
       if (holder && (m = /^このデジモンのリンクカード(\d+)枚を破棄する$/.exec(cost))) {
