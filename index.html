@@ -3533,7 +3533,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.83.0</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.83.1</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -5297,7 +5297,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.83.0`);
+    log(`DigiCA Tool build v0.83.1`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -5642,8 +5642,7 @@
     if (!owner) return 0;
     const ownerIndex = practiceState.players.indexOf(owner.player);
     const isOwnersTurn = practiceState.turn.playerIndex === ownerIndex;
-    const ks = keishoSourceOf(stack);
-    return sumSelfTurnDPPattern(c.effect, isOwnersTurn) + (ks ? sumSelfTurnDPPattern(keishoTextOf(ks.card), isOwnersTurn) : 0);
+    return sumSelfTurnDPPattern(c.effect, isOwnersTurn) + gainedSourceEffects(stack).reduce((a, g) => a + sumSelfTurnDPPattern(g.text, isOwnersTurn), 0);
   }
 
   // 進化元(素材)の名称/特徴を条件とする自己DP増減(独立行の定型パターンのみ対応)。
@@ -6844,8 +6843,7 @@
     return securityStaticRulesFor(stack).some(r => r.kws.includes(keyword));
   }
   function hasInnateOrLinkedKeyword(stack, keyword) {
-    const ks = keishoSourceOf(stack);
-    return hasInnateKeywordLine(getStackTopCard(stack), keyword) || (!!ks && hasKeywordLineInText(keishoTextOf(ks.card), keyword)) || stackHasLinkedKeyword(stack, keyword) || securityStaticGrantsKeyword(stack, keyword) || conditionalKeywordOn(stack, keyword);
+    return hasInnateKeywordLine(getStackTopCard(stack), keyword) || gainedSourceEffects(stack).some(g => hasKeywordLineInText(g.text, keyword)) || stackHasLinkedKeyword(stack, keyword) || securityStaticGrantsKeyword(stack, keyword) || conditionalKeywordOn(stack, keyword);
   }
   // ---------- 条件つきで得るキーワード(「このデジモンが特徴に「X」を持つ間、このデジモンは≪ブロッカー≫を得る」) ----------
   const COND_KW_CACHE = new Map();
@@ -9587,6 +9585,41 @@
     KEISHO_TEXT_CACHE.set(card.number, t);
     return t;
   }
+  // ---------- 「このデジモンは、このデジモンの進化元にある〜の(【X】)効果全てを得る」(ガンマモン系・ボルトモンなど)と≪継承≫をまとめて扱う ----------
+  // 返り値: [{ card, text, kind:'keisho'|'gain', label }] 進化元から効果を受け取っている分
+  const GAIN_LINE_RE = /このデジモンは、このデジモンの進化元にある(.+?)の(【[^】]+】)?効果全てを得る/;
+  function gainedSourceEffects(stack) {
+    if (!stack || !stack.cards || stack.cards.length < 2 || stack.dualAsOption) return [];
+    const out = [];
+    const ks = keishoSourceOf(stack);
+    if (ks) { const t = keishoTextOf(ks.card); if (t) out.push({ card: ks.card, text: t, kind: 'keisho', label: '継承' }); }
+    const top = getStackTopCard(stack);
+    if (!top) return out;
+    const owner = findStackOwnerAndZone(stack);
+    const pi = owner ? practiceState.players.indexOf(owner.player) : -1;
+    const lines = [];
+    (top.effect || '').split('\n').forEach(l => lines.push({ l, from: top }));
+    stack.cards.slice(0, -1).forEach(entry => { if (cardEntryFaceDown(entry)) return; const c = cardIndexByNumber.get(cardEntryNum(entry)); const t = matInheritedOf(c); if (t) t.split('\n').forEach(l => lines.push({ l, from: c })); });
+    lines.forEach(({ l, from }) => {
+      const m = GAIN_LINE_RE.exec(l);
+      if (!m) return;
+      const parsed = parseEffectLine(l);
+      if (pi >= 0 && parsed.labels.length && !engineTurnLabelOk(parsed.labels, pi)) return;
+      const cond = m[1].replace(/(?:カード)?全て$/, '').replace(/カード$/, '') || '';
+      const names = /^(?:「[^」]+」\/?)+$/.test(cond) ? (cond.match(/「([^」]+)」/g) || []).map(x => x.slice(1, -1)) : null;
+      const want = m[2] ? m[2].slice(1, -1) : null;
+      stack.cards.slice(0, -1).forEach(entry => {
+        if (cardEntryFaceDown(entry)) return;
+        const c = cardIndexByNumber.get(cardEntryNum(entry));
+        if (!c || c === from || out.some(o => o.card === c)) return;
+        if (!(names ? names.some(nm => cardHasName(c, nm)) : revealCondMatches(c, cond))) return;
+        let t = keishoTextOf(c).split('\n').filter(x => !GAIN_LINE_RE.test(x));
+        if (want) t = t.filter(x => parseEffectLine(x).labels.includes(want));
+        if (t.length) out.push({ card: c, text: t.join('\n'), kind: 'gain', label: '得た効果' });
+      });
+    });
+    return out;
+  }
   function getStackEffectSources(stack) {
     const out = [];
     const topEntry = stack.cards[stack.cards.length - 1];
@@ -9600,9 +9633,8 @@
       const c = cardIndexByNumber.get(cardEntryNum(entry));
       if (matInheritedOf(c)) out.push({ field: 'inherited', cardNumber: c.number, card: c, text: c.inherited, sourceLabel: '進化元効果' });
     });
-    // ≪継承≫で得た効果
-    const ks = keishoSourceOf(stack);
-    if (ks) { const t = keishoTextOf(ks.card); if (t) out.push({ field: 'keisho', cardNumber: ks.card.number, card: ks.card, text: t, sourceLabel: '継承した効果' }); }
+    // ≪継承≫や「進化元にある〜の効果全てを得る」で得た効果
+    gainedSourceEffects(stack).forEach(g => out.push({ field: 'keisho', cardNumber: g.card.number, card: g.card, text: g.text, sourceLabel: g.kind === 'keisho' ? '継承した効果' : '進化元から得た効果' }));
     (stack.links || []).forEach(num => {
       const c = cardIndexByNumber.get(num);
       if (c && c.inherited) out.push({ field: 'link', cardNumber: c.number, card: c, text: c.inherited, sourceLabel: 'リンク効果' });
@@ -10394,7 +10426,7 @@
     if (e.field === 'effect') return cardEntryNum(f.stack.cards[f.stack.cards.length - 1]) === e.cardNumber;
     if (e.field === 'inherited') return f.stack.cards.slice(0, -1).some(x => cardEntryNum(x) === e.cardNumber);
     if (e.field === 'link') return (f.stack.links || []).includes(e.cardNumber);
-    if (e.field === 'keisho') { const ks = keishoSourceOf(f.stack); return !!ks && ks.card.number === e.cardNumber; }
+    if (e.field === 'keisho') return gainedSourceEffects(f.stack).some(g => g.card.number === e.cardNumber);
     return true;
   }
   // 次に発揮できる効果のグループ(最後に誘発したもの優先、その中ではターンプレイヤー優先)
@@ -17041,7 +17073,7 @@
         if (/ことで|この効果で|次に|ターン終了まで/.test(body)) return;
         const entry = { ownerIndex: pi, stackUid: ensureStackUid(st), cardNumber: src.cardNumber, field: src.field, lineIndex, text: parsed.text };
         if (isOnceUsed(entry)) return;
-        const name = src.card.name + (src.field === 'inherited' ? '(進化元)' : src.field === 'link' ? '(リンク)' : src.field === 'keisho' ? '(継承)' : '');
+        const name = src.card.name + (src.field === 'inherited' ? '(進化元)' : src.field === 'link' ? '(リンク)' : src.field === 'keisho' ? (src.sourceLabel === '継承した効果' ? '(継承)' : '(得た効果)') : '');
         let m;
         if (kind === 'evolve') {
           m = /^((?:レスト状態の|裏向きの進化元を持つ)?)(このデジモン(?:か自分のテイマー)?|(.*?)自分のデジモン)が(?:(.+?)に)?進化するとき、(?:(.+?)なら、)?支払う(?:進化)?コスト[-－](\d+)/.exec(body);
