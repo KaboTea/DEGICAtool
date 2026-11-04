@@ -3533,7 +3533,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.76.0</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.76.1</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -5272,7 +5272,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.76.0`);
+    log(`DigiCA Tool build v0.76.1`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -11624,6 +11624,69 @@
     return [];
   }
   // ---------- 1〜2タップで済む処理: このデジモンをアクティブ / 相手のセキュリティ破棄 / デッキの上から破棄 / 相手の進化元を選んで破棄 ----------
+  // 進化元のカードを選んで別の場所へ動かす(手札/デッキの上下/セキュリティの上下)。stacks: 対象にできるスタック
+  const SRC_DEST_JA = { hand: '手札に戻す', deckTop: 'デッキの上に戻す', deckBottom: 'デッキの下に戻す', secTop: 'セキュリティの上に置く', secBottom: 'セキュリティの下に置く' };
+  function parseSourceDest(w) {
+    let m;
+    if (/^手札に/.test(w)) return { dest: 'hand' };
+    if ((m = /^デッキの(上|下)/.exec(w))) return { dest: m[1] === '上' ? 'deckTop' : 'deckBottom' };
+    if ((m = /^セキュリティの(上|下)に(表向きで)?/.exec(w))) return { dest: m[1] === '上' ? 'secTop' : 'secBottom', faceUp: !!m[2] };
+    return null;
+  }
+  function moveSourcesFlow(o) {
+    // o: { title, stacks, cond, n, upTo, dest, faceUp, pi, onDone }
+    const go = (st) => {
+      const f = findStackOwnerAndZone(st);
+      if (!f) { showToast('そのデジモンはもう場にいません', true); return; }
+      const list = st.cards.slice(0, -1).map((x, i) => ({ i, num: cardEntryNum(x), down: cardEntryFaceDown(x) })).reverse();
+      if (!list.length) { showToast('進化元がありません', true); return; }
+      openCardMultiPicker({
+        title: o.title, sub: `${o.cond ? `条件: ${o.cond}(` : '('}${o.n}枚${o.upTo ? 'まで' : ''}・選んだ順)`,
+        entries: list.map(x => ({ num: x.num, ok: !x.down && (!o.cond || revealCondMatches(cardIndexByNumber.get(x.num), o.cond)), tag: x.down ? '裏向き' : '' })),
+        max: o.n, min: o.upTo ? 1 : o.n,
+        actions: [{ label: SRC_DEST_JA[o.dest].replace(/す$|く$/, (z) => z), primary: true, onClick: (sel) => {
+          snapshotPracticeState();
+          const picked = sel.map(k => list[k]);
+          const nums = spliceMany(st.cards, picked.map(x => x.i)).map(cardEntryNum);
+          // spliceMany は位置順で返すので、選んだ順に並べ直す
+          const order = picked.map(x => x.num);
+          const pl = f.player;
+          if (o.dest === 'hand') pl.hand.push(...order);
+          else if (o.dest === 'deckBottom') pl.library.push(...order);
+          else if (o.dest === 'deckTop') pl.library.unshift(...order.slice().reverse());
+          else if (o.dest === 'secBottom') pl.security.push(...order.map(x => o.faceUp ? { n: x, u: true } : x));
+          else pl.security.unshift(...order.slice().reverse().map(x => o.faceUp ? { n: x, u: true } : x));
+          showToast(`進化元${order.map(x => `「${miniCardName(x)}」`).join('')}を${SRC_DEST_JA[o.dest].replace(/戻す$/, '戻しました').replace(/置く$/, '置きました')}`);
+          void nums;
+          if (o.onDone) o.onDone(); else { renderPracticeBoard(); renderEffectPanel(); }
+        } }],
+      });
+    };
+    const alive = (o.stacks || []).filter(st => findStackOwnerAndZone(st));
+    if (!alive.length) { showToast('対象のデジモンが場にいません', true); return; }
+    if (alive.length === 1) { go(alive[0]); return; }
+    startFieldPick({ title: '進化元を動かすデジモンをタップ', candidates: alive, extra: [], max: 1,
+      onDone: (sel) => { if (sel.length) go(sel[0]); }, onCancel: () => renderPracticeBoard() });
+  }
+  // 代償ではない「このデジモンの進化元から、〜N枚をデッキの下に戻す/セキュリティの下に置く」
+  function sourceMoveHandlersFor(e, holderStack) {
+    if (!practiceState) return [];
+    const t = engineStripNotes(e.text || '');
+    const out = [];
+    const re = /このデジモンの進化元(?:から、?|の)([^。]*?)(\d+)枚(まで)?を?(?:好きな順番で)?(デッキの(?:上|下)に戻|セキュリティの(?:上|下)に(?:表向きで)?置)(す|く|し|き|せる|ける)?/g;
+    let m;
+    while ((m = re.exec(t))) {
+      if (/^(?:する|できる)?ことで/.test(t.slice(m.index + m[0].length, m.index + m[0].length + 6)) || /ことで/.test(m[5] || '')) continue;
+      const d = parseSourceDest(m[4]);
+      if (!d) continue;
+      const cond = m[1].replace(/^、/, ''), n = +m[2], upTo = !!m[3];
+      out.push({ label: `🧩 進化元から${SRC_DEST_JA[d.dest].replace(/に(戻す|置く)$/, 'へ')}(${n}枚${upTo ? 'まで' : ''})`, run: () => {
+        if (e.ownerIndex !== practiceState.viewingIndex) { showToast('この自動処理は、その効果を持つプレイヤーの視点に切り替えてから実行してください', true); return; }
+        moveSourcesFlow({ title: `🧩「${e.cardName}」の効果: 進化元を${SRC_DEST_JA[d.dest]}`, stacks: holderStack ? [holderStack] : [], cond, n, upTo, dest: d.dest, faceUp: d.faceUp });
+      } });
+    }
+    return out;
+  }
   // 効果文の「〜ことで、」の代償(〜の部分)を取り出す。返り値: [{ cost(代償の文), from(その文の始まり), to(その文の終わり) }]
   function extractEffectCosts(text) {
     const t = engineStripNotes(text || '');
@@ -11824,6 +11887,19 @@
             onCancel: () => renderPracticeBoard(),
           });
         } });
+        return;
+      }
+      // このデジモン/自分の「X」の進化元から、〜N枚を手札に戻す/デッキの上下に戻す/セキュリティに置く
+      if ((m = /^(このデジモン|(?:自分の)?「([^」]+)」(?:1体)?)の進化元(?:から、?|の)(.+?)(\d+)枚(まで)?を?(?:好きな順番で)?(手札に(?:戻す|加える)|デッキの(?:上|下)に戻す|セキュリティの(?:上|下)に(?:表向きで)?置く)$/.exec(cost))) {
+        const name = m[2], cond = m[3].replace(/^、/, ''), n = +m[4], upTo = !!m[5];
+        const d = parseSourceDest(m[6]);
+        if (d && (name || holder)) {
+          out.push({ isCost: true, label: `💸 代償: ${name ? `「${name}」` : 'このデジモン'}の進化元から${n}枚を${SRC_DEST_JA[d.dest]}`, run: () => {
+            if (!guard()) return;
+            const stacks = name ? fieldStacksOf(pi).filter(st => (getStackTopCard(st) || {}).name === name) : [holder];
+            moveSourcesFlow({ title: `💸「${e.cardName}」の代償: 進化元を${SRC_DEST_JA[d.dest]}`, stacks, cond, n, upTo, dest: d.dest, faceUp: d.faceUp, onDone: paid });
+          } });
+        }
         return;
       }
       // このデジモンのリンクカードN枚を破棄する
@@ -12092,7 +12168,7 @@
     if (e.deferred) return deferredHandlersFor(e);
     const extra = () => {
       const f = e.stackUid ? findStackByUid(e.stackUid) : null;
-      const list = [...reductionCostHandlersFor(e), ...costHandlersFor(e, holderOf(e, f)), ...restrictHandlersFor(e), ...evolveFromZoneHandlersFor(e, f && f.stack), ...materialFromZoneHandlersFor(e, f && f.stack), ...playFromHandHandlersFor(e, holderOf(e, f)), ...toHandFromZoneHandlersFor(e, holderOf(e, f)), ...simpleActionHandlersFor(e, holderOf(e, f))];
+      const list = [...reductionCostHandlersFor(e), ...costHandlersFor(e, holderOf(e, f)), ...restrictHandlersFor(e), ...evolveFromZoneHandlersFor(e, f && f.stack), ...materialFromZoneHandlersFor(e, f && f.stack), ...playFromHandHandlersFor(e, holderOf(e, f)), ...toHandFromZoneHandlersFor(e, holderOf(e, f)), ...sourceMoveHandlersFor(e, holderOf(e, f)), ...simpleActionHandlersFor(e, holderOf(e, f))];
       // 進化元効果・セキュリティ効果・消滅時などの「デッキの上からN枚オープン」(【効果】欄のものは基本の処理で出している)
       const rm = /(?<!相手の)デッキの上から(\d+)枚オープン/.exec(e.text || '');
       if (rm && e.timing !== 'ディレイ' && (!f || e.field !== 'effect')) {
