@@ -3536,7 +3536,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.85.1</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.86.0</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -5314,7 +5314,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.85.1`);
+    log(`DigiCA Tool build v0.86.0`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -11936,6 +11936,50 @@
       run: () => { h.run(); onPaid(); renderPracticeBoard(); renderEffectPanel(); },
     }));
   }
+  // ---------- 代償用に作ったカードの動かし方を、代償以外の効果(「〜する」「〜できる」)のボタンにも使う ----------
+  // 効果文を短い文に区切り、今のボタンが出ていない「カードの移動」を、代償と同じ処理で普通の効果ボタンにする(💸なし・代償扱いしない)。
+  const MOVE_CLAUSE_CACHE = new Map();
+  let moveClauseBusy = false;
+  function movementClausesOf(e) {
+    const text = e.text || '';
+    if (MOVE_CLAUSE_CACHE.has(text)) return MOVE_CLAUSE_CACHE.get(text);
+    const out = [];
+    moveClauseBusy = true;
+    try {
+      // 代償の部分(「〜ことで」の前)は除く
+      let body = text;
+      extractEffectCosts(text).slice().sort((a, b) => b.from - a.from).forEach(c => { body = body.slice(0, c.from) + '\u0002'.repeat(Math.max(0, c.to - c.from)) + body.slice(c.to); });
+      body = body.replace(/^(?:[【［\[][^】］\]]*[】］\]])+/, '').replace(/（[^）]*）/g, '').replace(/≪[^≫]*≫/g, m0 => m0);
+      body.split(/。|、その後、/).forEach(seg => {
+        let cl = seg.replace(/\u0002+(?:ことで)?、?/g, '').replace(/^その後、/, '').replace(/^.*?(?:とき|なら|場合)、/, '').trim();
+        if (!cl || /\u0002|ごとに|の間|ターン終了時|まで、|その中|そのカード|そのデジモン|この効果で|選んだ|オープンした|残り|相手は|代わりに/.test(cl)) return;
+        if (/^(その|それ)/.test(cl)) return;
+        if (!/(する|できる|させる|戻す|置く|加える|置ける|戻せる|させられる)$/.test(cl)) return;
+        const cost = cl.replace(/ことができる$/, '').replace(/(破棄|リンク|オープン)できる$/, '$1する').replace(/消滅できる$/, '消滅させる').replace(/登場できる$/, '登場させる')
+          .replace(/戻せる$/, '戻す').replace(/置ける$/, '置く').replace(/加えられる$/, '加える').replace(/させられる$/, 'させる').replace(/にできる$/, 'にする').replace(/できる$/, 'する');
+        // 今の効果ボタンがすでに出る書き方は、二重に出さない
+        let base = [];
+        try { base = getEffectHandlers(Object.assign({}, e, { text: '【メイン】' + cl + '。', costPaid: true })); } catch (er) { base = []; }
+        if (base.length) return;
+        out.push({ clause: cl, cost });
+      });
+    } finally { moveClauseBusy = false; }
+    MOVE_CLAUSE_CACHE.set(text, out);
+    return out;
+  }
+  function effectMovementHandlersFor(e, holderStack) {
+    if (!practiceState || moveClauseBusy || e.deferred || e.burst) return [];
+    const out = [];
+    movementClausesOf(e).forEach(({ cost }) => {
+      const sub = Object.create(e);
+      Object.defineProperty(sub, 'text', { value: cost + 'ことで、≪1ドロー≫。' });
+      Object.defineProperty(sub, 'costPaid', { get: () => false, set: () => {} });
+      let hs = [];
+      try { hs = costHandlersForSingle(sub, holderStack); } catch (er) { hs = []; }
+      hs.forEach(h => out.push({ label: h.label.replace(/^💸 代償: /, '🔀 '), run: h.run }));
+    });
+    return out;
+  }
   function costHandlersForSingle(e, holderStack) {
     if (!practiceState || e.costPaid) return [];
     const out = [];
@@ -12599,7 +12643,7 @@
       // 手札/トラッシュ(/デッキの上)のカードを、このデジモンの進化元の下(上)・このテイマーの下・自分の〜の進化元の下に置く
       {
         const pm = /^(?:自分の)?(手札(?:かトラッシュ|\/トラッシュ)?|トラッシュ(?:か手札|\/手札)?|デッキの上)(?:から、?|の)?(.*?)(\d+)枚(まで)?(?:ずつ)?を、?(?:好きな順番で)?(.*?)の?(進化元の(?:1番)?(?:下|上)|下)に(裏向きで)?置く$/.exec(cost);
-        if (pm && !/、/.test(pm[5]) && !/相手/.test(pm[5])) {
+        if (pm && !/、/.test(pm[5]) && !/相手|セキュリティ/.test(pm[5]) && !/^か/.test(pm[2])) {
           const zones = pm[1] === 'デッキの上' ? ['deck'] : [/手札/.test(pm[1]) ? 'hand' : null, /トラッシュ/.test(pm[1]) ? 'trash' : null].filter(Boolean);
           const cond = pm[2].replace(/^、/, '').replace(/[、,]$/, ''), n = +pm[3], upTo = !!pm[4];
           const subj = pm[5].replace(/^、/, '');
@@ -12990,6 +13034,15 @@
         return;
       }
       // 手札/トラッシュから(条件の)カードN枚をセキュリティの上・下に(表向きで)置く
+      if ((m = /^自分の(手札(?:\/トラッシュ|かトラッシュ)?|トラッシュ)から、?(.*?)(\d+)枚を(?:自分の)?セキュリティの(上か下|上|下)に(表向きで)?置く$/.exec(cost)) && m[4] === '上か下') {
+        ['上', '下'].forEach(ud => {
+          const sub = Object.create(e);
+          Object.defineProperty(sub, 'text', { value: cost.replace('セキュリティの上か下に', `セキュリティの${ud}に`) + 'ことで、≪1ドロー≫。' });
+          Object.defineProperty(sub, 'costPaid', { get: () => false, set: (v) => { if (v) e.costPaid = true; } });
+          out.push(...costHandlersForSingle(sub, holderStack));
+        });
+        return;
+      }
       if ((m = /^自分の(手札(?:\/トラッシュ|かトラッシュ)?|トラッシュ)から、?(.*?)(\d+)枚を(?:自分の)?セキュリティの(上|下)に(表向きで)?置く$/.exec(cost))) {
         const zones = [/手札/.test(m[1]) ? 'hand' : null, /トラッシュ/.test(m[1]) ? 'trash' : null].filter(Boolean);
         const cond = m[2].replace(/[、,]$/, ''), n = +m[3], top = m[4] === '上', faceUp = !!m[5];
@@ -13417,7 +13470,7 @@
     if (e.deferred) return deferredHandlersFor(e);
     const extra = () => {
       const f = e.stackUid ? findStackByUid(e.stackUid) : null;
-      const list = [...reductionCostHandlersFor(e), ...costHandlersFor(e, holderOf(e, f)), ...restrictHandlersFor(e), ...evolveFromZoneHandlersFor(e, f && f.stack), ...materialFromZoneHandlersFor(e, f && f.stack), ...playFromHandHandlersFor(e, holderOf(e, f)), ...toHandFromZoneHandlersFor(e, holderOf(e, f)), ...sourceMoveHandlersFor(e, holderOf(e, f)), ...simpleActionHandlersFor(e, holderOf(e, f))];
+      const list = [...reductionCostHandlersFor(e), ...costHandlersFor(e, holderOf(e, f)), ...restrictHandlersFor(e), ...evolveFromZoneHandlersFor(e, f && f.stack), ...materialFromZoneHandlersFor(e, f && f.stack), ...playFromHandHandlersFor(e, holderOf(e, f)), ...toHandFromZoneHandlersFor(e, holderOf(e, f)), ...sourceMoveHandlersFor(e, holderOf(e, f)), ...simpleActionHandlersFor(e, holderOf(e, f)), ...effectMovementHandlersFor(e, holderOf(e, f))];
       // 進化元効果・セキュリティ効果・消滅時などの「デッキの上からN枚オープン」(【効果】欄のものは基本の処理で出している)
       const rm = /(?<!相手の)デッキの上から(\d+)枚オープン/.exec(e.text || '');
       if (rm && e.timing !== 'ディレイ' && (!f || e.field !== 'effect')) {
