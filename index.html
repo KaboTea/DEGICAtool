@@ -3536,7 +3536,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.86.1</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.86.2</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -5314,7 +5314,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.86.1`);
+    log(`DigiCA Tool build v0.86.2`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -17466,11 +17466,13 @@
   }
   // ---------- オプションの色条件(4-21) ----------
   // 返り値: { ok, ignore, html } ok=使ってよい / html=表示する1行
+  const P_RAISING_OF = (pi) => practiceState.players[pi].raising;
   function optionColorCheck(card, pi) {
     const eff = engineStripNotes(card.dual ? (card.dual.effect || '') : (card.effect || ''));
     const colors = card.color || [];
     const EN_JA = Object.fromEntries(Object.entries(JA_COLOR_EN).map(([k, v]) => [v, k]));
-    const stacks = battleStacksOf(pi).filter(st => { const t = getStackTopCard(st); return t && !st.dualAsOption && (t.category === 'digimon' || t.category === 'tamer'); });
+    // 色条件は「エリア」のデジモン/テイマーで満たす(4-21-2)。育成エリアも含む
+    const stacks = fieldStacksOf(pi).filter(st => { const t = getStackTopCard(st); return t && !st.dualAsOption && (t.category === 'digimon' || t.category === 'tamer'); });
     // 「このカードは紫でも色条件を満たせる」
     const alt = [...eff.matchAll(/このカードは([赤青黄緑黒紫白])でも色条件を満たせる/g)].map(x => JA_COLOR_EN[x[1]]);
     const holder = (col) => stacks.find(st => (getStackTopCard(st).color || []).includes(col));
@@ -17491,8 +17493,13 @@
       const mm = /^((?:「[^」]+」\/?)+)の記述$/.exec(spec);
       if (tm) subj = `特徴${tm[1]}を持つ自分のデジモン/テイマー`;
       else if (mm) subj = `${mm[1]}の記述がある自分のデジモン/テイマー`;
-      const r = subj ? evalFieldCondition(subj + 'がいる', pi) : null;
-      if (r) reasons.push(`${spec}(${fieldConditionWitness(subj + 'がいる', pi)})`);
+      // ≪使用条件≫は「エリア」のデジモン/テイマーで満たす(16-42-3)。育成エリアも含む
+      let r = null, hit = null;
+      if (subj) {
+        const f = tm ? `特徴${tm[1]}を持つ` : `${mm[1]}の記述がある`;
+        try { hit = stacks.find(st => stackMatchesFilterText(st, f, null)); r = !!hit; } catch (er) { r = null; }
+      }
+      if (r) reasons.push(`${spec}(${stackLabel(hit)}${P_RAISING_OF(pi) === hit ? '・育成エリア' : ''})`);
       else if (r == null) unknown = `≪使用条件《${spec}》≫`;
     }
     if (/(?:^|。|\n)このカードは色条件を無視できる/.test(eff)) reasons.push('このカードの効果');
