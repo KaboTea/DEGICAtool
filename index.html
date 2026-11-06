@@ -3536,7 +3536,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.85.0</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.85.1</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -5314,7 +5314,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.85.0`);
+    log(`DigiCA Tool build v0.85.1`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -7090,6 +7090,21 @@
   }
   // リンク上限を超えている場合、古いリンク(先頭)から順に自動破棄して枠内に収める。
   // finalizeLink内の同種処理とは別に、進化等で上限が変化した際の再チェック用。
+  // スタックからリンクカードを外す(リンクDPは dpModifier に足してあるので引く)
+  function takeLinksAt(stack, idxs) {
+    const nums = spliceMany(stack.links || [], idxs);
+    const dp = nums.reduce((a, n) => a + getLinkDPBonus(cardIndexByNumber.get(n)), 0);
+    if (dp) stack.dpModifier = (stack.dpModifier || 0) - dp;
+    return nums;
+  }
+  // 効果でリンクさせる(リンクDPを足し、上限を超えたら古いものから破棄)
+  function addLinkTo(stack, num, owner) {
+    stack.links = stack.links || [];
+    stack.links.push(num);
+    const dp = getLinkDPBonus(cardIndexByNumber.get(num));
+    if (dp) stack.dpModifier = (stack.dpModifier || 0) + dp;
+    return enforceLinkLimit(stack, owner);
+  }
   function enforceLinkLimit(stack, owner) {
     if (!stack.links || stack.links.length === 0 || !owner) return [];
     const limit = 1 + effectiveLinkLimitBonus(stack);
@@ -11841,6 +11856,7 @@
   const COST_AND_JOIN_RE = /(レストさせ|消滅させ|支払い|破棄し|戻し|置き|加え)、/;
   const COST_AND_STEM = { 'レストさせ': 'レストさせる', '消滅させ': '消滅させる', '支払い': '支払う', '破棄し': '破棄する', '戻し': '戻す', '置き': '置く', '加え': '加える' };
   function splitCompoundCost(cost) {
+    if (/進化元を全て破棄し、このデジモンの進化元の下に置く$/.test(cost)) return null;
     // どちらか: 「Aするか、B」「上から1枚か、…下から1枚破棄する」
     let m = /^(.+?(?:る|す|く|う|枚))か、(.+)$/.exec(cost);
     if (m) {
@@ -11911,7 +11927,7 @@
   function withNo(x) { return !x ? '' : /(つ|る|ない|た|の)$/.test(x) ? x : x + 'の'; }
   function costFallbackHandlers(e, cost, onPaid) {
     if (e.__costFallbackBusy) return [];
-    const sub = Object.assign({}, e, { text: '【メイン】' + cost + '。', costPaid: false, __costFallbackBusy: true });
+    const sub = Object.assign({}, e, { text: '【メイン】' + cost.replace(/^このテイマーの下にある/, 'このテイマーの下から、') + '。', costPaid: false, __costFallbackBusy: true });
     delete sub.costSteps;
     let hs = [];
     try { hs = getEffectHandlers(sub); } catch (er) { hs = []; }
@@ -12119,6 +12135,177 @@
         } });
         return;
       }
+      // 手札から(条件の)カードN枚(まで)をオープンし(て)、(オープンしたカード全てを)デッキの上・下に戻す / オープンするだけ
+      if ((m = /^自分の手札から、?(.*?)(\d+)枚(まで)?をオープン(?:し、オープンしたカード全てを(?:好きな順番で)?|して)?(?:デッキの(上|下)に戻す)?(?:する)?$/.exec(cost)) && /オープン/.test(cost)) {
+        const cond = m[1].replace(/[、の]$/, ''), n = +m[2], upTo = !!m[3], ud = m[4] || null;
+        const openOnly = !ud;
+        const toSec = openOnly && /そのカードをセキュリティの上に裏向きで置く/.test(e.text);
+        out.push({ isCost: true, label: `💸 代償: 手札から${withNo(cond)}${n}枚${upTo ? 'まで' : ''}をオープン${ud ? `してデッキの${ud}へ` : toSec ? '(→セキュリティの上へ)' : ''}`, run: () => {
+          if (!guard()) return;
+          const list = P0.hand.map((x, i) => ({ i, num: cardEntryNum(x) }));
+          if (!list.length) { showToast('手札がありません', true); return; }
+          const condOk = (num) => !cond || /そのデジモンと同じLv/.test(cond) || revealCondMatches(cardIndexByNumber.get(num), cond);
+          openCardMultiPicker({ title: `💸「${e.cardName}」の代償: 手札からオープンするカード`, sub: `${cond ? `条件: ${cond}(` : '('}${n}枚${upTo ? 'まで' : ''})`,
+            entries: list.map(x => ({ num: x.num, ok: condOk(x.num) })), max: n, min: upTo ? 1 : n,
+            actions: [{ label: openOnly ? (toSec ? 'オープンしてセキュリティの上へ' : 'オープン') : `デッキの${ud}に戻す`, primary: true, onClick: (sel) => {
+              snapshotPracticeState();
+              const nums = sel.map(k => list[k].num);
+              if (!openOnly || toSec) {
+                spliceMany(P0.hand, sel.map(k => list[k].i));
+                if (toSec) P0.security.unshift(...nums);
+                else if (ud === '下') P0.library.push(...nums); else P0.library.unshift(...nums.slice().reverse());
+              }
+              e.costCount = nums.length;
+              showToast(`代償: ${nums.map(x => `「${miniCardName(x)}」`).join('')}をオープンしました${toSec ? '(セキュリティの上に裏向きで置きました)' : ud ? `(デッキの${ud}に戻しました・${nums.length}枚)` : ''}`);
+              paid();
+            } }] });
+        } });
+        return;
+      }
+      // (セキュリティの上から1枚確認したあと)そのカードを手札に加える
+      if (cost === 'そのカードを手札に加える' && /セキュリティ[^。]*上から1枚確認/.test(e.text)) {
+        out.push({ isCost: true, label: '💸 代償: 確認したセキュリティの一番上を手札に加える', run: () => {
+          if (!guard()) return;
+          if (!P0.security.length) { showToast('セキュリティがありません', true); return; }
+          snapshotPracticeState();
+          const num = cardEntryNum(P0.security.shift());
+          P0.hand.push(num);
+          showToast(`代償: セキュリティの「${miniCardName(num)}」を手札に加えました`);
+          paid();
+        } });
+        return;
+      }
+      // コストをNまで支払う(払った数を選ぶ)
+      if ((m = /^コストを(\d+)まで支払う$/.exec(cost))) {
+        const max = +m[1];
+        out.push({ isCost: true, label: `💸 代償: コストを${max}まで支払う(数を選ぶ)`, run: () => {
+          if (!guard()) return;
+          const pay = (k) => { snapshotPracticeState(); practiceState.memory += (pi === 0 ? k : -k); e.costCount = k; showToast(`代償: コストを${k}支払いました(この効果で支払ったコスト ${k})`); paid(); };
+          openDecisionUi(`💸「${e.cardName}」: 支払うコストを選んでください(${max}まで)`, Array.from({ length: max }, (_, i) => ({ label: `${i + 1}`, onClick: () => pay(i + 1) })));
+        } });
+        return;
+      }
+      // 育成エリアの(このデジモン / Lv.N以上の自分のデジモン1体)をバトルエリアに移動させる
+      if ((m = /^(このデジモン|育成エリアの(.*?)自分のデジモン1体)をバトルエリアに移動させる$/.exec(cost))) {
+        const self = m[1] === 'このデジモン', filter = (m[2] || '').replace(/の$/, '');
+        out.push({ isCost: true, label: `💸 代償: ${self ? 'このデジモン' : '育成エリアのデジモン'}をバトルエリアに移動`, run: () => {
+          if (!guard()) return;
+          const r = P0.raising;
+          if (!r || (self && r !== holder)) { showToast(self ? 'このデジモンは育成エリアにいません' : '育成エリアにデジモンがいません', true); return; }
+          if (!self && filter) { let ok = true; try { ok = stackMatchesFilterText(r, filter, null); } catch (er) {} if (!ok) showToast(`条件(${filter})に合わないかもしれません。そのまま移動します`, true); }
+          snapshotPracticeState();
+          P0.raising = null; P0.battle.push(r);
+          showToast(`代償: 「${stackLabel(r)}」をバトルエリアに移動しました`);
+          paid();
+        } });
+        return;
+      }
+      // 手札かこのデジモンの進化元から、(条件の)カード1枚をこのデジモンにコストを支払わずリンクさせる
+      if (holder && (m = /^自分の(手札|手札かこのデジモンの進化元|このデジモンの進化元)から、?(.*?)(\d+)枚をこのデジモンにコストを支払わずリンクさせる$/.exec(cost))) {
+        const useHand = /手札/.test(m[1]), useSrc = /進化元/.test(m[1]), cond = m[2].replace(/[、の]$/, ''), n = +m[3];
+        out.push({ isCost: true, label: `💸 代償: ${m[1]}から${n}枚をこのデジモンにリンク(コストなし)`, run: () => {
+          if (!guard()) return;
+          const list = [];
+          if (useHand) P0.hand.forEach((x, i) => list.push({ z: 'hand', i, num: cardEntryNum(x) }));
+          if (useSrc) holder.cards.slice(0, -1).forEach((x, i) => { if (!cardEntryFaceDown(x)) list.push({ z: 'src', i, num: cardEntryNum(x) }); });
+          if (!list.length) { showToast('リンクできるカードがありません', true); return; }
+          openCardMultiPicker({ title: `💸「${e.cardName}」の代償: リンクさせるカード`, sub: `${cond ? `条件: ${cond}(` : '('}${n}枚)`,
+            entries: list.map(x => ({ num: x.num, ok: !cond || revealCondMatches(cardIndexByNumber.get(x.num), cond), tag: x.z === 'hand' ? '[手札]' : '[進化元]' })), max: n, min: n,
+            actions: [{ label: 'リンクさせる', primary: true, onClick: (sel) => {
+              snapshotPracticeState();
+              const picked = sel.map(k => list[k]);
+              spliceMany(P0.hand, picked.filter(x => x.z === 'hand').map(x => x.i));
+              spliceMany(holder.cards, picked.filter(x => x.z === 'src').map(x => x.i));
+              const dropped = [];
+              picked.forEach(x => dropped.push(...addLinkTo(holder, x.num, P0)));
+              showToast(`代償: ${picked.map(x => `「${miniCardName(x.num)}」`).join('')}をリンクさせました${dropped.length ? `(上限のため${dropped.join('、')}を破棄)` : ''}`);
+              paid();
+            } }] });
+        } });
+        return;
+      }
+      // このデジモンの進化元か自分のトラッシュの「X」N枚 / そのデジモンの進化元の「X」N枚 をデッキの上・下に戻す
+      if ((m = /^(このデジモンの進化元か自分のトラッシュ|そのデジモンの進化元|自分のデジモン1体の進化元)の(.+?)(\d+)枚をデッキの(上|下)に戻す$/.exec(cost))) {
+        const where = m[1], cond = m[2], n = +m[3], ud = m[4];
+        out.push({ isCost: true, label: `💸 代償: ${where.replace('自分のデジモン1体', 'デジモン')}の${cond}${n}枚をデッキの${ud}へ`, run: () => {
+          if (!guard()) return;
+          const go = (stacks, withTrash) => {
+            const list = [];
+            stacks.forEach(st => st.cards.slice(0, -1).forEach((x, i) => { if (!cardEntryFaceDown(x)) list.push({ st, z: 'src', i, num: cardEntryNum(x) }); }));
+            if (withTrash) P0.trash.forEach((x, i) => list.push({ z: 'trash', i, num: cardEntryNum(x) }));
+            if (!list.length) { showToast('対象のカードがありません', true); return; }
+            openCardMultiPicker({ title: `💸「${e.cardName}」の代償: デッキの${ud}に戻すカード`, sub: `条件: ${cond}(${n}枚)`,
+              entries: list.map(x => ({ num: x.num, ok: revealCondMatches(cardIndexByNumber.get(x.num), cond), tag: x.z === 'trash' ? '[トラッシュ]' : `[${stackLabel(x.st)}]` })), max: n, min: n,
+              actions: [{ label: `デッキの${ud}に戻す`, primary: true, onClick: (sel) => {
+                snapshotPracticeState();
+                const picked = sel.map(k => list[k]);
+                new Set(picked.filter(x => x.st).map(x => x.st)).forEach(st => spliceMany(st.cards, picked.filter(x => x.st === st).map(x => x.i)));
+                spliceMany(P0.trash, picked.filter(x => x.z === 'trash').map(x => x.i));
+                const nums = picked.map(x => x.num);
+                if (ud === '下') P0.library.push(...nums); else P0.library.unshift(...nums.slice().reverse());
+                showToast(`代償: ${nums.map(x => `「${miniCardName(x)}」`).join('')}をデッキの${ud}に戻しました`);
+                paid();
+              } }] });
+          };
+          if (/^この/.test(where)) { if (!holder) return; go([holder], true); return; }
+          const all = battleStacksOf(pi).filter(st => isDigimonLikeStack(st) && st.cards.length > 1);
+          if (!all.length) { showToast('進化元を持つ自分のデジモンがいません', true); return; }
+          if (all.length === 1) { go(all, false); return; }
+          startFieldPick({ title: '💸 代償: 進化元を戻すデジモンをタップ', candidates: all, extra: [], max: 1, onDone: (sel) => { if (sel.length) go(sel, false); }, onCancel: () => renderPracticeBoard() });
+        } });
+        return;
+      }
+      // (条件の)自分のデジモン1体の進化元から、Lv.の同じカード2枚を破棄する
+      if ((m = /^(.*?)自分のデジモン1体の進化元から、Lv\.の同じカード(\d+)枚を破棄する$/.exec(cost))) {
+        const filter = m[1].replace(/の$/, ''), n = +m[2];
+        out.push({ isCost: true, label: `💸 代償: ${m[1]}自分のデジモンの進化元からLv.の同じカード${n}枚を破棄`, run: () => {
+          if (!guard()) return;
+          const all = battleStacksOf(pi).filter(st => isDigimonLikeStack(st) && st.cards.length > n);
+          if (!all.length) { showToast(`進化元を${n}枚以上持つ自分のデジモンがいません`, true); return; }
+          const ok = all.filter(st => { try { return !filter || stackMatchesFilterText(st, filter, null); } catch (er) { return true; } });
+          const go = (st) => {
+            const ix = st.cards.slice(0, -1).map((x, i) => i).filter(i => !cardEntryFaceDown(st.cards[i])).reverse();
+            openCardMultiPicker({ title: `💸「${e.cardName}」の代償: 「${stackLabel(st)}」の進化元から破棄`, sub: `Lv.の同じカードを${n}枚`,
+              entries: ix.map(i => { const c = cardIndexByNumber.get(cardEntryNum(st.cards[i])); return { num: c ? c.number : cardEntryNum(st.cards[i]), ok: !!c && c.level != null, tag: c && c.level != null ? `Lv.${c.level}` : '' }; }), max: n, min: n,
+              actions: [{ label: '破棄する', primary: true, keepOpen: true, onClick: (sel) => {
+                const lvs = sel.map(k => (cardIndexByNumber.get(cardEntryNum(st.cards[ix[k]])) || {}).level);
+                if (new Set(lvs).size !== 1 || lvs[0] == null) { showToast('Lv.が同じカードを選んでください', true); return; }
+                cardDetailModal.classList.remove('open');
+                snapshotPracticeState();
+                const nums = spliceMany(st.cards, sel.map(k => ix[k])).map(cardEntryNum);
+                trashNums(nums, P0);
+                showToast(`代償: ${nums.map(x => `「${miniCardName(x)}」`).join('')}を破棄しました`);
+                paid();
+              } }] });
+          };
+          if (ok.length === 1) { go(ok[0]); return; }
+          startFieldPick({ title: '💸 代償: 進化元を破棄するデジモンをタップ', candidates: ok, extra: all, max: 1, onDone: (sel) => { if (sel.length) go(sel[0]); }, onCancel: () => renderPracticeBoard() });
+        } });
+        return;
+      }
+      // 自分の「X」1体の進化元を全て破棄し、(そのカードを)このデジモンの進化元の下に置く
+      if (holder && (m = /^自分の(.+?)1体の進化元を全て破棄し、このデジモンの進化元の下に置く$/.exec(cost))) {
+        const subj = m[1];
+        out.push({ isCost: true, label: `💸 代償: ${subj}の進化元を全て破棄し、このデジモンの進化元の下へ`, run: () => {
+          if (!guard()) return;
+          const nm = /^「([^」]+)」$/.exec(subj);
+          const all = battleStacksOf(pi).filter(st => st !== holder && isDigimonLikeStack(st));
+          const ok = all.filter(st => nm ? cardHasName(getStackTopCard(st), nm[1]) : true);
+          if (!all.length) { showToast('対象のデジモンがいません', true); return; }
+          const go = (st) => {
+            snapshotPracticeState();
+            const top = cardEntryNum(st.cards.pop());
+            trashNums(st.cards.splice(0).map(cardEntryNum), P0); trashPlain((st.links || []).splice(0), P0);
+            P0.battle.splice(P0.battle.indexOf(st), 1);
+            holder.cards.unshift(top);
+            showToast(`代償: 「${miniCardName(top)}」の進化元を破棄し、このデジモンの進化元の下に置きました`);
+            paid();
+          };
+          if (ok.length === 1) { go(ok[0]); return; }
+          startFieldPick({ title: `💸 代償: ${subj}をタップ`, candidates: ok, extra: all, max: 1, onDone: (sel) => { if (sel.length) go(sel[0]); }, onCancel: () => renderPracticeBoard() });
+        } });
+        return;
+      }
       // このテイマーと自分のトラッシュの「A」と「B」1枚ずつを(好きな順番で)自分の「X」(1体)の進化元の下に置く
       if (holder && (m = /^このテイマーと自分のトラッシュの((?:「[^」]+」と?)+)1枚ずつを(?:好きな順番で)?自分の「([^」]+)」(?:1体)?の進化元の下に置く$/.exec(cost))) {
         const names = (m[1].match(/「([^」]+)」/g) || []).map(x => x.slice(1, -1)), target = m[2];
@@ -12219,7 +12406,7 @@
               snapshotPracticeState();
               const picked = sel.map(k => list[k]);
               const nums = [];
-              new Set(picked.map(x => x.st)).forEach(st => nums.push(...spliceMany(st.links, picked.filter(x => x.st === st).map(x => x.i))));
+              new Set(picked.map(x => x.st)).forEach(st => nums.push(...takeLinksAt(st, picked.filter(x => x.st === st).map(x => x.i))));
               if (toSrc) holder.cards.unshift(...nums); else trashPlain(nums, P0);
               showToast(`代償: ${nums.map(x => `「${miniCardName(x)}」`).join('')}を${toSrc ? '進化元の下に置きました' : '破棄しました'}`);
               paid();
@@ -12479,7 +12666,7 @@
           if (!guard()) return;
           const links = holder.links || [];
           if (links.length < n) { showToast('リンクカードが足りません', true); return; }
-          const discard = (idxs) => { snapshotPracticeState(); const nums = spliceMany(holder.links, idxs); trashPlain(nums, P0); showToast(`代償: リンクカード${nums.map(x => `「${miniCardName(x)}」`).join('')}を破棄しました`); paid(); };
+          const discard = (idxs) => { snapshotPracticeState(); const nums = takeLinksAt(holder, idxs); trashPlain(nums, P0); showToast(`代償: リンクカード${nums.map(x => `「${miniCardName(x)}」`).join('')}を破棄しました`); paid(); };
           if (links.length === n) { discard(links.map((x, i) => i)); return; }
           openCardMultiPicker({ title: `💸「${e.cardName}」の代償: リンクカードを破棄`, sub: `${n}枚`, entries: links.map(x => ({ num: x, ok: true })), max: n, min: n,
             actions: [{ label: '破棄する', primary: true, onClick: (sel) => discard(sel) }] });
@@ -12677,7 +12864,7 @@
               const picked = sel.map(k => list[k]);
               new Set(picked.map(x => x.st)).forEach(st => {
                 trashNums(spliceMany(st.cards, picked.filter(x => x.st === st && x.kind === 'src').map(x => x.i)).map(cardEntryNum), P0);
-                if (st.links) trashPlain(spliceMany(st.links, picked.filter(x => x.st === st && x.kind === 'link').map(x => x.i)), P0);
+                if (st.links) trashPlain(takeLinksAt(st, picked.filter(x => x.st === st && x.kind === 'link').map(x => x.i)), P0);
               });
               showToast(`代償: ${picked.map(x => `「${miniCardName(x.num)}」`).join('')}を破棄しました`);
               paid();
