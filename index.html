@@ -3536,7 +3536,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.86.0</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.86.1</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -5314,7 +5314,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.86.0`);
+    log(`DigiCA Tool build v0.86.1`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -12652,7 +12652,7 @@
           const selfTarget = /^この(デジモン|テイマー)$/.test(subj);
           if (selfTarget && !holder) return;
           const zl = zones.map(z => ({ hand: '手札', trash: 'トラッシュ', deck: 'デッキの上' }[z])).join('/');
-          out.push({ isCost: true, label: `💸 代償: ${zl}から${n}枚を${selfTarget ? subj : (subj || '自分のデジモン').replace(/1体$/, '')}の${toTamer ? '下' : onTop ? '進化元の上' : '進化元の下'}へ`, run: () => {
+          out.push({ isCost: true, label: `💸 代償: ${zl}から${n}枚を${selfTarget ? subj : (subj || '自分のデジモン').replace(/1体$/, '')}の${toTamer ? '下' : onTop ? '進化元の上' : '進化元の下'}へ${faceDown ? '(裏向き)' : ''}`, run: () => {
             if (!guard()) return;
             const targets = selfTarget ? [holder] : (/育成エリア/.test(subj) ? [P0.raising].filter(Boolean) : battleStacksOf(pi)).filter(st => {
               const top = getStackTopCard(st);
