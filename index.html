@@ -3734,7 +3734,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.91.1</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.91.2</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -4179,7 +4179,7 @@
     <h2 class="mono">⚙ 設定</h2>
     <div class="field">
       <label for="ghNickname">ニックネーム</label>
-      <input type="text" id="ghNickname" placeholder="例: かぼ茶" autocomplete="off" maxlength="20">
+      <input type="text" id="ghNickname" autocomplete="off" maxlength="20">
       <div class="hint">デッキの作者として表示されます。トークンも入れている場合は、マイデッキをGitHubの「decks/users/ニックネーム.json」に保存するので、PCとスマホで同じニックネームを入れると同じマイデッキが使えます(ファイルは公開リポジトリに置かれるため、中身を見ようと思えば見られます)。</div>
     </div>
     <div class="field">
@@ -5697,7 +5697,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.91.1`);
+    log(`DigiCA Tool build v0.91.2`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
