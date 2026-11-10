@@ -3762,7 +3762,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.92.0</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.92.1</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -5761,7 +5761,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.92.0`);
+    log(`DigiCA Tool build v0.92.1`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -14690,6 +14690,8 @@
   function autoEndDisarm() {
     autoEnd.armed = false;
     autoEnd.okCount = 0;
+    autoEnd.waitTicks = 0;
+    autoEnd.told = false;
     if (autoEnd.timer) { clearInterval(autoEnd.timer); autoEnd.timer = null; }
   }
   function autoEndAfterRender() {
@@ -14707,19 +14709,33 @@
     autoEnd.turnCount = t.count;
     autoEnd.prevMt = t.phase === 'main' ? mt : null;
   }
-  function autoEndBusy() {
-    if (attackState) return true;
-    if (hasUnresolvedEffects()) return true;
-    if (fieldPickMode || attackBarState) return true;
-    if (activeRevealSession || evolveMode || materialTargetMode || multiEvolveMode || linkTargetMode || artsEvolveMode || assemblyMode || deckToTamerMode) return true;
-    if (zonePopupEl.classList.contains('open') || cardDetailModal.classList.contains('open')) return true;
-    if (document.querySelector('#evolveRouteModal.open, #fieldEffectsModal.open, #imageLightbox.open')) return true;
-    return false;
+  // 自動エンドを待たせている理由(なければ '')。画面に見えていない開きっぱなしの小窓では止めない
+  function autoEndBusyReason() {
+    const shown = (el) => !!el && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
+    if (attackState) return 'アタックの処理中';
+    if (hasUnresolvedEffects()) return '効果の処理が残っている';
+    if (fieldPickMode) return '対象を選んでいる途中';
+    if (attackBarState) return '確認の帯が出ている';
+    if (activeRevealSession) return 'オープンしたカードの振り分け中';
+    if (evolveMode || materialTargetMode || multiEvolveMode || linkTargetMode || artsEvolveMode || assemblyMode || deckToTamerMode) return '進化・リンクなどの選択中';
+    if (zonePopupEl.classList.contains('open') && shown(zonePopupEl)) return 'メニューが開いている';
+    if (cardDetailModal.classList.contains('open') && shown(cardDetailModal.querySelector('.modal'))) return 'カードの画面が開いている';
+    const m = [...document.querySelectorAll('#evolveRouteModal.open, #fieldEffectsModal.open, #imageLightbox.open')].find(shown);
+    if (m) return '画面が開いている';
+    return '';
   }
+  function autoEndBusy() { return !!autoEndBusyReason(); }
   function autoEndTick() {
     if (!autoEnd.armed || !practiceState || !autoEndEnabled || !effectPanelEnabled) { autoEndDisarm(); return; }
     if (practiceState.turn.phase !== 'main' || memoryTowardOpponentOfTurnPlayer() < 1) { autoEndDisarm(); return; }
-    if (autoEndBusy()) { autoEnd.okCount = 0; return; }
+    const why = autoEndBusyReason();
+    if (why) {
+      autoEnd.okCount = 0;
+      // しばらく待っても進めないときは、何を待っているかを1回だけ知らせる
+      autoEnd.waitTicks = (autoEnd.waitTicks || 0) + 1;
+      if (autoEnd.waitTicks === 8 && !autoEnd.told) { autoEnd.told = true; showToast(`⏭ 自動エンド待ち: ${why}ため、終わったらエンドへ進みます`); }
+      return;
+    }
     autoEnd.okCount++;
     if (autoEnd.okCount < 2) return; // 片付いた状態が少し続いてから進める
     autoEndDisarm();
@@ -17790,7 +17806,8 @@
   function stackMatchesFilterText(st, filter, wantCats) {
     const top = getStackTopCard(st);
     if (!top) return false;
-    if (wantCats && wantCats.length && !wantCats.includes(top.category)) return false;
+    // エリアのデジタマはデジモンとして扱う(4-2-1)
+    if (wantCats && wantCats.length && !wantCats.includes(top.category) && !(top.category === 'digi-egg' && wantCats.includes('digimon'))) return false;
     if (st.dualAsOption) return false;
     let c = filter;
     if (/レスト状態の/.test(c)) { if (!st.rested) return false; c = c.replace(/レスト状態の/g, ''); }
@@ -17957,7 +17974,7 @@
     if ((m = /^(.+?)がいない$/.exec(c))) { const k = countFieldSubject(pi, m[1]); return k == null ? null : k === 0; }
     if ((m = /^(.+?)がいる$/.exec(c))) {
       // 「自分のテイマーか特徴に「ハイブリッド体」を持つ自分のデジモン」: 主語ごとに分けてどれか
-      const parts = m[1].split(/(?<=デジモン|テイマー|」)か(?=[^。]*(?:自分|相手)の)/);
+      const parts = m[1].split(/(?<=デジモン|テイマー|」)か(?!「)(?=[^。]*(?:自分|相手)の)/);
       const rs = parts.map(x => countFieldSubject(pi, x));
       if (rs.some(k => k != null && k > 0)) return true;
       return rs.some(k => k == null) ? null : false;
@@ -18063,7 +18080,7 @@
     const whole = /^エリアに/.test((cond || '').trim());
     const m = /^(?:エリアに)?(.+?)がいる$/.exec((cond || '').trim());
     if (!m) return '';
-    for (const part of m[1].split(/(?<=デジモン|テイマー|」)か(?=[^。]*(?:自分|相手)の)/)) {
+    for (const part of m[1].split(/(?<=デジモン|テイマー|」)か(?!「)(?=[^。]*(?:自分|相手)の)/)) {
       const sp = splitFieldSubject(pi, part);
       if (!sp) continue;
       for (const o of sp.owners) {
@@ -18081,7 +18098,8 @@
     const colors = card.color || [];
     const EN_JA = Object.fromEntries(Object.entries(JA_COLOR_EN).map(([k, v]) => [v, k]));
     // 色条件は「エリア」のデジモン/テイマーで満たす(4-21-2)。育成エリアも含む
-    const stacks = fieldStacksOf(pi).filter(st => { const t = getStackTopCard(st); return t && !st.dualAsOption && (t.category === 'digimon' || t.category === 'tamer'); });
+    // エリアのデジタマもデジモンとして扱う(4-2-1)
+    const stacks = fieldStacksOf(pi).filter(st => { const t = getStackTopCard(st); return t && !st.dualAsOption && (t.category === 'digimon' || t.category === 'digi-egg' || t.category === 'tamer'); });
     // 「このカードは紫でも色条件を満たせる」
     const alt = [...eff.matchAll(/このカードは([赤青黄緑黒紫白])でも色条件を満たせる/g)].map(x => JA_COLOR_EN[x[1]]);
     const holder = (col) => stacks.find(st => (getStackTopCard(st).color || []).includes(col));
