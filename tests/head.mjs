@@ -13,7 +13,7 @@ export const browser = await chromium.launch();
 export const page = await (await browser.newContext({ viewport: { width: W, height: parseInt(process.env.H || '0') || (W < 500 ? 844 : 1000) } })).newPage();
 export const errs = [];
 page.on('dialog', d => d.accept()); page.on('pageerror', e => errs.push(e.message));
-await page.context().addInitScript(() => { localStorage.setItem('digica_gh_token', 'x'); localStorage.setItem('digica_gh_repo', 'a/b'); });
+await page.context().addInitScript(() => { localStorage.setItem('digica_gh_token', 'x'); localStorage.setItem('digica_gh_repo', 'a/b'); localStorage.setItem('digica_nickname', 'テスト'); });
 await page.route('**/*', r => {
   const u = r.request().url();
   if (/^http:\/\/localhost:\d+\/index\.html/.test(u)) return r.fulfill({ contentType: 'text/html; charset=utf-8', body: html });

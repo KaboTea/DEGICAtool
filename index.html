@@ -194,6 +194,7 @@
     z-index: 100;
   }
   .modal-backdrop.open { display: flex; }
+  #nicknameGate { z-index: 10000; background: rgba(5,7,12,0.92); }
 
   /* カード詳細モーダルは、アタック処理中に手札の進化・登場ボタンへアクセスできるよう、
      背景部分のクリックを素通しにする(モーダル本体はそのまま操作可能)。 */
@@ -3411,6 +3412,33 @@
     .cmp-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; position: sticky; bottom: 0; background: var(--panel, #111); padding: 6px 0; }
     .cmp-actions .btn { flex: 1; }
     .cmp-actions .btn[disabled] { opacity: .45; }
+    .cmp-tag { font-size: 10px; color: var(--text-dim); margin-left: 5px; }
+    .cmp-count b { font-weight: 800; }
+    /* 横画面の選ぶ画面: 左に3列のカード、右の列に枚数と決定ボタンを固定(v0.92) */
+    body.ls-mode .detail-modal .modal:has(.cmp-wrap) { overflow: hidden; display: flex; flex-direction: column; padding-top: 8px; padding-bottom: 8px; }
+    body.ls-mode .detail-modal .modal:has(.cmp-wrap) .detail-body { flex: 1; min-height: 0; display: block; }
+    body.ls-mode .detail-modal .modal:has(.cmp-wrap) > .modal-actions { display: none; }
+    body.ls-mode .cmp-wrap { display: grid; height: 100%; grid-template-columns: minmax(0, 1fr) 132px; grid-template-rows: auto minmax(0, 1fr) auto; grid-template-areas: "head bar" "list bar" "list act"; column-gap: 10px; }
+    body.ls-mode .cmp-wrap .cmp-head { grid-area: head; padding-right: 0; }
+    body.ls-mode .cmp-wrap .cmp-head .d-title { font-size: 13.5px; line-height: 1.35; }
+    body.ls-mode .cmp-wrap .cmp-head .d-number { font-size: 10.5px; margin: 2px 0 6px; }
+    body.ls-mode .cmp-wrap .cmp-bar { grid-area: bar; flex-direction: column; align-items: stretch; margin: 26px 0 0; padding-left: 10px; border-left: 1px solid var(--border); gap: 6px; }
+    body.ls-mode .cmp-wrap .cmp-count { text-align: center; font-size: 11px; color: var(--text-dim); }
+    body.ls-mode .cmp-wrap .cmp-count .cmp-cnt-l { display: block; font-size: 10px; }
+    body.ls-mode .cmp-wrap .cmp-count b { font-size: 26px; color: var(--gold, #fbbf24); line-height: 1.1; }
+    body.ls-mode .cmp-wrap .cmp-bar .btn { font-size: 10.5px; padding: 6px 4px; white-space: normal; }
+    body.ls-mode .cmp-wrap .cmp-list { grid-area: list; overflow-y: auto; margin: 0 !important; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; align-content: start; padding: 2px 2px 4px 0; }
+    body.ls-mode .cmp-wrap .cmp-list > .empty-state, body.ls-mode .cmp-wrap .cmp-list > .cmp-showng { grid-column: 1 / -1; justify-self: start; }
+    body.ls-mode .cmp-wrap .cmp-row { position: relative; height: 50px; box-sizing: border-box; padding: 4px 22px 4px 6px; gap: 7px; margin: 0; }
+    body.ls-mode .cmp-wrap .cmp-row .cmp-img { width: 30px !important; flex: none; }
+    body.ls-mode .cmp-wrap .cmp-row .cmp-check { position: absolute; right: 4px; top: 4px; width: 16px; height: 16px; font-size: 10px; }
+    body.ls-mode .cmp-wrap .cmp-row:not(.on) .cmp-check { border-color: transparent; }
+    body.ls-mode .cmp-wrap .cmp-row .dli-name { min-width: 0; flex: 1; text-align: left; }
+    body.ls-mode .cmp-wrap .cmp-row .cmp-nm { display: block; font-size: 11.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    body.ls-mode .cmp-wrap .cmp-row .cmp-tag { display: block; margin: 1px 0 0; font-size: 9px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    body.ls-mode .cmp-wrap .cmp-actions { grid-area: act; flex-direction: column; position: static; margin: 0; padding: 6px 0 0 10px; border-left: 1px solid var(--border); gap: 6px; background: none; }
+    body.ls-mode .cmp-wrap .cmp-actions .btn { flex: none; padding: 9px 4px; font-size: 11.5px; white-space: normal; }
+    body.ls-mode .cmp-wrap .cmp-actions .btn.primary { font-weight: 800; min-height: 42px; }
     #evolveRouteNote { font-size: 11.5px; line-height: 1.45; padding: 6px 9px; border-radius: 7px; margin: -4px 0 8px; }
     #evolveRouteNote.ok { background: rgba(63,210,143,.10); color: #7fe3b5; border: 1px solid rgba(63,210,143,.35); }
     #evolveRouteNote.ng { background: rgba(255,120,80,.12); color: #ffb08a; border: 1px solid rgba(255,120,80,.4); }
@@ -3734,7 +3762,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.91.2</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.92.0</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -4173,6 +4201,17 @@
   </div>
 </div>
 
+<!-- ニックネーム入力(未設定のときだけ。入れるまで使えない) -->
+<div class="modal-backdrop" id="nicknameGate">
+  <div class="modal" style="width:min(360px, 92vw);">
+    <h2>ニックネームを決めてください</h2>
+    <div class="hint" style="font-size:12px;color:var(--text-dim);line-height:1.6;margin-bottom:10px;">デッキの作者として表示されます。あとから⚙設定で変えられます。</div>
+    <input type="text" id="nicknameGateInput" maxlength="20" autocomplete="off" style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:9px 10px;color:var(--text);font-size:14px;">
+    <div id="nicknameGateErr" style="color:var(--danger);font-size:12px;min-height:16px;margin-top:6px;"></div>
+    <div class="modal-actions"><button class="btn primary" id="nicknameGateOk">はじめる</button></div>
+  </div>
+</div>
+
 <!-- Settings Modal -->
 <div class="modal-backdrop" id="settingsModal">
   <div class="modal">
@@ -4265,10 +4304,35 @@
 
   openBtn.addEventListener('click', () => { loadSettings(); modal.classList.add('open'); });
   document.getElementById('navSettingsBtn').addEventListener('click', () => openBtn.click());
+  // ニックネームが入っていないときは、入れるまで使えないようにする(閉じるボタンなし・背景を押しても閉じない)
+  (function nicknameGate() {
+    const gate = document.getElementById('nicknameGate');
+    const inp = document.getElementById('nicknameGateInput');
+    let cur = '';
+    try { cur = (localStorage.getItem('digica_nickname') || '').trim(); } catch (e) {}
+    if (cur) return;
+    gate.classList.add('open');
+    setTimeout(() => inp.focus(), 100);
+    const ok = () => {
+      const v = inp.value.trim();
+      if (!v) { document.getElementById('nicknameGateErr').textContent = 'ニックネームを入れてください'; return; }
+      try { localStorage.setItem('digica_nickname', v); } catch (e) {}
+      gate.classList.remove('open');
+      if (typeof refreshMyDeckList === 'function') refreshMyDeckList();
+    };
+    document.getElementById('nicknameGateOk').addEventListener('click', ok);
+    inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') ok(); });
+  })();
   closeBtn.addEventListener('click', () => modal.classList.remove('open'));
   modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.remove('open'); });
 
   saveBtn.addEventListener('click', () => {
+    if (!document.getElementById('ghNickname').value.trim()) {
+      saveMsg.textContent = 'ニックネームは空にできません';
+      saveMsg.style.display = 'inline';
+      setTimeout(() => { saveMsg.style.display = 'none'; saveMsg.textContent = '保存しました'; }, 2200);
+      return;
+    }
     localStorage.setItem('digica_gh_token', tokenInput.value.trim());
     localStorage.setItem('digica_gh_repo', repoInput.value.trim());
     localStorage.setItem('digica_nickname', document.getElementById('ghNickname').value.trim());
@@ -5697,7 +5761,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.91.2`);
+    log(`DigiCA Tool build v0.92.0`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -9160,20 +9224,20 @@
       <div class="deck-list-item cmp-row${on ? ' on' : ''}" data-i="${i}" style="cursor:pointer;${x.ok === false ? 'opacity:.6;' : ''}">
         <span class="cmp-check">${on ? '✔' : ''}</span>
         <img src="${escapeHtml(miniCardImg(x.num))}" alt="" class="cmp-img" data-i="${i}" style="width:34px;border-radius:3px;" onerror="this.style.opacity=0">
-        <span class="dli-name">${escapeHtml(miniCardName(x.num))}${x.tag ? `<span style="font-size:10px;color:var(--text-dim);margin-left:5px;">${escapeHtml(x.tag)}</span>` : ''}${x.ok === false ? '<span style="font-size:10px;color:var(--text-dim);margin-left:5px;">(条件外)</span>' : ''}</span>
+        <span class="dli-name"><span class="cmp-nm">${escapeHtml(miniCardName(x.num))}</span>${x.tag || x.ok === false ? `<span class="cmp-tag">${x.tag ? escapeHtml(x.tag) : ''}${x.ok === false ? '(条件外)' : ''}</span>` : ''}</span>
       </div>`;
     };
     const render = () => {
-      const cnt = `選択中 ${sel.size}${max !== Infinity ? ` / ${max}` : ''}枚`;
+      const cnt = `<span class="cmp-cnt-l">選択中 </span><b>${sel.size}</b>${max !== Infinity ? `<small> / ${max}</small>` : ''}<small>枚</small>`;
       detailBody.innerHTML = `
-        <div class="detail-info" style="width:100%;">
-          <div class="d-title">${escapeHtml(o.title)}</div>
-          ${o.sub ? `<div class="d-number">${escapeHtml(o.sub)}</div>` : ''}
+        <div class="detail-info cmp-wrap" style="width:100%;">
+          <div class="cmp-head"><div class="d-title">${escapeHtml(o.title)}</div>
+          ${o.sub ? `<div class="d-number">${escapeHtml(o.sub)}</div>` : ''}</div>
           <div class="cmp-bar">
             <span class="cmp-count">${cnt}</span>
             ${okIdx.length > 1 && max !== 1 ? `<button type="button" class="btn cmp-all">${allOn() ? '全て外す' : max === Infinity || okIdx.length <= max ? '条件に合うものを全て選ぶ' : `上から${max}枚選ぶ`}</button>` : ''}
           </div>
-          <div class="deck-list" style="margin-top:6px;">
+          <div class="deck-list cmp-list" style="margin-top:6px;">
             ${okIdx.length ? okIdx.map(row).join('') : '<div class="empty-state" style="padding:6px 0;">条件に合うカードがありません</div>'}
             ${ngIdx.length && !showNg ? `<button type="button" class="btn cmp-showng" style="font-size:10.5px;padding:4px 8px;margin-top:6px;">条件外も表示(${ngIdx.length}枚)</button>` : ''}
             ${showNg ? ngIdx.map(row).join('') : ''}
