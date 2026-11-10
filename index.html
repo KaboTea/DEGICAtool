@@ -3495,6 +3495,86 @@
     body.ls-mode.ls-narrow #practiceBoardPanel .ls-mem-btn { width: 32px; }
     body.ls-mode.ls-narrow #practiceBoardPanel .ls-zb-trash .ls-zb-l { font-size: 8.5px; letter-spacing: -0.03em; }
 
+
+    /* ======== 横画面の効果パネル(v0.88): 最小(帯) / コンパクト(右下・基本) / 全文 の3段階 ======== */
+    .ep-foot { display: contents; }
+    .ls-dock-bar { display: none; }
+    /* メモリー: 両端の矢印はなくし(マスを直接タップ)、「次のフェーズ」はゲージの左端に置く(パネルを開いていても押せる) */
+    body.ls-mode #practiceBoardPanel .ls-mem-btn { display: none !important; }
+    body.ls-mode #practiceBoardPanel .turn-memory-row #practiceNextPhaseBtn { order: -1; flex: none; }
+    /* 閉じているとき: 右端の帯。処理待ちがあれば金色で件数を出す */
+    body.ls-mode:not(.ls-dock-open) .ls-dock-toggle {
+      top: auto; bottom: 34px; height: min(150px, 46vh); width: 28px; right: env(safe-area-inset-right, 0px);
+      border-radius: 12px 0 0 12px; border-right: none; letter-spacing: 0.12em; font-size: 10.5px;
+      background: rgba(13,22,42,0.92); border-color: rgba(255,255,255,0.22);
+    }
+    body.ls-mode:not(.ls-dock-open) .ls-dock-toggle.has-items { opacity: 1; background: rgba(60,44,8,0.96); border: 1px solid var(--gold); border-right: none; color: var(--gold); box-shadow: 0 0 12px rgba(251,191,36,0.35); }
+    body.ls-mode:not(.ls-dock-open) .ls-dock-toggle b { font-size: 16px; letter-spacing: 0; }
+    /* 開いているとき: 取っ手は使わず、パネルの上の小さなボタン(▣ 大きさ / ▁ 最小)で操作する */
+    body.ls-mode.ls-dock-open .ls-dock-toggle { display: none; }
+    body.ls-mode.ls-dock-open #practiceBoardPanel .ls-dock-bar { display: flex; align-items: center; gap: 5px; flex: none; position: sticky; top: 0; z-index: 3; margin: -6px -6px 0; padding: 5px 6px 4px 10px; background: linear-gradient(180deg, rgba(20,32,58,0.99) 70%, rgba(20,32,58,0)); }
+    body.ls-mode #practiceBoardPanel .ls-dock-bar-t { flex: 1; min-width: 0; font-size: 10.5px; font-weight: 800; color: var(--gold); letter-spacing: 0.04em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    body.ls-mode #practiceBoardPanel .ls-dock-bar button { flex: none; width: 34px; height: 26px; border-radius: 7px; border: 1px solid rgba(255,255,255,0.25); background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.85); font-size: 12px; cursor: pointer; padding: 0; }
+    /* パネル本体(共通の見た目) */
+    body.ls-mode.ls-dock-open #practiceBoardPanel .ls-dock {
+      border: 1px solid rgba(251,191,36,0.75); border-radius: 12px; padding: 6px;
+      background: rgba(16,26,48,0.97); box-shadow: 0 0 0 1px rgba(251,191,36,0.2), 0 0 18px rgba(251,191,36,0.16), 0 10px 26px rgba(0,0,0,0.6);
+    }
+    /* コンパクト(基本): 右下に小さく。メモリーと相手の場は隠さない */
+    body.ls-mode.ls-dock-open:not(.ls-dock-full) #practiceBoardPanel .ls-dock {
+      top: auto; bottom: 4px; right: calc(4px + env(safe-area-inset-right, 0px)); width: min(228px, 34vw); max-height: calc(100% - 170px); min-height: 120px; gap: 0;
+    }
+    body.ls-mode.ls-dock-open:not(.ls-dock-full) #practiceBoardPanel .ls-dock .ls-dock-phase > *, body.ls-mode.ls-dock-open:not(.ls-dock-full) #practiceBoardPanel .ls-dock .ls-dock-popup > * { margin-bottom: 5px; }
+    /* コンパクトでは上のボタン(▣ ▁)を右上に重ねて、縦の場所を取らない */
+    body.ls-mode.ls-dock-open:not(.ls-dock-full) #practiceBoardPanel .ls-dock-bar { position: sticky; top: -6px; height: 0; margin: 0; padding: 0; background: none; justify-content: flex-end; overflow: visible; }
+    body.ls-mode.ls-dock-open:not(.ls-dock-full) #practiceBoardPanel .ls-dock-bar-t { visibility: hidden; }
+    body.ls-mode.ls-dock-open:not(.ls-dock-full) #practiceBoardPanel .ls-dock-bar button { position: relative; top: 14px; width: 30px; height: 24px; background: rgba(16,26,48,0.96); }
+    body.ls-mode:not(.ls-dock-full) #practiceBoardPanel .ls-dock .ep-meta { padding-right: 70px; display: flex; flex-wrap: nowrap; align-items: center; gap: 4px; min-height: 26px; }
+    body.ls-mode:not(.ls-dock-full) #practiceBoardPanel .ls-dock .ep-meta .ep-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    body.ls-mode:not(.ls-dock-full) #practiceBoardPanel .ls-dock .ep-current .ep-meta .ep-timing { display: none; }
+    body.ls-mode:not(.ls-dock-full) #practiceBoardPanel .ls-dock .ep-btn.auto { font-size: 10.5px; padding: 4px 8px; }
+    body.ls-mode:not(.ls-dock-full) #practiceBoardPanel .ls-dock .ep-btn.auto.k-cost .k-pre { display: none; }
+    body.ls-mode:not(.ls-dock-full) #practiceBoardPanel .ls-dock .ep-cond-wrap { margin: 2px 0; }
+    body.ls-mode:not(.ls-dock-full) #practiceBoardPanel .ls-dock .ep-meta .ep-src { display: none; }
+    body.ls-mode:not(.ls-dock-full) #practiceBoardPanel .ls-dock .ep-choice .ep-meta { padding-right: 0; }
+    body.ls-mode:not(.ls-dock-full) #practiceBoardPanel .ls-dock .ep-choose-title { padding-right: 70px; min-height: 24px; }
+    html.ls-rot body.ls-mode.ls-dock-open:not(.ls-dock-full) #practiceBoardPanel .ls-dock { width: min(228px, 34vh); }
+    /* 全文: 右側いっぱい */
+    body.ls-mode.ls-dock-open.ls-dock-full #practiceBoardPanel .ls-dock {
+      top: 4px; bottom: 4px; right: calc(4px + env(safe-area-inset-right, 0px)); width: calc(var(--ls-r) + 44px);
+    }
+    /* 効果パネルの中身 */
+    body.ls-mode #practiceBoardPanel .ls-dock .effect-panel { background: none; border: none !important; box-shadow: none; overflow: visible; backdrop-filter: none; }
+    body.ls-mode #practiceBoardPanel .ls-dock .ep-body { overflow: visible; max-height: none; padding: 2px 0 0; }
+    body.ls-mode #practiceBoardPanel .ls-dock .ep-thumb { display: none; }
+    body.ls-mode #practiceBoardPanel .ls-dock .ep-head { border: none; background: none; padding: 0 2px 2px; }
+    body.ls-mode #practiceBoardPanel .ls-dock .ep-sub { display: none; }
+    body.ls-mode #practiceBoardPanel .ls-dock .ep-head [data-act="collapse"] { display: none; }
+    body.ls-mode #practiceBoardPanel .ls-dock .ep-head .ep-title { display: none; }
+    body.ls-mode #practiceBoardPanel .ls-dock .ep-current { border: none; background: none; padding: 2px 4px 0; }
+    body.ls-mode #practiceBoardPanel .ls-dock .ep-name { font-size: 12.5px; font-weight: 800; }
+    body.ls-mode #practiceBoardPanel .ls-dock .ep-actions { flex-direction: column; align-items: stretch; flex-wrap: nowrap; }
+    body.ls-mode #practiceBoardPanel .ls-dock .ep-auto-wrap { display: flex; flex-direction: column; gap: 5px; }
+    body.ls-mode #practiceBoardPanel .ls-dock .ep-auto-wrap:empty { display: none; }
+    body.ls-mode #practiceBoardPanel .ls-dock .ep-btn.auto { min-height: 32px; font-weight: 700; border-radius: 6px; border: 1px solid; background: rgba(52,211,153,0.16); border-color: #34d399; color: #6ee7b7; }
+    body.ls-mode #practiceBoardPanel .ls-dock .ep-btn.auto.k-cost { background: rgba(251,191,36,0.16); border-color: var(--gold); color: #fcd34d; }
+    body.ls-mode #practiceBoardPanel .ls-dock .ep-btn.auto.k-move { background: rgba(96,165,250,0.16); border-color: #60a5fa; color: #93c5fd; }
+    body.ls-mode #practiceBoardPanel .ls-dock .ep-btn.auto.cond-ng { background: transparent; border-style: dashed; border-color: rgba(255,255,255,0.28); color: rgba(255,255,255,0.5); text-decoration: none; }
+    body.ls-mode #practiceBoardPanel .ls-dock .ep-btn.auto.k-done { background: transparent; border-style: solid; border-color: rgba(255,255,255,0.2); color: rgba(255,255,255,0.45); text-decoration: line-through; }
+    /* 「発揮しない / 処理完了」はパネルの下に固定(文が長くても位置が変わらない) */
+    body.ls-mode #practiceBoardPanel .ls-dock .ep-foot { display: flex; gap: 5px; position: sticky; bottom: -6px; z-index: 2; margin: 2px -6px -6px; padding: 6px 6px 6px; background: linear-gradient(0deg, rgba(16,26,48,1) 78%, rgba(16,26,48,0)); }
+    body.ls-mode #practiceBoardPanel .ls-dock .ep-foot .ep-btn { min-height: 32px; text-align: center; margin: 0; }
+    body.ls-mode #practiceBoardPanel .ls-dock .ep-foot .ep-btn.ghost { order: 1; flex: 1 1 40%; }
+    body.ls-mode #practiceBoardPanel .ls-dock .ep-foot .ep-btn.done { order: 2; flex: 1 1 60%; background: #eaf2ff; color: #0b1220; border-color: #eaf2ff; font-weight: 800; }
+    /* コンパクトでは: 見出し・カードの絵・待ちの札・フィールド外の操作を隠し、効果文は1行(タップで全文) */
+    body.ls-mode:not(.ls-dock-full) #practiceBoardPanel .ls-dock .ep-head,
+    body.ls-mode:not(.ls-dock-full) #practiceBoardPanel .ls-dock .ep-thumb,
+    body.ls-mode:not(.ls-dock-full) #practiceBoardPanel .ls-dock .ep-stack,
+    body.ls-mode:not(.ls-dock-full) #practiceBoardPanel .ls-dock .ep-ref-note { display: none; }
+    body.ls-mode:not(.ls-dock-full) #practiceBoardPanel .ls-dock .ep-current .ep-text { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; overflow: hidden; color: rgba(255,255,255,0.6); font-size: 10.5px; cursor: pointer; }
+    body.ls-mode:not(.ls-dock-full) #practiceBoardPanel .ls-dock .ep-cond { font-size: 9.5px; padding: 1px 6px; }
+    body.ls-mode:not(.ls-dock-full) #practiceBoardPanel .ls-dock #lsDockMain:has(#effectPanel:not([hidden])) ~ .ls-dock-util,
+    body.ls-mode:not(.ls-dock-full) #practiceBoardPanel .ls-dock #lsDockMain:has(#attackBar:not([hidden])) ~ .ls-dock-util { display: none; }
   /* ---- 横画面固定: 縦持ちのままbody全体を90度回す(端末の画面回転ロック中でも横画面で遊べる) ---- */
   html.ls-rot body { overflow: hidden; }
   /* ---- Safariのツールバーをたためるようにする ----
@@ -3536,7 +3616,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.87.0</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.88.0</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -3727,6 +3807,11 @@
       </div>
       <div class="ls-dock" id="lsDock">
         <button type="button" class="ls-dock-toggle" id="lsDockToggle"></button>
+        <div class="ls-dock-bar" id="lsDockBar">
+          <span class="ls-dock-bar-t" id="lsDockBarTitle">効果・操作</span>
+          <button type="button" id="lsDockSizeBtn" title="大きさを切り替える(コンパクト/全文)">▣</button>
+          <button type="button" id="lsDockMinBtn" title="最小にして盤面を見る">▁</button>
+        </div>
         <div class="ls-dock-phase" id="lsDockPhase"></div>
         <div class="ls-dock-popup" id="lsDockPopup"></div>
         <div id="lsDockMain"></div>
@@ -5314,7 +5399,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.87.0`);
+    log(`DigiCA Tool build v0.88.0`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -13777,8 +13862,10 @@
             <div class="ep-cond-wrap"></div>
             <div class="ep-actions">
               <span class="ep-auto-wrap"></span>
-              <button type="button" class="ep-btn done" data-act="done">✔ 処理完了</button>
-              <button type="button" class="ep-btn ghost" data-act="skip">発揮しない</button>
+              <span class="ep-foot">
+                <button type="button" class="ep-btn done" data-act="done">✔ 処理完了</button>
+                <button type="button" class="ep-btn ghost" data-act="skip">発揮しない</button>
+              </span>
             </div>
           </div>
         </div>`;
@@ -13839,8 +13926,11 @@
       handlers.forEach(h => {
         const b = document.createElement('button');
         b.type = 'button';
-        b.className = 'ep-btn auto' + (h.condNg ? ' cond-ng' : '');
-        b.textContent = h.label;
+        b.className = 'ep-btn auto' + (h.condNg ? ' cond-ng' : '') + (h.isCost ? ' k-cost' : /^🔀/.test(h.label) ? ' k-move' : /^✔済/.test(h.label) ? ' k-done' : ' k-act');
+        // 「代償: 」の文字は、色で分かる横画面のパネルでは隠せるように分けておく(文字としては同じ)
+        const km = /^(💸 )(代償(?:\d+\/\d+|\(どちらか\))?: )(.*)$/s.exec(h.label);
+        if (km) { b.append(km[1]); const sp = document.createElement('span'); sp.className = 'k-pre'; sp.textContent = km[2]; b.append(sp, km[3]); }
+        else b.textContent = h.label;
         if (h.condNg) b.title = h.ngMsg || `条件「${h.condNg}」を満たしていません`;
         b.addEventListener('click', (ev) => {
           ev.stopPropagation();
@@ -14048,8 +14138,16 @@
   let lsDockSig = '';
   let lsDockPinned = false; // 何も無いときに手動で開いた
   let lsPickSaved = null;   // カード選択の前の開閉状態
+  // 開いたときの大きさ: 'compact'(右下に小さく・基本) / 'full'(効果文を全部)
+  let lsDockSize = 'compact';
+  try { if (localStorage.getItem('digica_ls_dock_size') === 'full') lsDockSize = 'full'; } catch (e) {}
+  function lsSetDockSize(sz) {
+    lsDockSize = sz === 'full' ? 'full' : 'compact';
+    try { localStorage.setItem('digica_ls_dock_size', lsDockSize); } catch (e) {}
+    lsUpdateDock();
+  }
   function lsUpdateDock() {
-    if (!lsActive) { document.body.classList.remove('ls-dock-open'); return; }
+    if (!lsActive) { document.body.classList.remove('ls-dock-open', 'ls-dock-full'); return; }
     const ep = document.getElementById('effectPanel');
     const phase = document.getElementById('raisingPhaseActions');
     const q = practiceState && practiceState.effectQueue;
@@ -14068,12 +14166,54 @@
       lsDockSig = sig;
     }
     document.body.classList.toggle('ls-dock-open', lsDockOpen);
+    document.body.classList.toggle('ls-dock-full', lsDockOpen && lsDockSize === 'full');
     const t = document.getElementById('lsDockToggle');
     t.hidden = false;
     t.classList.toggle('has-items', !!sig);
-    t.textContent = lsDockOpen ? '▶ たたむ' : (sig ? '◀ 効果・操作あり' : '◀ 効果パネル');
-    t.title = lsDockOpen ? '右の列をたたんで盤面を見る' : '右の列を開く(フィールド外の操作「孵化(効果)」等もここ)';
+    // 閉じているときの帯: 処理待ちの件数(処理中+発揮待ち)を出す
+    const nFx = (ep && !ep.hidden && q) ? (q.current ? 1 : 0) + q.pending.length : 0;
+    t.innerHTML = sig ? `${nFx ? `<b>${nFx}</b> ` : ''}${nFx ? '効果の処理' : '操作あり'}` : '効果パネル';
+    t.title = '効果パネルを開く(フィールド外の操作「孵化(効果)」等もここ)';
+    const bt = document.getElementById('lsDockBarTitle');
+    if (bt) bt.textContent = nFx ? `⚡ 効果の処理${nFx > 1 ? `  ${nFx}件` : ''}` : (attackBarState ? '❔ 確認' : '操作');
+    const sb = document.getElementById('lsDockSizeBtn');
+    if (sb) { sb.textContent = lsDockSize === 'full' ? '▂' : '▣'; sb.title = lsDockSize === 'full' ? 'コンパクトにする(ボタンだけ)' : '全文を表示する'; }
   }
+  document.getElementById('lsDockSizeBtn').addEventListener('click', (e) => { e.stopPropagation(); lsSetDockSize(lsDockSize === 'full' ? 'compact' : 'full'); });
+  document.getElementById('lsDockMinBtn').addEventListener('click', (e) => { e.stopPropagation(); lsDockOpen = false; lsDockPinned = false; lsUpdateDock(); });
+  // コンパクトのとき、1行に省略した効果文をタップすると全文に切り替える
+  document.getElementById('lsDock').addEventListener('click', (e) => {
+    if (!lsActive || lsDockSize === 'full') return;
+    if (e.target.closest && e.target.closest('.ep-current .ep-text')) { e.stopPropagation(); lsSetDockSize('full'); }
+  });
+  // 全文のとき、パネルの外(盤面)をタップしたらコンパクトに戻す(最小にはしない)
+  document.addEventListener('click', (e) => {
+    if (!lsActive || !lsDockOpen || lsDockSize !== 'full') return;
+    const t0 = e.target;
+    if (!t0 || !t0.closest || t0.closest('#lsDock') || t0.closest('#lsDockToggle') || !t0.closest('#oppMatBlock, #selfMatBlock, .arena-hud')) return;
+    lsSetDockSize('compact');
+  }, true);
+  // パネルを右へスワイプすると最小に、帯を左へスワイプすると開く
+  (() => {
+    let sx = null, sy = null;
+    const start = (e) => { const p = e.touches && e.touches[0]; if (p) { sx = p.clientX; sy = p.clientY; } };
+    const endOn = (open) => (e) => {
+      const p = e.changedTouches && e.changedTouches[0];
+      if (sx == null || !p || !lsActive) { sx = null; return; }
+      // 横画面固定(本体を90度回している)ときは、指の縦の動きが画面の横の動きになる
+      const rot = document.documentElement.classList.contains('ls-rot');
+      const rev = document.documentElement.classList.contains('ls-rot-rev');
+      let dx = p.clientX - sx, dy = p.clientY - sy;
+      if (rot) { const t1 = dx; dx = rev ? -dy : dy; dy = t1; }
+      sx = null;
+      if (Math.abs(dx) < 48 || Math.abs(dy) > Math.abs(dx)) return;
+      if (!open && dx > 0 && lsDockOpen) { lsDockOpen = false; lsDockPinned = false; lsUpdateDock(); }
+      if (open && dx < 0 && !lsDockOpen) { lsDockOpen = true; lsDockPinned = !lsDockSig; lsUpdateDock(); }
+    };
+    const dock = document.getElementById('lsDock'), tg = document.getElementById('lsDockToggle');
+    dock.addEventListener('touchstart', start, { passive: true }); dock.addEventListener('touchend', endOn(false), { passive: true });
+    tg.addEventListener('touchstart', start, { passive: true }); tg.addEventListener('touchend', endOn(true), { passive: true });
+  })();
   document.body.appendChild(document.getElementById('lsDockToggle'));
   // 横画面の左上(TURNの上)にもバージョンを小さく出す(どの版で起きたかを確認しやすくするため)
   document.getElementById('lsVer').textContent = (document.getElementById('appVersion') || {}).textContent || '';
