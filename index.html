@@ -3082,7 +3082,7 @@
      右=効果パネル(ポップアップ・カード詳細・カード選択の案内もこの列に出す)。
      縦向き・PCには影響しない(ls-modeはJSが横向き判定のときだけ付ける)。
      ======================================================================== */
-  .ls-hud, .ls-dock, .ls-hand-tab, .ls-mem-btn { display: none; }
+  .ls-hud, .ls-dock, .ls-hand-tab, .ls-mem-btn, .btn .bs { display: none; }
     body.ls-mode { --ls-l: 82px; --ls-r: clamp(200px, 28vw, 240px); --ls-h: 100vh; --ls-h: 100dvh; overflow: hidden; min-height: 0; }
     html.ls-rot body.ls-mode { --ls-r: clamp(200px, 28vh, 240px); --ls-h: 100vw; }
     body.ls-mode > header, body.ls-mode > nav.tabs, body.ls-mode > footer { display: none; }
@@ -3193,13 +3193,13 @@
     body.ls-mode #practiceBoardPanel .field-pick-banner {
       position: absolute; left: calc(var(--ls-l) + 10px + env(safe-area-inset-left, 0px)); right: calc(48px + env(safe-area-inset-right, 0px));
       width: auto; transform: none; animation: none; z-index: 90;
-      top: 4px; bottom: auto; flex-direction: row; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 10px;
+      top: auto; bottom: 3px; flex-direction: row; align-items: center; gap: 8px; padding: 3px 6px 3px 10px; border-radius: 10px;
+      box-shadow: 0 0 0 1px rgba(251,191,36,0.25), 0 0 16px rgba(251,191,36,0.18), 0 -6px 18px rgba(0,0,0,0.55);
     }
-    body.ls-mode.ls-pick-opp #practiceBoardPanel .field-pick-banner { top: auto; bottom: 4px; }
-    body.ls-mode #practiceBoardPanel .field-pick-banner .fpb-text { flex: 1; min-width: 0; font-size: 11.5px; line-height: 1.35; }
-    body.ls-mode #practiceBoardPanel .field-pick-banner .fpb-text .fpb-sub { font-size: 10px; }
+    body.ls-mode #practiceBoardPanel .field-pick-banner .fpb-text { flex: 1; min-width: 0; font-size: 11px; line-height: 1.3; }
+    body.ls-mode #practiceBoardPanel .field-pick-banner .fpb-text .fpb-sub { font-size: 9.5px; margin-top: 0; }
     body.ls-mode #practiceBoardPanel .field-pick-banner .fpb-btns { flex: none; flex-wrap: nowrap; max-width: 60%; overflow-x: auto; }
-    body.ls-mode #practiceBoardPanel .field-pick-banner .fpb-btns button { min-height: 36px; white-space: nowrap; }
+    body.ls-mode #practiceBoardPanel .field-pick-banner .fpb-btns button { min-height: 32px; padding-top: 4px; padding-bottom: 4px; white-space: nowrap; }
     /* メモリー: マスを大きめにし、左右に1つずつ動かすボタンを付ける */
     body.ls-mode #practiceBoardPanel .ls-mem-btn {
       display: block; flex: none; width: 40px; height: 30px; border-radius: 7px; cursor: pointer;
@@ -3293,7 +3293,8 @@
     }
     body.ls-mode.ls-hand-up #practiceBoardPanel .hand-row.hand-fan,
     body.ls-mode #practiceBoardPanel .hand-row.hand-fan.has-selection { transform: none; }
-    body.ls-mode.ls-hand-away #practiceBoardPanel .hand-row.hand-fan { transform: translateY(calc(100% - 34px)) !important; left: calc(var(--ls-zc, 62px) + 14px); right: calc(var(--ls-zc, 62px) + 14px); }
+    body.ls-mode.ls-hand-away #practiceBoardPanel .hand-row.hand-fan { transform: translateY(calc(100% + 8px)) !important; left: calc(var(--ls-zc, 62px) + 14px); right: calc(var(--ls-zc, 62px) + 14px); }
+    body.ls-mode.ls-hand-away #practiceBoardPanel .ls-hand-tab { display: none; }
     body.ls-mode.ls-hand-away #practiceBoardPanel .hand-action-bar { display: none; }
     body.ls-mode #practiceBoardPanel .hand-fan .hand-card { width: 62px; }
     /* たたんでいる間は、左右の列(育成・山札・トラッシュ)にかぶらないよう真ん中だけに出す */
@@ -3575,7 +3576,28 @@
     body.ls-mode:not(.ls-dock-full) #practiceBoardPanel .ls-dock .ep-cond { font-size: 9.5px; padding: 1px 6px; }
     body.ls-mode:not(.ls-dock-full) #practiceBoardPanel .ls-dock #lsDockMain:has(#effectPanel:not([hidden])) ~ .ls-dock-util,
     body.ls-mode:not(.ls-dock-full) #practiceBoardPanel .ls-dock #lsDockMain:has(#attackBar:not([hidden])) ~ .ls-dock-util { display: none; }
-  /* ---- 横画面固定: 縦持ちのままbody全体を90度回す(端末の画面回転ロック中でも横画面で遊べる) ---- */
+  /* ---- 左の列をスリムに(v0.89): ターン・今のフェーズ1つ・アイコンのボタン ---- */
+    body.ls-mode { --ls-l: 56px; }
+    body.ls-mode.ls-narrow { --ls-l: 54px; }
+    body.ls-mode #practiceBoardPanel .ls-hud { padding: 5px 5px max(5px, env(safe-area-inset-bottom, 0px)); gap: 5px; }
+    body.ls-mode #practiceBoardPanel #arenaTurnChip { display: block; font-size: 8px; letter-spacing: 0.08em; line-height: 1.1; padding: 4px 0 4px; border-radius: 6px; }
+    body.ls-mode #practiceBoardPanel #arenaTurnChip b { display: block; font-size: 16px; line-height: 1; letter-spacing: 0; }
+    body.ls-mode #practiceBoardPanel #phasePips .phase-pip:not(.current) { display: none; }
+    body.ls-mode #practiceBoardPanel #phasePips .phase-pip.current { font-size: 9.5px; font-weight: 800; padding: 4px 0; border-radius: 6px; }
+    body.ls-mode #practiceBoardPanel .ls-hud button.btn { min-height: 42px; padding: 3px 1px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; position: relative; overflow: visible; }
+    body.ls-mode #practiceBoardPanel .ls-hud button.btn .bi { font-size: 16px; line-height: 1; }
+    body.ls-mode #practiceBoardPanel .ls-hud button.btn .bl { display: none; }
+    body.ls-mode #practiceBoardPanel .ls-hud button.btn .bs { display: block; font-size: 8px; line-height: 1.1; opacity: 0.75; white-space: nowrap; letter-spacing: -0.02em; }
+    body.ls-mode #practiceBoardPanel .ls-hud .ls-menu-btn { min-height: 42px; opacity: 1; }
+    body.ls-mode #practiceBoardPanel .ls-hud .fe-badge { position: absolute; top: -4px; right: -3px; margin: 0; }
+    /* 今使える【メイン】効果があるカードは、ふちを光らせる(選択中は出さない) */
+    body.ls-mode:not(.ls-hand-away) #practiceBoardPanel .stack-tile.st-can:not(.target-pick) .stack-layer:last-child {
+      box-shadow: 0 0 0 1.5px rgba(var(--self-rgb),0.95), 0 0 12px rgba(var(--self-rgb),0.65);
+    }
+    body.ls-mode #practiceBoardPanel .status-badges-row { flex-wrap: nowrap; gap: 2px; width: auto; white-space: nowrap; }
+    body.ls-mode #practiceBoardPanel .status-badges-row .kw-pill { min-width: 16px; height: 16px; padding: 0 2px; font-size: 10px; }
+    body.ls-mode #practiceBoardPanel .status-badges-row .kw-pill-more { font-size: 8.5px; font-weight: 800; opacity: 0.8; padding: 0 3px; }
+    /* ---- 横画面固定: 縦持ちのままbody全体を90度回す(端末の画面回転ロック中でも横画面で遊べる) ---- */
   html.ls-rot body { overflow: hidden; }
   /* ---- Safariのツールバーをたためるようにする ----
      Safariはページがスクロールしたときにツールバーを小さくする。盤面(body)は画面に固定したまま、
@@ -3616,7 +3638,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.88.0</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.89.0</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -3803,7 +3825,7 @@
         <div class="ls-hud-top" id="lsHudTop"></div>
         <div class="ls-sp"></div>
         <div class="ls-hud-btns" id="lsHudBtns"></div>
-        <button type="button" class="btn ls-menu-btn" id="lsMenuBtn">⚙ メニュー</button>
+        <button type="button" class="btn ls-menu-btn" id="lsMenuBtn"><span class="bi">≡</span> <span class="bl">メニュー</span><span class="bs">メニュー</span></button>
       </div>
       <div class="ls-dock" id="lsDock">
         <button type="button" class="ls-dock-toggle" id="lsDockToggle"></button>
@@ -3837,8 +3859,8 @@
       <!-- 中央HUD: フェーズ操作(視点切替・パス・次のフェーズへ)とメモリーゲージ -->
       <div class="arena-hud">
         <div class="practice-topbar arena-phasebar">
-          <button class="btn" id="practiceSwitchViewBtn">🔄 視点切り替え</button>
-          <button class="btn" id="fieldEffectsBtn">🌐 フィールド効果</button>
+          <button class="btn" id="practiceSwitchViewBtn"><span class="bi">🔄</span> <span class="bl">視点切り替え</span><span class="bs">視点</span></button>
+          <button class="btn" id="fieldEffectsBtn"><span class="bi">🌐</span> <span class="bl">フィールド効果</span><span class="bs">場の効果</span></button>
           <div class="arena-phase-core">
             <span class="mono" id="phaseLabel" style="font-size:18px;font-weight:700;color:var(--accent);min-width:140px;text-align:center;"></span>
             <div class="phase-pips" id="phasePips"></div>
@@ -3853,7 +3875,7 @@
           <button type="button" class="ls-mem-btn" id="lsMemLeft" title="メモリーを自分側へ1つ動かす">◀</button>
           <div class="memory-line" id="memoryLine" style="flex:1;"></div>
           <button type="button" class="ls-mem-btn" id="lsMemRight" title="メモリーを相手側へ1つ動かす">▶</button>
-          <button class="btn" id="practiceUndoBtn" disabled style="white-space:nowrap;">⟲ 1手戻す</button>
+          <button class="btn" id="practiceUndoBtn" disabled style="white-space:nowrap;"><span class="bi">⟲</span> <span class="bl">1手戻す</span><span class="bs">1手戻す</span></button>
         </div>
       </div>
 
@@ -5399,7 +5421,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.88.0`);
+    log(`DigiCA Tool build v0.89.0`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -6819,7 +6841,7 @@
     if (btn) {
       const dpCount = (practiceState.fieldEffects || []).filter(f => f.kind !== 'restrict' && isFieldEffectActive(f)).length;
       const n = dpCount + list.length;
-      const html = '🌐 フィールド効果' + (n ? `<span class="fe-badge">${n}</span>` : '');
+      const html = '<span class="bi">🌐</span> <span class="bl">フィールド効果</span><span class="bs">場の効果</span>' + (n ? `<span class="fe-badge">${n}</span>` : '');
       if (btn.innerHTML !== html) btn.innerHTML = html;
     }
   }
@@ -8515,14 +8537,17 @@
     const kwBadgeList = stackKeywordBadges(stack);
     // ピルは3個まで表示し、4個目以降は「+N」にまとめてタップで一覧を確認できるようにする
     // (タイルのサイズを安定させるため)。
-    const kwVisible = kwBadgeList.slice(0, 3);
-    const kwRest = kwBadgeList.slice(3);
+    // 横画面は📜を含めて2個まで(残りは「+N」)
+    const keishoSrc = isDigimonLikeStack(stack) ? keishoSourceOf(stack) : null;
+    const kwCap = lsActive ? Math.max(0, 2 - (keishoSrc ? 1 : 0)) : 3;
+    const kwVisible = kwBadgeList.slice(0, kwCap);
+    const kwRest = kwBadgeList.slice(kwCap);
     const mainOwner = findStackOwnerAndZone(stack);
     const mainUsable = !!mainOwner && practiceState && stackHasUsableMainEffect(stack, practiceState.players.indexOf(mainOwner.player), mainOwner.zone);
     const deferredOn = (practiceState && practiceState.deferred || []).filter(d => d.targetUid && d.targetUid === stack.uid);
     const fxGranted = (stack.kwGrants || []).filter(g => g.type === 'fx');
     // ≪継承≫で効果を受け取っているときだけ📜(「進化元にある〜の効果全てを得る」には出さない)
-    const keishoSrc = isDigimonLikeStack(stack) ? keishoSourceOf(stack) : null;
+    el.classList.toggle('st-can', !!mainUsable);
     const badgesHtml = (kwBadgeList.length > 0 || hasAnyLock(stack) || hasAnyResist(stack) || mainUsable || deferredOn.length || fxGranted.length || keishoSrc)
       ? `<div class="status-badges-row">
           ${keishoSrc ? `<span class="kw-pill st-keisho" title="継承: ${escapeHtml(keishoSrc.card.name)}(${escapeHtml(keishoSrc.card.number)})">📜</span>` : ''}
@@ -9285,7 +9310,7 @@
     applyArenaSideColors();
     const t = practiceState.turn;
     const chip = document.getElementById('arenaTurnChip');
-    if (chip) chip.textContent = `TURN ${t.count}`;
+    if (chip) { const h = `TURN <b>${t.count}</b>`; if (chip.innerHTML !== h) chip.innerHTML = h; }
     const pips = document.getElementById('phasePips');
     if (pips) {
       const curIdx = PHASE_ORDER.indexOf(t.phase);
