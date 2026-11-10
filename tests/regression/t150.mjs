@@ -1,0 +1,25 @@
+// v0.90: 「エリアに〜がいる間」の色条件無視(育成エリア込み)・手札/進化元からリンク・≪退化≫(Lv.3で止まる/ルールチェック破棄)・手札の破棄ボタン判定
+import { page, ev, errs, browser } from '../head.mjs';
+await page.waitForTimeout(1500);
+const v = await ev('practiceState.viewingIndex');
+const r = await ev(`(() => { const out={}; const all=currentDb.cards; const P=practiceState.players[${v}];
+ const find=(f)=>all.find(f);
+ const appDigi=find(c=>c.category==='digimon'&&/アプモン/.test((c.type||'')+(c.form||'')+(c.attribute||''))&&c.level===3);
+ const lv3=find(c=>c.category==='digimon'&&c.level===3&&c.dp), lv4=find(c=>c.category==='digimon'&&c.level===4&&c.dp), lv5=find(c=>c.category==='digimon'&&c.level===5&&c.dp), egg=find(c=>c.category==='digi-egg');
+ P.battle=[]; P.raising={cards:[appDigi.number],rested:false};
+ out.A=optionColorCheck(cardIndexByNumber.get('BT21-097'), ${v}).ignore === true;
+ out.A2=evalEffectCondition('特徴に「アプモン」を持つ自分のデジモンがいる間', null, ${v}) === false;
+ P.battle=[{cards:['BT21-023'],rested:false}]; P.raising=null; renderPracticeBoard(); clearEffectQueue();
+ const e={ownerIndex:${v}, stackUid: ensureStackUid(P.battle[0]), cardNumber:'BT21-023', cardName:'t', field:'effect', lineIndex:0, text:'【登場時】自分の手札かこのデジモンの進化元から、Lv.4以下のデジモンカード1枚をこのデジモンにコストを支払わずにリンクできる。', timing:'登場時', event:'t'};
+ out.C=getEffectHandlers(e).some(h=>/リンク/.test(h.label));
+ const mk=(cards)=>({cards, rested:true});
+ const s1=mk([lv3.number,lv4.number,lv5.number]), s2=mk([egg.number,lv3.number]), s3=mk([egg.number,lv4.number]), s4=mk([lv5.number]);
+ P.battle=[s1,s2,s3,s4];
+ out.E1=JSON.stringify([degenMaxCount(s1),degenMaxCount(s2),degenMaxCount(s3),degenMaxCount(s4)])==='[2,0,1,0]';
+ degenStack(s1,5); out.E3=s1.cards.length===1 && s1.rested===true;
+ degenStack(s3,1); checkStackRuleViolation(s3,null,{afterDegen:true}); out.E4=!P.battle.includes(s3);
+ out.D=!cardHasHandDiscardEffect(lv4) && cardHasHandDiscardEffect(cardIndexByNumber.get('BT10-080'));
+ return out; })()`);
+const ng = Object.entries(r).filter(([k, x]) => x !== true).map(([k]) => k);
+console.log(JSON.stringify(r));
+await browser.close(); console.log(ng.length ? ng : errs);
