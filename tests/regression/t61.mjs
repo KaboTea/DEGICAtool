@@ -1,0 +1,16 @@
+import { page, ev, errs, browser } from '../head.mjs';
+const w = (ms=400) => page.waitForTimeout(ms);
+const me='practiceState.players[practiceState.viewingIndex]';
+console.log(await ev(`JSON.stringify(parseRevealInstructions(cardIndexByNumber.get('ST24-04').effect).steps)`));
+const tam = await ev(`[...cardIndexByNumber.values()].find(c=>c.category==='tamer' && /セイバーズ/.test(c.type||''))?.number`);
+await ev(`(() => { practiceState.turn.phase='main'; practiceState.turn.playerIndex=practiceState.viewingIndex; ${me}.battle=[{cards:['ST24-04'],rested:false},{cards:['${tam}'],rested:false},{cards:['BT2-090'],rested:false}]; ${me}.library=['BT1-046','EX13-026','P-037', ...${me}.library]; clearEffectQueue(); renderPracticeBoard(); })()`); await w(); await ev('clearEffectQueue(); renderEffectPanel();');
+const txt = await ev(`cardIndexByNumber.get('ST24-04').effect.split('\\n').find(l=>/オープン/.test(l))`);
+await ev(`revealTopAndSort(3, ${JSON.stringify(txt)}, 'アグモン')`); await w();
+console.log('view', await page.evaluate(()=>document.getElementById('detailBody').innerText.replace(/\s+/g,' ').slice(0,260)));
+await page.evaluate(()=>[...document.querySelectorAll('button')].find(b=>/テイマー下/.test(b.textContent) && !b.disabled).click()); await w();
+console.log('pick', await page.evaluate(()=>document.getElementById('fieldPickText').innerText), 'cands', await page.$$eval('#practiceBoardPanel .stack-tile.target-pick', e=>e.length));
+const id = await ev(`getFxId(${me}.battle[1])`); await page.click(`[data-fxid="${id}"]`); await w();
+await page.evaluate(()=>[...document.querySelectorAll('#fieldPickBtns button')].find(b=>/決定/.test(b.textContent))?.click()); await w();
+console.log('tamer', await ev(`JSON.stringify(${me}.battle[1].cards)`));
+console.log('view2', await page.evaluate(()=>document.getElementById('cardDetailModal').classList.contains('open') ? document.getElementById('detailBody').innerText.replace(/\s+/g,' ').slice(0,200) : 'closed'));
+await browser.close(); console.log(errs);

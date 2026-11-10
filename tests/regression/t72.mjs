@@ -1,0 +1,14 @@
+import { page, ev, errs, browser, bar, autoBtns, clickAuto } from '../head.mjs';
+const w = (ms=500) => page.waitForTimeout(ms);
+const v = await ev('practiceState.turn.playerIndex'); const o = 1-v; const P=(i)=>`practiceState.players[${i}]`;
+await ev(`(() => { practiceState.viewingIndex=${v}; practiceState.turn.phase='main'; ${P(v)}.battle=[{cards:['BT1-019'],rested:false, enteredTurn:-5, pierceOverride:true}]; ${P(o)}.battle=[]; ${P(o)}.security=['BT1-010', {n:'BT1-090', u:true}]; clearEffectQueue(); renderPracticeBoard(); })()`); await w(1500); await ev('clearEffectQueue(); renderEffectPanel();');
+await ev(`declareAttack(${P(v)}.battle[0])`); await w();
+await ev(`(() => { clearEffectQueue(); attackState.defenderOwner = ${P(o)}; enqueueEffects([], [{ownerIndex:${v}, stackUid: ensureStackUid(${P(v)}.battle[0]), cardNumber:'BT1-019', cardName:'テスト', field:'granted', lineIndex:0, text:'【お互いのターン】［ターンに1回］このデジモンがバトルで相手のデジモンを消滅させたとき、相手のセキュリティを上から1枚破棄する。', timing:'お互いのターン', event:'t'}]); renderEffectPanel(); triggerPierceThenEndAttack(true); })()`); await w();
+console.log('bar', await bar());
+console.log('sec before', await ev(`JSON.stringify(${P(o)}.security)`), 'auto', await autoBtns());
+await clickAuto('セキュリティ'); await w(800);
+console.log('sec after discard', await ev(`JSON.stringify(${P(o)}.security)`), 'trash', await ev(`${P(o)}.trash.join()`));
+console.log('bar2', await bar());
+await ev('finishCurrentEffect(false)').catch(()=>{}); await w(800);
+console.log('bar3', await bar(), '| sec', await ev(`JSON.stringify(${P(o)}.security)`));
+await browser.close(); console.log(errs);

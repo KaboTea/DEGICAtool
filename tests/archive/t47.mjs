@@ -1,0 +1,13 @@
+import { page, ev, errs, browser, bar, clickBar } from '../head.mjs';
+const w = (ms=400) => page.waitForTimeout(ms);
+const me='practiceState.players[practiceState.viewingIndex]';
+const grey = await ev(`[...cardIndexByNumber.values()].find(c=>c.category==='digimon'&&c.name.includes('グレイモン')&&c.level===4&&(c.color||[]).includes('green'))?.number || [...cardIndexByNumber.values()].find(c=>c.category==='digimon'&&c.name.includes('グレイモン')&&c.level===4)?.number`);
+console.log('grey', grey, await ev(`JSON.stringify(cardIndexByNumber.get('${grey}').evo)`));
+await ev(`(() => { practiceState.turn.phase='main'; practiceState.memory=0; practiceState.turn.playerIndex=practiceState.viewingIndex; ${me}.battle=[{cards:['EX4-043'],rested:false},{cards:['BT13-053','BT1-010'],rested:false}]; ${me}.hand=['${grey}']; clearEffectQueue(); renderPracticeBoard(); })()`); await w(); await ev('clearEffectQueue(); renderEffectPanel();');
+console.log(await ev(`JSON.stringify(parseEvolveFromZone(cardIndexByNumber.get('EX4-043').effect))`));
+const e = await ev(`(() => { const e={ownerIndex:practiceState.viewingIndex, cardNumber:'EX4-043', cardName:'x', text: cardIndexByNumber.get('EX4-043').effect.split('\\n').find(l=>/進化時/.test(l)), stackUid: ensureStackUid(${me}.battle[0])}; window.__h = evolveFromZoneHandlersFor(e, ${me}.battle[0]); return window.__h.map(h=>h.label).join(','); })()`);
+console.log('handlers', e);
+await ev('window.__h[0].run()'); await w(); await page.click('.eep-go'); await w();
+const st = await ev(`getFxId(${me}.battle[1])`); await page.click(`[data-fxid="${st}"]`).catch(()=>{}); await w();
+console.log('routes', await page.evaluate(()=>[...document.querySelectorAll('#evolveRouteList .evolve-route-item')].map(b=>b.innerText.replace(/\s+/g,' ')).join(' | ')));
+await browser.close(); console.log(errs);

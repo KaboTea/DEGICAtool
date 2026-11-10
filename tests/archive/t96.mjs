@@ -1,0 +1,5 @@
+import { page, ev, browser, errs } from '../head.mjs';
+const v = await ev('practiceState.viewingIndex'); const P = (i)=>`practiceState.players[${i}]`;
+await ev(`(() => { ${P(v)}.battle=[{cards:['BT24-088'],rested:false}]; renderPracticeBoard(); clearEffectQueue(); })()`);
+console.log(await ev(`(() => { const st=${P(v)}.battle[0]; let tot=0, hit=0; const kinds={}; const miss={}; [...cardIndexByNumber.values()].forEach(c=>['effect','inherited','security_effect'].forEach(f=>(c[f]||'').split('\\n').forEach(line=>{ const cs=extractEffectCosts(line); if(!cs.length) return; tot+=cs.length; const e={ownerIndex:${v}, text:line, cardName:'x'}; const hs=costHandlersFor(e, st); if(hs.length){ hit+=cs.length; hs.forEach(h=>{ const k=h.label.replace(/\\d+/g,'N').replace(/「[^」]*」/g,'').slice(0,22); kinds[k]=(kinds[k]||0)+1; }); } }))); return tot+' costs, with button: '+hit+'\\n'+Object.entries(kinds).sort((a,b)=>b[1]-a[1]).slice(0,15).map(x=>x[1]+' '+x[0]).join('\\n'); })()`));
+await browser.close(); console.log(errs);

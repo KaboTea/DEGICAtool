@@ -1,0 +1,12 @@
+import { page, ev, errs, browser, autoBtns, clickAuto } from '../head.mjs';
+const w = (ms=500) => page.waitForTimeout(ms);
+const v = await ev('practiceState.turn.playerIndex'); const P=(i)=>`practiceState.players[${i}]`;
+await ev(`(() => { practiceState.viewingIndex=${v}; practiceState.turn.phase='main'; ${P(v)}.battle=[]; ${P(v)}.hand=['BT21-095']; ${P(v)}.security=['BT1-010','BT1-019','BT1-085']; clearEffectQueue(); renderPracticeBoard(); })()`); await w(1200); await ev('clearEffectQueue(); renderEffectPanel();');
+await ev(`appearFromHand(0, 'BT21-095')`); await w();
+console.log('note', await page.evaluate(()=>document.getElementById('evolveRouteNote').innerText));
+await page.click('#evolveRouteList .evolve-route-item'); await w(800);
+console.log('battle', await ev(`JSON.stringify(${P(v)}.battle.map(s=>s.cards))`), 'auto', await autoBtns());
+await clickAuto('セキュリティの下から'); await w();
+await clickAuto('このカードをセキュリティ').catch(async()=>{ console.log('no btn; auto now', await autoBtns()); }); await w();
+console.log('hand', await ev(`${P(v)}.hand.map(miniCardName).join()`), 'sec', await ev(`JSON.stringify(${P(v)}.security)`), 'battle', await ev(`${P(v)}.battle.length`));
+await browser.close(); console.log(errs);

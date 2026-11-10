@@ -1,0 +1,11 @@
+import { page, ev, errs, browser } from '../head.mjs';
+const v = await ev('practiceState.viewingIndex'); const P = (i)=>`practiceState.players[${i}]`;
+console.log(await ev(`(() => { const out=[]; const c=cardIndexByNumber.get('ST24-15'); const p=${P(v)};
+ const sab=[...cardIndexByNumber.values()].find(x=>x.category==='digimon' && /セイバーズ/.test(x.type||'') && !(x.color||[]).includes('white'));
+ const white=[...cardIndexByNumber.values()].find(x=>x.category==='digimon' && (x.color||[]).includes('white'));
+ p.battle=[]; p.raising={cards:[sab.number],rested:false}; out.push('raising saber: '+optionColorCheck(c, ${v}).html);
+ p.battle=[{cards:['BT1-010'],rested:false}]; p.raising=null; out.push('none: '+optionColorCheck(c, ${v}).html);
+ p.battle=[]; p.raising={cards:[white.number],rested:false}; out.push('raising white: '+optionColorCheck(c, ${v}).html);
+ p.battle=[{cards:[sab.number],rested:false}]; p.raising=null; out.push('battle saber: '+optionColorCheck(c, ${v}).html);
+ return out.join('\\n'); })()`));
+await browser.close(); console.log(errs);

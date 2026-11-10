@@ -1,0 +1,17 @@
+import { page, ev, errs, browser, clickAuto } from '../head.mjs';
+const v = await ev('practiceState.viewingIndex'); const P = (i)=>`practiceState.players[${i}]`;
+const cls = () => page.evaluate(()=>[...document.querySelectorAll('#effectPanel .ep-btn.auto')].map(b=>(b.classList.contains('cond-ng')?'[NG]':'')+b.textContent));
+const st = () => ev(`JSON.stringify({op:${P(1-v)}.battle.map(s=>s.cards.map(miniCardName).join('/')), me:${P(v)}.battle.map(s=>s.cards.map(miniCardName).join('/')), otrash:${P(1-v)}.trash.map(miniCardName).join(','), olib:${P(1-v)}.library.slice(-3).map(x=>miniCardName(cardEntryNum(x))).join(','), modal:document.getElementById('cardDetailModal')?.classList.contains('open')})`);
+const setup = async (text) => { await ev(`(() => { practiceState.turn.phase='main'; practiceState.turn.playerIndex=${v}; const p=${P(v)}, o=${P(1-v)}; p.battle=[{cards:['BT1-010'],rested:false},{cards:['BT1-030'],rested:false}]; o.battle=[{cards:['BT1-030'],rested:false},{cards:['BT1-019'],rested:false}]; o.trash=['BT1-010','BT1-019','BT1-030','BT1-085','EX6-008']; renderPracticeBoard(); clearEffectQueue(); enqueueEffects([], [{ownerIndex:${v}, stackUid: ensureStackUid(p.battle[0]), cardNumber:'BT1-010', cardName:'T', field:'effect', lineIndex:0, text:${JSON.stringify(text)}, timing:'メイン', event:'t'}]); renderEffectPanel(); })()`); console.log(text.slice(4,44), await cls()); };
+const pickNames = async (names, btn) => { for (const n of names) await page.evaluate((n)=>{ const el=[...document.querySelectorAll('#cardDetailModal *')].find(x=>x.offsetParent && x.children.length===0 && x.textContent.trim()===n); el && el.click(); }, n); await page.evaluate((b)=>{ const x=[...document.querySelectorAll('button')].find(y=>y.offsetParent && y.textContent.trim()===b); x && x.click(); }, btn); await page.waitForTimeout(200); };
+await setup('【メイン】相手のトラッシュから、デジモンカードをLv.合計9になるようにデッキの下に戻すことで、≪1ドロー≫。');
+await clickAuto('代償'); await page.waitForTimeout(200);
+await pickNames(['アグモン','ゴマモン'], 'デッキの下に戻す'); console.log(' bad ->', await st());
+await pickNames(['ゴマモン','ダークティラノモン'], 'デッキの下に戻す'); console.log(' Lvs', await ev(`['BT1-010','BT1-019','BT1-030','EX6-008'].map(n=>cardIndexByNumber.get(n).level)`));
+console.log(' ->', await st(), await cls());
+await setup('【メイン】Lv.3の相手のデジモン1体か自分のデジモン1体を手札に戻すことで、≪1ドロー≫。');
+await clickAuto('代償'); await page.waitForTimeout(200); console.log(' cands', await page.evaluate(()=>document.querySelectorAll('.stack-tile.target-pick').length));
+await page.evaluate(()=>document.querySelector('.stack-tile.target-pick').click()); await page.waitForTimeout(150);
+await page.evaluate(()=>{ const b=[...document.querySelectorAll('#fieldPickBanner button')].find(x=>/決定/.test(x.textContent)); b&&b.click(); }); await page.waitForTimeout(200);
+console.log(' ->', await st(), await cls());
+await browser.close(); console.log(errs);

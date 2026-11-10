@@ -1,0 +1,11 @@
+import { page, ev, errs, browser } from '../head.mjs';
+const v = await ev('practiceState.viewingIndex'); const P = (i)=>`practiceState.players[${i}]`;
+const r = await ev(`(() => { const all=[...cardIndexByNumber.values()];
+ const fire = all.find(c=>/火炎型/.test(c.type||'') && /【メイン】/.test(c.effect||'') && c.category==='digimon');
+ const gam = all.find(c=>c.name==='ガンマモン' && /【/.test(c.effect||''));
+ const p=${P(v)}; practiceState.turn.playerIndex=${v};
+ p.battle=[{cards:[fire.number,'BT22-078'],rested:false},{cards:[gam.number,'RB1-009'],rested:false},{cards:['BT25-059','BT26-032'],rested:false}];
+ const res = p.battle.map(st=>({top:getStackTopCard(st).name, gained: gainedSourceEffects(st).map(g=>g.kind+':'+g.card.name+':'+g.text.replace(/\\n/g,' / ').slice(0,80))}));
+ return JSON.stringify({fire:fire.number, gam:gam.number, res, mainTrig: collectStackTriggers(p.battle[0], ${v}, 'battle', ['メイン']).map(t=>t.field+':'+t.cardName)}, null, 1); })()`);
+console.log(r);
+await browser.close(); console.log(errs);

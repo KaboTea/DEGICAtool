@@ -1,0 +1,5 @@
+import { page, ev, errs, browser } from '../head.mjs';
+console.log(await ev(`(() => { const z={}, h={}; let np=0, nh=0; [...cardIndexByNumber.values()].forEach(c=>['effect','inherited','security_effect'].forEach(f=>{ parsePlayFromZone(c[f]||'').forEach(x=>{ np++; x.zones.forEach(q=>z[q]=(z[q]||0)+1); }); parseToHandFromZone(c[f]||'').forEach(x=>{ nh++; x.zones.forEach(q=>h[q]=(h[q]||0)+1); }); })); return 'play '+np+' '+JSON.stringify(z)+' | toHand '+nh+' '+JSON.stringify(h); })()`));
+for (const q of ['松田啓人」と「ギルモン」1枚ずつ', '手札か自分のテイマーの下から', 'リンクカード1枚をコストを支払わずに登場']) console.log(q, await ev(`(() => { const c=[...cardIndexByNumber.values()].find(c=>['effect','inherited'].some(f=>(c[f]||'').includes(${JSON.stringify(q)}))); if(!c) return 'none'; const t=c.effect+'\\n'+(c.inherited||''); return c.number+' '+JSON.stringify(parsePlayFromZone(t)); })()`));
+console.log('tohand sample', await ev(`JSON.stringify([...cardIndexByNumber.values()].filter(c=>parseToHandFromZone(c.effect||'').length).slice(0,4).map(c=>c.number+':'+JSON.stringify(parseToHandFromZone(c.effect))))`));
+await browser.close(); console.log(errs);

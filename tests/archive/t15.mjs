@@ -1,0 +1,15 @@
+import { page, ev, errs, browser, banner, bar, clickBar, enq, autoBtns, clickAuto } from '../head.mjs';
+const w = (ms=250) => page.waitForTimeout(ms);
+const me = 'practiceState.players[practiceState.viewingIndex]';
+const enqFrom = (text, uid) => ev(`(() => { clearEffectQueue(); enqueueEffects([], [{ownerIndex: practiceState.viewingIndex, stackUid: ${uid}, cardNumber:'BT9-071', cardName:'テスト', field:'effect', lineIndex:0, text:${JSON.stringify(text)}, timing:'アタック時', event:'t'}]); renderEffectPanel(); })()`);
+await ev(`practiceState.turn.phase='main'`);
+await ev(`(() => { const p=${me}; p.battle=[{cards:['BT1-010'],rested:false},{cards:['BT1-010','AD1-001'],rested:false}]; p.hand=['AD1-024']; renderPracticeBoard(); })()`);
+await enqFrom('【メイン】自分の「アグモン」1体を手札の「インペリアルドラモン:ファイターモード」に進化条件を無視してコストを支払わずに進化できる。', 'null');
+await clickAuto('手札から進化'); await w();
+const ids = await ev(`${me}.battle.map(getFxId)`);
+console.log('targets', await page.evaluate((ids) => ids.map(id => document.querySelector(`[data-fxid="${id}"]`).className), ids));
+await ev('exitEvolveMode(); renderPracticeBoard();');
+await ev(`(() => { const p=${me}; p.battle=[{cards:['BT1-010'],rested:false},{cards:['BT1-010'],rested:false}]; p.hand=['AD1-024']; renderPracticeBoard(); })()`);
+await enqFrom('【自分のターン終了時】このデジモンと他の自分のデジモンで、手札のデジモンカードにジョグレス進化できる。', 'null');
+await clickAuto('ジョグレス'); await w(); console.log('jog banner', await banner());
+await browser.close(); console.log('errs', errs);

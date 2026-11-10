@@ -1,0 +1,18 @@
+import { page, ev, errs, browser, autoBtns } from '../head.mjs';
+const v = await ev('practiceState.viewingIndex'); const P = (i)=>`practiceState.players[${i}]`;
+const num = await ev(`[...cardIndexByNumber.values()].filter(c=>/このテイマーをデッキの下に戻すことで、自分のトラッシュから、「城木明日奈」/.test(c.effect||'')).map(c=>c.number+'|'+c.name+'|'+c.effect).join('\\n')`);
+console.log(num);
+const n = num.split('|')[0];
+await ev(`(() => { practiceState.turn.phase='main'; practiceState.turn.playerIndex=${v}; practiceState.memory=0; ${P(v)}.battle=[{cards:['${n}'],rested:false}]; ${P(v)}.trash=['${n}','BT1-010','BT24-001','BT24-030','BT1-019']; renderPracticeBoard(); clearEffectQueue(); })()`);
+const line = await ev(`cardIndexByNumber.get('${n}').effect.split('\\n').find(l=>/城木明日奈/.test(l))`);
+await ev(`(() => { const st=${P(v)}.battle[0]; enqueueEffects([], [{ownerIndex:${v}, stackUid: ensureStackUid(st), cardNumber:'${n}', cardName:'x', field:'effect', lineIndex:0, text:${JSON.stringify(line)}, timing:'自分のターン開始時', event:'t'}]); renderEffectPanel(); })()`);
+console.log(await page.evaluate(()=>[...document.querySelectorAll('#effectPanel .ep-btn.auto')].map(b=>(b.classList.contains('cond-ng')?'[NG]':'')+b.textContent)));
+console.log(await ev(`JSON.stringify(parsePlayFromZone(${JSON.stringify(line)}))`));
+console.log(await page.evaluate(()=>[...document.querySelectorAll('#effectPanel .ep-cond')].map(b=>b.textContent)));
+await page.evaluate(()=>[...document.querySelectorAll('#effectPanel .ep-btn.auto')].find(b=>/代償/.test(b.textContent)).click());
+await page.waitForTimeout(300);
+console.log('after cost', await autoBtns(), await ev(`${P(v)}.battle.length`), await ev(`${P(v)}.library.slice(-1)[0]`));
+await page.evaluate(()=>[...document.querySelectorAll('#effectPanel .ep-btn.auto')].find(b=>/トラッシュから登場/.test(b.textContent)).click());
+await page.waitForTimeout(300);
+console.log(await page.evaluate(()=>{ const m=[...document.querySelectorAll('.modal, [class*=picker], [id*=Picker]')].filter(x=>x.offsetParent); return m.map(x=>x.innerText.replace(/\s+/g,' ').slice(0,400)).join(' || '); }));
+await browser.close(); console.log(errs);

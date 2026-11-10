@@ -1,0 +1,18 @@
+import { page, ev, errs, browser, enq, autoBtns, clickAuto } from '../head.mjs';
+const w = (ms=400) => page.waitForTimeout(ms);
+const me='practiceState.players[practiceState.viewingIndex]';
+const op='practiceState.players[1-practiceState.viewingIndex]';
+await ev(`(() => { practiceState.turn.phase='main'; practiceState.turn.playerIndex=practiceState.viewingIndex; ${me}.battle=[{cards:['BT1-010'],rested:true}]; ${op}.battle=[{cards:['BT1-010','BT1-010','BT1-010'],rested:false}]; renderPracticeBoard(); })()`); await w();
+const run = async (text, re) => { await ev(`(() => { clearEffectQueue(); enqueueEffects([], [{ownerIndex: practiceState.viewingIndex, stackUid: ensureStackUid(${me}.battle[0]), cardNumber:'BT1-010', cardName:'テスト', field:'effect', lineIndex:0, text:${JSON.stringify(text)}, timing:'アタック時', event:'t'}]); renderEffectPanel(); })()`); await w(); const b = await autoBtns(); console.log(text.slice(0,30), '=>', b); if (re) { await clickAuto(re); await w(); } };
+await run('【アタック時】［ターンに1回］このデジモンをアクティブにする。', 'アクティブ'); console.log(' rested', await ev(`${me}.battle[0].rested`));
+const s0 = await ev(`${op}.security.length`); await run('【アタック時】相手のセキュリティを上から1枚破棄する。', 'セキュリティ'); console.log(' sec', s0, '->', await ev(`${op}.security.length`));
+const d0 = await ev(`${me}.library.length+','+${op}.library.length`); await run('【アタック時】お互いのデッキの上から1枚破棄する。', 'デッキ'); console.log(' deck', d0, '->', await ev(`${me}.library.length+','+${op}.library.length`));
+await run('【アタック時】相手のデジモン1体の進化元を、下から1枚破棄する。', '進化元'); 
+const id = await ev(`getFxId(${op}.battle[0])`); await page.click(`[data-fxid="${id}"]`).catch(()=>{}); await w(); await page.evaluate(()=>[...document.querySelectorAll('#fieldPickBtns button')].find(b=>/決定/.test(b.textContent))?.click()); await w();
+console.log(' mats', await ev(`${op}.battle[0].cards.length`));
+await run('【進化時】相手のデジモンの進化元を選んで1枚破棄する。', '選んで');
+await page.click(`[data-fxid="${id}"]`).catch(()=>{}); await w(); await page.evaluate(()=>[...document.querySelectorAll('#fieldPickBtns button')].find(b=>/決定/.test(b.textContent))?.click()); await w();
+await page.click('.cmp-row').catch(()=>{}); await page.click('.cmp-act').catch(()=>{}); await w();
+console.log(' mats2', await ev(`${op}.battle[0].cards.length`));
+await run('【登場時】このデジモンをアクティブにすることで、≪1ドロー≫。');
+await browser.close(); console.log(errs);

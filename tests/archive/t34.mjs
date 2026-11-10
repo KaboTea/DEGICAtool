@@ -1,0 +1,10 @@
+import { page, ev, errs, browser, bar, clickBar } from '../head.mjs';
+const w = (ms=400) => page.waitForTimeout(ms);
+const op = 'practiceState.players[1-practiceState.viewingIndex]';
+await ev(`(() => { clearEffectQueue(); const o=${op}; o.battle=[{cards:['BT1-010'],rested:false},{cards:['BT1-010'],rested:false,guardianOverride:true}]; o.hand=[]; renderPracticeBoard(); })()`); await w();
+await ev(`removeCardFromStackAt(${op}.battle[0], 0, 'hand')`); await w();
+console.log('bar', await bar());
+await clickBar('守護'); await w(800);
+console.log('view', await ev('practiceState.viewingIndex'), 'p0', await ev("practiceState.players.map(p=>p.battle.length+'/'+p.hand.length).join(' ')")); console.log('after', await ev(`${op}.battle.length + ' hand=' + ${op}.hand.length + ' trash=' + ${op}.trash.map(miniCardName)`), '| bar:', await bar());
+console.log('effects', await ev(`JSON.stringify([(practiceState.effectQueue.current||{}).cardName, practiceState.effectQueue.pending.map(e=>e.cardName+e.timing)])`));
+await browser.close(); console.log(errs);

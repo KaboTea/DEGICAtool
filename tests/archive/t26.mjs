@@ -1,0 +1,12 @@
+import { page, ev, errs, browser } from '../head.mjs';
+const w = (ms=300) => page.waitForTimeout(ms);
+console.log('lsActive', await ev('lsActive'));
+await ev(`(() => { const p=practiceState.players[practiceState.viewingIndex]; practiceState.turn.phase='main'; p.hand=['BT14-056','AD1-006']; p.battle=[{cards:['BT1-010'],rested:false,enteredTurn:-5}]; renderPracticeBoard(); })()`); await w();
+const hc = await page.$$('#practiceBoardPanel .hand-card'); await hc[0].click(); await w();
+console.log('bar', await page.evaluate(()=>document.querySelector('#practiceBoardPanel .hand-action-bar').innerText.replace(/\s+/g,' ')));
+const hc2 = await page.$$('#practiceBoardPanel .hand-card'); await hc2[0].click(); await w();
+console.log('tap2 detail', await page.evaluate(()=>document.getElementById('cardDetailModal').classList.contains('open')), 'panel', await page.evaluate(()=>!!document.getElementById('lsSumPanel')));
+await ev('cardDetailModal.classList.remove("open")');
+const id = await ev('getFxId(practiceState.players[practiceState.viewingIndex].battle[0])'); await page.click(`[data-fxid="${id}"]`); await w();
+console.log('field tap detail', await page.evaluate(()=>document.getElementById('cardDetailModal').classList.contains('open')), 'bubble', await page.evaluate(()=>!!document.getElementById('lsFieldBar')));
+await browser.close(); console.log(errs);

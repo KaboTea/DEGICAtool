@@ -1,0 +1,11 @@
+import { page, ev, errs, browser, clickAuto } from '../head.mjs';
+const v = await ev('practiceState.viewingIndex'); const P = (i)=>`practiceState.players[${i}]`;
+const cls = () => page.evaluate(()=>[...document.querySelectorAll('#effectPanel .ep-btn.auto')].map(b=>(b.classList.contains('cond-ng')?'[NG]':'')+b.textContent));
+await ev(`(() => { practiceState.turn.phase='main'; practiceState.turn.playerIndex=${v}; ${P(v)}.battle=[{cards:['BT1-010','BT1-030','BT1-019','EX3-073'],rested:false}]; renderPracticeBoard(); clearEffectQueue(); const st=${P(v)}.battle[0]; enqueueEffects([], [{ownerIndex:${v}, stackUid: ensureStackUid(st), cardNumber:'EX3-073', cardName:'テスト', field:'effect', lineIndex:0, text:'【アタック時】このデジモンの進化元から、Lv.3のデジモンカード1枚をデッキの下に戻すことで、≪1ドロー≫。', timing:'アタック時', event:'t'}]); renderEffectPanel(); })()`);
+console.log(await cls());
+await clickAuto('代償'); await page.waitForTimeout(200);
+console.log(await page.evaluate(()=>{ const m=[...document.querySelectorAll('.modal, [id*=Picker]')].filter(x=>x.offsetParent); return m.map(x=>x.innerText.replace(/\s+/g,' ').slice(0,200)).join(' || '); }));
+await page.evaluate(()=>{ const el=[...document.querySelectorAll('*')].find(x=>x.offsetParent && x.children.length===0 && x.textContent.trim()==='ゴマモン'); el && el.click(); });
+await page.evaluate(()=>{ const b=[...document.querySelectorAll('button')].find(x=>x.offsetParent && x.textContent.trim()==='デッキの下に戻す'); b && b.click(); }); await page.waitForTimeout(200);
+console.log(await cls(), await ev(`${P(v)}.battle[0].cards.map(miniCardName).join(',')`), await ev(`miniCardName(${P(v)}.library.slice(-1)[0])`));
+await browser.close(); console.log(errs);

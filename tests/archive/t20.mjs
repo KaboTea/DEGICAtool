@@ -1,0 +1,13 @@
+import { page, ev, errs, browser, enq, clickAuto } from '../head.mjs';
+const w = (ms=300) => page.waitForTimeout(ms);
+const me = 'practiceState.players[practiceState.viewingIndex]';
+await ev(`(() => { const p=${me}; practiceState.turn.phase='main'; p.hand=[]; p.battle=[{cards:['AD1-020'],rested:false},{cards:['BT1-010'],rested:false}]; p.library.unshift('BT3-018','EX7-007','BT1-090'); renderPracticeBoard(); })()`);
+await enq('【登場時】自分のデッキの上から3枚オープンする。その中の特徴「セイバーズ」を持つカード1枚を手札に加え、1枚を特徴「セイバーズ」を持つ自分のテイマーの下に裏向きで置く。残りはデッキの下に戻す。');
+await clickAuto('オープン'); await w();
+console.log(await page.evaluate(() => [...document.querySelectorAll('#detailBody .rg-row')].map(r => [...r.querySelectorAll('button')].map(b => (b.disabled?'x':'') + b.textContent).join(',')).join(' | ')));
+await page.evaluate(() => [...document.querySelectorAll('#detailBody .rg-step')].find(b => !b.disabled && /テイマー下/.test(b.textContent)).click()); await w();
+console.log('banner', await page.evaluate(() => document.getElementById('evolveModeText').textContent), '| targets', await page.$$eval('#practiceBoardPanel .stack-tile.target-pick', e => e.length));
+const fid = await ev(`getFxId(${me}.battle[0])`); await page.click(`[data-fxid="${fid}"]`); await w();
+await page.evaluate(() => [...document.querySelectorAll('#zonePopupActions button')].find(b => /裏向き/.test(b.textContent)).click()); await w();
+console.log('after', await ev(`JSON.stringify(${me}.battle[0].cards)`), '| reveal reopened:', await page.evaluate(() => document.getElementById('cardDetailModal').classList.contains('open')));
+await browser.close(); console.log(errs);

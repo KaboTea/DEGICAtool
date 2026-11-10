@@ -1,0 +1,10 @@
+import { page, ev, errs, browser, bar, autoBtns } from '../head.mjs';
+const w = (ms=500) => page.waitForTimeout(ms);
+const me='practiceState.players[practiceState.viewingIndex]';
+const op='practiceState.players[1-practiceState.viewingIndex]';
+await ev(`(() => { practiceState.turn.phase='main'; practiceState.turn.playerIndex=practiceState.viewingIndex; ${me}.battle=[{cards:['BT13-043','EX13-032'],rested:false}]; ${me}.security=['BT1-010','BT1-010']; clearEffectQueue(); renderPracticeBoard(); })()`); await w(); await ev('clearEffectQueue(); renderEffectPanel();');
+console.log('barrier?', await ev(`hasBarrierKeyword(${me}.battle[0])`));
+await ev(`resolveDestructionQueue([${me}.battle[0]], () => { window.__done = true; renderPracticeBoard(); }, { battleContext: true })`); await w();
+console.log('bar', await bar());
+console.log('queue', await ev(`JSON.stringify((practiceState.effectQueue||{}).current && practiceState.effectQueue.current.text)`), await autoBtns());
+await browser.close(); console.log(errs);

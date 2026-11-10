@@ -1,0 +1,3 @@
+import { page, ev, errs, browser } from '../head.mjs';
+console.log(await ev(`(() => { const out=[]; let tot=0, normal=0; [...cardIndexByNumber.values()].forEach(c => ['effect','inherited','security_effect'].forEach(f => { const t=c[f]||''; if(!/進化/.test(t)) return; let r; try { r=parseEvolveFromZone(t); } catch(e){ return; } r.forEach(x => { tot++; const m=/この効果で進化するとき、支払う進化コスト[-－](\\d+)|支払う進化コスト[-－](\\d+)で/.exec(t); if (m && (!x.costRule || x.costRule.type!=='minus')) out.push(c.number+'/'+f+' rule='+JSON.stringify(x.costRule)+' :: '+t.replace(/\\n/g,' ').slice(0,140)); }); })); return tot+'\\n'+out.join('\\n'); })()`));
+await browser.close(); console.log(errs);

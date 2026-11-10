@@ -1,0 +1,15 @@
+import { page, ev, errs, browser, autoBtns, clickAuto, bar } from '../head.mjs';
+const w = (ms=500) => page.waitForTimeout(ms);
+const P = (i) => `practiceState.players[${i}]`;
+const v = await ev('practiceState.viewingIndex'); const o = 1 - v;
+await ev(`(() => { practiceState.turn.phase='main'; practiceState.turn.playerIndex=${v}; ${P(v)}.battle=[{cards:['BT12-065'],rested:false}]; ${P(o)}.battle=[{cards:['BT1-010'],rested:false, enteredTurn:-5}]; clearEffectQueue(); renderPracticeBoard(); })()`); await w(); await ev('clearEffectQueue(); renderEffectPanel();');
+const line = await ev(`cardIndexByNumber.get('BT12-065').effect.split('\\n').find(l=>/効果を与える/.test(l))`);
+await ev(`(() => { clearEffectQueue(); enqueueEffects([], [{ownerIndex: ${v}, stackUid: ensureStackUid(${P(v)}.battle[0]), cardNumber:'BT12-065', cardName:'x', field:'effect', lineIndex:1, text:${JSON.stringify(line)}, timing:'進化時', event:'t'}]); renderEffectPanel(); })()`); await w();
+await clickAuto('効果を与える'); await w();
+console.log('view after click', await ev('practiceState.viewingIndex'), 'pick', await page.evaluate(()=>document.getElementById('fieldPickBanner').hidden?'':document.getElementById('fieldPickText').innerText.slice(0,40)));
+const id = await ev(`getFxId(${P(o)}.battle[0])`); await page.click(`[data-fxid="${id}"]`); await w(); await page.evaluate(()=>[...document.querySelectorAll('#fieldPickBtns button')].find(b=>/決定/.test(b.textContent))?.click()); await w();
+console.log('grant on opp', await ev(`JSON.stringify(${P(o)}.battle[0].kwGrants||null)`), 'own', await ev(`JSON.stringify(${P(v)}.battle[0].kwGrants||null)`));
+await ev(`(() => { practiceState.viewingIndex = ${o}; practiceState.turn.playerIndex = ${o}; clearEffectQueue(); enqueueEffects([], collectStackTriggers(${P(o)}.battle[0], ${o}, 'battle', ['自分のメインフェイズ開始時'])); renderPracticeBoard(); renderEffectPanel(); })()`); await w();
+console.log('opp btns', await autoBtns());
+await clickAuto('アタック'); await w(); console.log('after', await page.evaluate(()=>document.getElementById('fieldPickBanner').hidden?'':document.getElementById('fieldPickText').innerText.slice(0,50)));
+await browser.close(); console.log(errs);

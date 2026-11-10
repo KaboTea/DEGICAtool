@@ -1,0 +1,13 @@
+import { page, ev, errs, browser } from '../head.mjs';
+const v = await ev('practiceState.viewingIndex'); const o=1-v; const P = (i)=>`practiceState.players[${i}]`;
+await ev(`(() => { practiceState.turn.phase='main'; practiceState.turn.playerIndex=${v}; ${P(v)}.battle=[{cards:['BT1-010','BT1-019','EX8-045'],rested:false}]; ${P(o)}.battle=[{cards:['BT1-010'],rested:false}]; renderPracticeBoard(); })()`);
+console.log(await ev(`(() => { let t=0,n=0; const ex=[]; [...cardIndexByNumber.values()].forEach(c=>['effect','inherited'].forEach(f=>parseConditionalKeywordLines(c[f]||'').forEach(cl=>{ t++; const r=evalStackCondition(cl.cond, ${P(v)}.battle[0], ${v}); if (r==null){ n++; ex.push(c.number+':'+cl.cond); } }))); return t+' unknown '+n+'\\n'+ex.join('\\n'); })()`));
+const st = `${P(v)}.battle[0]`;
+const c1 = 'このデジモンのDP以上の相手のデジモンがいない';
+console.log('mine DP', await ev(`getEffectiveDP(${st})`), 'opp DP', await ev(`getEffectiveDP(${P(o)}.battle[0])`), '->', await ev(`evalStackCondition('${c1}', ${st}, ${v})`));
+await ev(`${P(o)}.battle.push({cards:['BT1-019','BT1-019','BT11-057'],rested:false})`);
+console.log('add big opp DP', await ev(`getEffectiveDP(${P(o)}.battle[1])`), '->', await ev(`evalStackCondition('${c1}', ${st}, ${v})`));
+console.log('sources>= :', await ev(`evalStackCondition('進化元の枚数がこのデジモン以上の相手のデジモンがいない', ${st}, ${v})`));
+console.log('colors2:', await ev(`evalStackCondition('進化元が2色以上ある', ${st}, ${v})`), 'opp hand<=5:', await ev(`evalStackCondition('相手の手札が5枚以下', ${st}, ${v})`), await ev(`${P(o)}.hand.length`));
+console.log('or:', await ev(`evalStackCondition('特徴に「四大竜」を持つ自分のデジモンがいるか、自分の「四大竜の試練」がバトルエリアにある', ${st}, ${v})`));
+await browser.close(); console.log(errs);

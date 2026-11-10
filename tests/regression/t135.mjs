@@ -1,0 +1,16 @@
+import { page, ev, errs, browser, clickAuto } from '../head.mjs';
+const v = await ev('practiceState.viewingIndex'); const P = (i)=>`practiceState.players[${i}]`;
+const cls = () => page.evaluate(()=>[...document.querySelectorAll('#effectPanel .ep-btn.auto')].map(b=>(b.classList.contains('cond-ng')?'[NG]':'')+b.textContent));
+const st = () => ev(`JSON.stringify({me:${P(v)}.battle.map(s=>s.cards.map(x=>miniCardName(cardEntryNum(x))).join('/')+(s.links&&s.links.length?'+L:'+s.links.map(miniCardName).join(','):'')+(s.dpModifier?' mod'+s.dpModifier:'')), raising:${P(v)}.raising?${P(v)}.raising.cards.map(miniCardName).join('/'):'-', trash:${P(v)}.trash.map(miniCardName).join(','), sec:${P(v)}.security.length, hand:${P(v)}.hand.length, lib:${P(v)}.library.length, mem:practiceState.memory})`);
+const setup = async (num, battle, extra, holderExpr) => { await ev(`(() => { practiceState.turn.phase='main'; practiceState.turn.playerIndex=${v}; practiceState.memory=0; const p=${P(v)}; p.trash=[]; p.raising=null; p.battle=${JSON.stringify(battle)}.map(c=>Array.isArray(c)?({cards:c,rested:false}):c); ${extra||''}; renderPracticeBoard(); clearEffectQueue(); const c=cardIndexByNumber.get('${num}'); const line=[c.effect,c.inherited].join('\\n').split('\\n').find(l=>/ことで/.test(l)); enqueueEffects([], [{ownerIndex:${v}, stackUid: ensureStackUid(${holderExpr||'p.battle[0]'}), cardNumber:'${num}', cardName:'${num}', field:'effect', lineIndex:0, text:line, timing:'メイン', event:'t'}]); renderEffectPanel(); })()`); console.log('##', num, await st(), JSON.stringify(await cls())); };
+const pickIdx = async (idxs, btn) => { await page.evaluate(({idxs,btn})=>{ const items=[...document.querySelectorAll('#cardDetailModal .cmp-list > *, #cardDetailModal [data-idx]')]; idxs.forEach(i=>items[i]&&items[i].click()); const x=[...document.querySelectorAll('button')].find(y=>y.offsetParent && y.textContent.trim()===btn); x && x.click(); }, {idxs,btn}); await page.waitForTimeout(250); };
+const after = async () => console.log('  ->', await st(), JSON.stringify(await cls()));
+await setup('BT3-034', [['BT1-010']]); await clickAuto('代償'); await page.waitForTimeout(200); await after();
+await setup('BT6-111', [['BT1-010']]); await clickAuto('代償'); await page.waitForTimeout(200);
+await page.evaluate(()=>{ const b=[...document.querySelectorAll('#attackBarActs button')].find(x=>x.textContent.trim()==='3'); b&&b.click(); }); await page.waitForTimeout(200); await after();
+await setup('BT18-086', [['BT1-010']], `p.raising={cards:['BT18-086'],rested:false}`, 'p.raising'); await clickAuto('代償'); await page.waitForTimeout(200); await after();
+const dam = await ev(`[...cardIndexByNumber.values()].find(c=>c.name==='デッドリーアックスモン').number`);
+await setup('BT7-058', [['BT1-010'], ['BT1-030', dam]]); await clickAuto('代償'); await page.waitForTimeout(200); await after();
+await setup('BT25-060', [{cards:['BT1-010'],rested:false,links:[]}], `p.hand.push('BT21-009')`); await clickAuto('代償'); await page.waitForTimeout(200);
+console.log(await page.evaluate(()=>document.querySelector('#cardDetailModal').innerText.slice(0,200)));
+await browser.close(); console.log(errs);

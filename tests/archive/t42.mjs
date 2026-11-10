@@ -1,0 +1,7 @@
+import { page, ev, errs, browser } from '../head.mjs';
+const me='practiceState.players[practiceState.viewingIndex]';
+await ev(`(() => { practiceState.turn.phase='main'; practiceState.turn.playerIndex=practiceState.viewingIndex; ${me}.battle=[]; ${me}.raising=null; renderPracticeBoard(); })()`);
+console.log(await ev(`(() => { const out={ok:0,ng:0,unsure:[]}; [...cardIndexByNumber.values()].filter(c=>/色条件を無視|色条件を満たせる/.test((c.dual?c.dual.effect:c.effect)||'') && (c.category==='option'||c.dual)).forEach(c=>{ const r=optionColorCheck(c, practiceState.viewingIndex); if(r.unsure) out.unsure.push(c.number+':'+r.html.slice(0,90)); else if(r.ok) out.ok++; else out.ng++; }); return JSON.stringify(out,null,1); })()`));
+// self reduction parse coverage (play/use): count cards whose text has この.*とき.*支払う.*コスト- vs parsed (with holds any)
+console.log(await ev(`(() => { let tot=0, got=0, miss=[]; [...cardIndexByNumber.values()].forEach(c=>{ const t=engineStripNotes(c.effect||''); if(!/このカード(が|を)[^。]*(登場|使用)[^。]*とき、[^。]*支払う[^。]*コスト[-－]/.test(t) || /この効果で/.test(t.match(/[^。]*このカード[^。]*支払う[^。]*/)?.[0]||'')) return; tot++; const kind=c.category==='option'?'use':'play'; const evf = evalFieldCondition; window.evalFieldCondition = ()=>true; const r=collectCostReductions(kind,c,{pi:practiceState.viewingIndex}); if(r.length) got++; else miss.push(c.number); }); return tot+' '+got+' miss:'+miss.join(','); })()`));
+await browser.close(); console.log(errs);

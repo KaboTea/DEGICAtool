@@ -1,0 +1,13 @@
+import { page, ev, errs, browser, bar, clickBar, autoBtns } from '../head.mjs';
+const w = (ms=500) => page.waitForTimeout(ms);
+const me='practiceState.players[practiceState.viewingIndex]';
+const list = await ev(`[...cardIndexByNumber.values()].filter(c=>/≪不屈≫/.test(c.effect||'')).map(c=>c.number)`);
+console.log('detect', await ev(`${JSON.stringify(list)}.map(n=>n+':'+hasIndomitableKeyword({cards:['BT1-010',n]})).filter(x=>x.endsWith('false')).join(' ')`));
+await ev(`(() => { practiceState.turn.phase='main'; practiceState.turn.playerIndex=practiceState.viewingIndex; ${me}.battle=[{cards:['BT1-010','EX11-010'],rested:false}]; ${me}.trash=[]; clearEffectQueue(); renderPracticeBoard(); })()`); await w(); await ev('clearEffectQueue(); renderEffectPanel();');
+await ev(`resolveDestructionQueue([${me}.battle[0]], ()=>{}, {})`); await w();
+console.log('bar', await bar());
+await clickBar('そのまま消滅'); await w(800);
+console.log('battle', await ev(`JSON.stringify(${me}.battle.map(s=>s.cards))`), 'trash', await ev(`${me}.trash.join()`));
+console.log('queue', await ev(`JSON.stringify((practiceState.effectQueue.current||{}).text||null)`), await ev(`JSON.stringify((practiceState.effectQueue.pending||[]).map(e=>e.text))`));
+console.log('bar2', await bar());
+await browser.close(); console.log(errs);

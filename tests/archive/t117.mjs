@@ -1,0 +1,3 @@
+import { page, ev, browser } from '../head.mjs';
+console.log(await ev(`(() => { const k={}; [...cardIndexByNumber.values()].forEach(c=>['effect','inherited','security_effect'].forEach(f=>(c[f]||'').split('\\n').forEach(line=>{ if(!/重ねられている/.test(line)) return; const cs=extractEffectCosts(line).filter(x=>/重ねられている/.test(x.cost)); const key=(cs.length?'COST: '+cs.map(x=>x.cost).join(' / '):'EFF: '+line.slice(0,140)).replace(/「[^」]*」/g,'「」'); (k[key]=k[key]||[]).push(c.number); }))); return Object.entries(k).sort((a,b)=>b[1].length-a[1].length).map(x=>x[1].length+' '+x[0]+' ('+x[1].slice(0,3)+')').join('\\n'); })()`));
+await browser.close();

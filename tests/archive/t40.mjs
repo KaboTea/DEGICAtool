@@ -1,0 +1,12 @@
+import { page, ev, errs, browser, autoBtns } from '../head.mjs';
+const w = (ms=400) => page.waitForTimeout(ms);
+const me='practiceState.players[practiceState.viewingIndex]';
+await ev(`(() => { practiceState.turn.phase='main'; ${me}.battle=[{cards:['BT12-087'],rested:false},{cards:['BT10-093'],rested:false},{cards:['EX2-064'],rested:false}]; clearEffectQueue(); renderPracticeBoard(); renderEffectPanel(); })()`); await w(); await ev('clearEffectQueue(); renderEffectPanel();'); await w();
+for (const i of [0]) console.log(i, await ev(`JSON.stringify(getStackMainEffects(${me}.battle[${i}], practiceState.viewingIndex, 'battle').map(e=>[e.restReduction,e.text]))`));
+const id = await ev(`getFxId(${me}.battle[0])`); await page.click(`[data-fxid="${id}"]`); await w();
+await page.evaluate(() => [...document.querySelectorAll('#lsFieldBar .hab-btn')].find(b=>/効果/.test(b.textContent)).click()); await w(600);
+console.log('popup', await page.evaluate(()=>document.getElementById('zonePopup').classList.contains('open') ? [...document.querySelectorAll('#zonePopup button')].map(b=>b.textContent).join(' | ') : 'closed'));
+await page.evaluate(() => [...document.querySelectorAll('#zonePopup button')].find(b=>/進化コスト/.test(b.textContent))?.click()); await w(600);
+console.log('cur', await ev('JSON.stringify(practiceState.effectQueue.current && [practiceState.effectQueue.current.text, practiceState.effectQueue.current.stackUid, practiceState.effectQueue.current.lki])'), await page.evaluate(()=>[...document.querySelectorAll('#lsFieldBar .hab-btn')].map(b=>b.textContent).join(',')));
+console.log('rested', await ev(`${me}.battle[0].rested`), await autoBtns());
+await browser.close(); console.log(errs);

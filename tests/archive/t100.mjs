@@ -1,0 +1,3 @@
+import { page, ev, browser } from '../head.mjs';
+console.log(await ev(`(() => { const cnt={}; [...cardIndexByNumber.values()].forEach(c=>['effect','inherited','security_effect'].forEach(f=>(c[f]||'').split('\\n').forEach(line=>{ engineStripNotes(line).split('。').forEach(s=>{ const m=/(この|その|自分の|相手の)?(?:デジモン|テイマー)?の進化元(から、?|の)([^。]*?)(\\d+)枚(まで)?を?(?:好きな順番で)?(デッキの(?:上|下)に戻|手札に(?:戻|加え)|セキュリティの(?:上|下)に|トラッシュに置)(す|る|く|き|し|せ)?(ことで)?/.exec(s); if(!m) return; cnt[c.number+': '+s.slice(Math.max(0,m.index-12), m.index+m[0].length).slice(0,100)]=1; }); }))); return Object.entries(cnt).sort((a,b)=>b[1]-a[1]).map(x=>x[1]+' '+x[0]).join('\\n'); })()`));
+await browser.close();

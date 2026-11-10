@@ -1,0 +1,20 @@
+import { page, ev, errs, browser } from '../head.mjs';
+const w = (ms=400) => page.waitForTimeout(ms);
+const me='practiceState.players[practiceState.viewingIndex]';
+const modal = () => page.evaluate(() => { const m=document.getElementById('evolveRouteModal'); if(!m.classList.contains('open')) return '(closed)'; return document.getElementById('evolveRouteTitle').textContent+' | '+document.getElementById('evolveRouteSubtitle').textContent+' | NOTE['+(document.getElementById('evolveRouteNote').hidden?'':document.getElementById('evolveRouteNote').innerText.replace(/\s+/g,' '))+'] | '+[...document.querySelectorAll('#evolveRouteList .evolve-route-item')].map(b=>b.innerText.replace(/\s+/g,' ')).join(' || '); });
+for (const n of ['BT21-062','P-244']) console.log(n, await ev(`JSON.stringify({play: parsePlayFromZone(cardIndexByNumber.get('${n}').effect + '\\n' + (cardIndexByNumber.get('${n}').security_effect||'')), mat: parseMaterialFromZone(cardIndexByNumber.get('${n}').effect)})`));
+const bem = await ev(`[...cardIndexByNumber.values()].find(c=>c.name==='ベムモン')?.number`);
+const zen = await ev(`[...cardIndexByNumber.values()].find(c=>c.name==='ゼニス')?.number`);
+const rag = await ev(`[...cardIndexByNumber.values()].find(c=>c.name==='ラグナロク・キャノン')?.number`);
+console.log(bem, zen, rag);
+await ev(`(() => { practiceState.turn.phase='main'; practiceState.memory=0; practiceState.turn.playerIndex=practiceState.viewingIndex; ${me}.battle=[{cards:['BT21-062'],rested:false}]; ${me}.hand=['${zen}','BT1-010']; ${me}.trash=['${bem}','${rag}','BT1-010']; clearEffectQueue(); renderPracticeBoard(); })()`); await w(); await ev('clearEffectQueue(); renderEffectPanel();');
+const all = await ev(`cardIndexByNumber.get('P-244').effect`);
+console.log(await ev(`(() => { const e={ownerIndex:practiceState.viewingIndex, cardNumber:'P-244', cardName:'終焉の到達者', text: cardIndexByNumber.get('P-244').effect}; window.__h=[...playFromHandHandlersFor(e), ...materialFromZoneHandlersFor(e, null)]; return window.__h.map(h=>h.label).join(' / '); })()`));
+console.log(await ev(`(() => { const e={ownerIndex:practiceState.viewingIndex, cardNumber:'BT21-062', cardName:'ラグナモン', text: cardIndexByNumber.get('BT21-062').effect + '\\n' + (cardIndexByNumber.get('BT21-062').security_effect||'')}; window.__g=playFromHandHandlersFor(e); return window.__g.map(h=>h.label).join(' / '); })()`));
+await ev('window.__h[1].run()'); await w(); console.log('picker', await page.evaluate(()=>document.getElementById('detailBody').innerText.replace(/\s+/g,' ').slice(0,200)));
+await page.click('.eep-go'); await w(); console.log('modal', await modal());
+await page.click('#evolveRouteList .evolve-route-item'); await w();
+console.log('battle', await ev(`${me}.battle.map(s=>miniCardName(s.cards[0])).join()`), 'trash', await ev(`${me}.trash.map(miniCardName).join()`));
+// option use from trash
+await ev('window.__g[1].run()'); await w(); await page.click('.eep-go'); await w(); console.log('opt modal', await modal());
+await browser.close(); console.log(errs);

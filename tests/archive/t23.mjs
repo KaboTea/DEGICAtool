@@ -1,0 +1,10 @@
+import { page, ev, errs, browser, enq, clickAuto } from '../head.mjs';
+const w = (ms=300) => page.waitForTimeout(ms);
+const me = 'practiceState.players[practiceState.viewingIndex]';
+await ev(`(() => { const p=${me}; practiceState.turn.phase='main'; p.hand=[]; p.battle=[{cards:['BT1-010'],rested:false}]; p.library.unshift('EX7-007','BT1-090'); renderPracticeBoard(); })()`);
+await enq('【登場時】自分のデッキの上から2枚オープンする。その中のデジモンカード1枚を手札に加えるか、このデジモンの進化元の下に置く。残りはデッキの上か下だけに戻す。');
+await clickAuto('オープン'); await w();
+console.log(await page.evaluate(() => (document.querySelector('#detailBody .detail-info > div:nth-child(2)')||{}).innerText.replace(/\n/g,' / ') + ' || ' + [...document.querySelectorAll('#detailBody .rg-row')].map(r => [...r.querySelectorAll('button')].map(b => (b.disabled?'x':'') + b.textContent).join(',')).join(' | ') + ' || ' + [...document.querySelectorAll('#detailBody .rg-bulk')].map(b=>b.textContent).join(',')));
+await page.evaluate(() => [...document.querySelectorAll('#detailBody .rg-step')].find(b => !b.disabled && /進化元/.test(b.textContent)).click()); await w();
+console.log('material banner', await page.evaluate(() => document.getElementById('evolveModeText').textContent));
+await browser.close(); console.log(errs);

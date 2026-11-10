@@ -1,0 +1,3 @@
+import { page, ev, errs, browser } from '../head.mjs';
+console.log(await ev(`(() => { const g=n=>cardIndexByNumber.get(n); const st={cards:['BT10-111']}; return JSON.stringify([g('BT10-111').name, g('BT10-111').aliasNames, evaluateSpecialCondition('「シャウトモン」', g('BT10-111'), st), evaluateSpecialCondition('名称に「シャウトモン」を含む', g('BT10-111'), st), evaluateSpecialCondition('「アグモン」', g('BT10-111'), st), matchesFilters(currentDb.cards.find(c=>c.number==='BT21-039'),{query:'鳥型'}), matchesFilters(currentDb.cards.find(c=>c.number==='BT21-039'),{query:'幻獣型'}), currentDb.cards.filter(c=>matchesFilters(c,{query:'wg'})).length, matchesFilters(currentDb.cards.find(c=>c.number==='BT10-111'),{query:'シャウトモン'})]); })()`));
+await browser.close(); console.log(errs);

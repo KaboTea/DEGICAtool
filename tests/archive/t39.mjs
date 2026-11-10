@@ -1,0 +1,23 @@
+import { page, ev, errs, browser, bar, clickBar, autoBtns, clickAuto } from '../head.mjs';
+const w = (ms=400) => page.waitForTimeout(ms);
+const me='practiceState.players[practiceState.viewingIndex]';
+const arc = await ev(`[...cardIndexByNumber.values()].find(c=>c.name==='アルケニモン' && c.category==='digimon').number`);
+await ev(`(() => { practiceState.turn.phase='main'; practiceState.memory = 0; ${me}.battle=[{cards:['BT16-089'],rested:false},{cards:['BT22-094'],rested:false},{cards:['BT12-087'],rested:false},{cards:['BT14-046'],rested:false}]; ${me}.hand=['${arc}']; clearEffectQueue(); renderPracticeBoard(); renderEffectPanel(); })()`); await w();
+for (const i of [0,1,2,3]) console.log(i, await ev(`JSON.stringify(getStackMainEffects(${me}.battle[${i}], practiceState.viewingIndex, 'battle').map(e=>[e.restReduction,e.lki,e.text]))`));
+const id = await ev(`getFxId(${me}.battle[0])`); await page.click(`[data-fxid="${id}"]`); await w();
+await page.evaluate(() => [...document.querySelectorAll('#lsFieldBar .hab-btn')].find(b=>/効果/.test(b.textContent)).click()); await w(600);
+console.log('btns', await autoBtns());
+await clickAuto('代償'); await w(600); console.log('bar0', await bar()); await clickBar('そのまま消滅'); await w(800);
+console.log('after cost', await ev(`${me}.battle.map(s=>miniCardName(s.cards[s.cards.length-1])).join(',')`), 'trash', await ev(`${me}.trash.join(',')`), 'btns', await autoBtns());
+await clickAuto('手札から登場'); await w();
+console.log('bar', await bar()); await clickBar('アルケニモン'); await w();
+console.log('play popup', await page.evaluate(() => [...document.querySelectorAll('#zonePopup button')].map(b=>b.textContent).join(',')));
+await page.evaluate(() => [...document.querySelectorAll('#zonePopup button')].find(b=>/効果で登場/.test(b.textContent))?.click()); await w();
+console.log('played', await ev(`${me}.battle.map(s=>miniCardName(s.cards[s.cards.length-1])).join(',') + ' mem=' + practiceState.memory`));
+// deck bottom
+await ev('clearEffectQueue(); renderEffectPanel();');
+const id2 = await ev(`getFxId(${me}.battle.find(s=>s.cards.includes('BT22-094')))`); await page.click(`[data-fxid="${id2}"]`); await w();
+await page.evaluate(() => [...document.querySelectorAll('#lsFieldBar .hab-btn')].find(b=>/効果/.test(b.textContent)).click()); await w(600);
+console.log('btns2', await autoBtns()); await clickAuto('代償'); await w(800);
+console.log('deck bottom?', await ev(`${me}.library[${me}.library.length-1]`), await ev(`${me}.battle.map(s=>miniCardName(s.cards[s.cards.length-1])).join(',')`), 'btns', await autoBtns());
+await browser.close(); console.log(errs);

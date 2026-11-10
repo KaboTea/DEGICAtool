@@ -1,0 +1,10 @@
+import { page, ev, errs, browser, clickAuto } from '../head.mjs';
+const v = await ev('practiceState.viewingIndex'); const P = (i)=>`practiceState.players[${i}]`;
+const cls = () => page.evaluate(()=>[...document.querySelectorAll('#effectPanel .ep-btn.auto')].map(b=>b.textContent));
+await ev(`(() => { practiceState.turn.phase='main'; practiceState.turn.playerIndex=${v}; const p=${P(v)}; p.battle=[{cards:['BT1-010'],rested:false}]; p.trash=[]; renderPracticeBoard(); clearEffectQueue(); const c=cardIndexByNumber.get('BT13-080'); const line=c.effect.split('\\n').find(l=>/その後/.test(l)); enqueueEffects([], [{ownerIndex:${v}, stackUid: ensureStackUid(p.battle[0]), cardNumber:'BT13-080', cardName:'x', field:'effect', lineIndex:0, text:line, timing:'メイン', event:'t'}]); renderEffectPanel(); })()`);
+console.log(await cls(), await ev(`${P(v)}.hand.length`));
+await clickAuto('🔀'); await page.waitForTimeout(200);
+await page.evaluate(()=>{ const it=document.querySelector('#cardDetailModal .dli-name'); it && it.click(); });
+await page.evaluate(()=>{ const x=[...document.querySelectorAll('#cardDetailModal button')].find(y=>y.offsetParent && /破棄/.test(y.textContent) && !/やめる/.test(y.textContent)); x && x.click(); }); await page.waitForTimeout(200);
+console.log(await cls(), await ev(`${P(v)}.hand.length`), await ev(`${P(v)}.trash.length`), await ev(`!!getEffectQueue().current`));
+await browser.close(); console.log(errs);

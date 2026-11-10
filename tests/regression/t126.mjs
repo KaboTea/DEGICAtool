@@ -1,0 +1,15 @@
+import { page, ev, errs, browser, clickAuto } from '../head.mjs';
+const v = await ev('practiceState.viewingIndex'); const P = (i)=>`practiceState.players[${i}]`;
+const cls = () => page.evaluate(()=>[...document.querySelectorAll('#effectPanel .ep-btn.auto')].map(b=>(b.classList.contains('cond-ng')?'[NG]':'')+b.textContent));
+const st = () => ev(`JSON.stringify({op:${P(1-v)}.battle.map(s=>s.cards.map(miniCardName).join('/')), osec:${P(1-v)}.security.length, osecLast:miniCardName(cardEntryNum(${P(1-v)}.security.slice(-1)[0])), otrash:${P(1-v)}.trash.map(miniCardName).join(','), olibLast:miniCardName(cardEntryNum(${P(1-v)}.library.slice(-1)[0])), ohand:${P(1-v)}.hand.length})`);
+const setup = async (text) => { await ev(`(() => { practiceState.turn.phase='main'; practiceState.turn.playerIndex=${v}; const p=${P(v)}, o=${P(1-v)}; p.battle=[{cards:['BT1-010'],rested:false}]; o.battle=[{cards:['BT1-030','BT1-019'],rested:false},{cards:['BT1-030'],rested:false}]; o.trash=['BT1-010','BT1-085']; renderPracticeBoard(); clearEffectQueue(); enqueueEffects([], [{ownerIndex:${v}, stackUid: ensureStackUid(p.battle[0]), cardNumber:'BT1-010', cardName:'T', field:'effect', lineIndex:0, text:${JSON.stringify(text)}, timing:'メイン', event:'t'}]); renderEffectPanel(); })()`); console.log(text.slice(4,40), await st(), await cls()); };
+await setup('【メイン】最もDPの低い相手のデジモン1体をセキュリティの下に置くことで、≪1ドロー≫。');
+await clickAuto('代償'); await page.waitForTimeout(200); console.log(' ->', await st(), await cls());
+await setup('【メイン】相手のトラッシュから、デジモンカード1枚をデッキの下に戻すことで、≪1ドロー≫。');
+await clickAuto('代償'); await page.waitForTimeout(200);
+await page.evaluate(()=>{ const el=[...document.querySelectorAll('*')].find(x=>x.offsetParent && x.children.length===0 && x.textContent.trim()==='アグモン'); el && el.click(); });
+await page.evaluate(()=>{ const b=[...document.querySelectorAll('button')].find(x=>x.offsetParent && x.textContent.trim()==='デッキの下に戻す'); b && b.click(); }); await page.waitForTimeout(200);
+console.log(' ->', await st(), await cls());
+await setup('【メイン】相手の手札を3枚になるように見ないで選びデッキの下に戻すことで、≪1ドロー≫。');
+await clickAuto('代償'); await page.waitForTimeout(200); console.log(' ->', await st(), await cls());
+await browser.close(); console.log(errs);

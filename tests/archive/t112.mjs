@@ -1,0 +1,3 @@
+import { page, ev, errs, browser } from '../head.mjs';
+console.log(await ev(`(() => { const g=n=>cardIndexByNumber.get(n); return JSON.stringify([g('BT21-039').type, ['BT21-033','BT21-039','P-222'].map(n=>[revealCondMatches(g(n),'特徴に「鳥」を含むカード'), revealCondMatches(g(n),'特徴に「WG」を持つカード')]), g('BT11-054').aliasNameIncs, revealCondMatches(g('BT11-054'),'名称に「レオモン」を含むカード'), g('AD1-020').aliasNames, revealCondMatches(g('AD1-020'),'「神原拓也」'), g('BT23-077').attribute, g('BT23-077').aliasNames, g('ST12-13').type, g('ST12-13').aliasNames, currentDb.cards.find(c=>c.number==='BT21-039').type]); })()`));
+await browser.close(); console.log(errs);
