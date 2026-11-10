@@ -146,6 +146,7 @@
 
   nav.tabs button:hover { color: var(--text); }
 
+  nav.tabs .nav-gear { display: none; margin-left: auto; }
   nav.tabs button.active {
     color: var(--accent);
     border-bottom-color: var(--accent);
@@ -886,6 +887,45 @@
     margin-top: 16px;
     flex-wrap: wrap;
   }
+  /* ---- デッキ構築: マイ/共有の切り替え・画像の並び(v0.91) ---- */
+  .deck-seg { display: flex; background: var(--bg); border: 1px solid var(--border); border-radius: 9px; padding: 3px; gap: 3px; margin-bottom: 8px; }
+  .deck-seg button { flex: 1; background: none; border: none; color: var(--text-dim); font-size: 12px; font-weight: 700; padding: 7px 0; border-radius: 7px; cursor: pointer; white-space: nowrap; }
+  .deck-seg button small { font-weight: 600; opacity: .8; margin-left: 3px; }
+  .deck-seg button.on { background: var(--accent); color: #06201c; }
+  .deck-list-filter { width: 100%; box-sizing: border-box; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; font-size: 12px; color: var(--text); margin-bottom: 8px; }
+  .deck-seg-note { font-size: 10.5px; color: var(--text-dim); line-height: 1.5; margin-bottom: 8px; }
+  .deck-seg-note.ok { background: #a7f3d0; color: #06201c; border-radius: 6px; padding: 5px 8px; font-weight: 700; }
+  .deck-seg-note.ok span { font-weight: 500; }
+  .my-deck-item .mdi-chips { display: flex; gap: 4px; margin-top: 5px; flex-wrap: wrap; align-items: center; }
+  .my-deck-item .mdi-chip { font-size: 10.5px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 2px 7px; cursor: pointer; }
+  .my-deck-item .mdi-chip.go { border-color: #22c55e; color: #86efac; font-weight: 700; }
+  .my-deck-item .mdi-chip:hover { border-color: var(--accent); }
+  .my-deck-item .mdi-tag { font-size: 9.5px; color: var(--text-dim); border: 1px dashed var(--border); border-radius: 4px; padding: 0 4px; }
+  .my-deck-item .mdi-author { color: #7dd3fc; }
+  .my-deck-item { align-items: flex-start; }
+  .deck-src-row { display: flex; align-items: center; gap: 8px; margin: -6px 0 10px; }
+  .deck-src-line { font-size: 11.5px; color: #7dd3fc; }
+  .deck-src-line.src-new { color: var(--text-dim); }
+  .deck-view-toggle { margin-left: auto; display: flex; gap: 3px; }
+  .deck-view-toggle button { font-size: 11px; background: var(--bg); color: var(--text-dim); border: 1px solid var(--border); border-radius: 5px; padding: 3px 8px; cursor: pointer; }
+  .deck-view-toggle button.on { background: var(--panel-raised); color: var(--text); border-color: var(--accent-dim); }
+  .deck-list.deck-img-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 8px 6px; }
+  .deck-img-tile { position: relative; min-width: 0; }
+  .deck-img-tile .dit-img { position: relative; aspect-ratio: 63 / 88; border-radius: 4px; border: 1px solid var(--border); background: var(--panel-raised); overflow: visible; cursor: pointer; }
+  .deck-img-tile .dit-img img { width: 100%; height: 100%; object-fit: cover; border-radius: 4px; display: block; }
+  .deck-img-tile .dit-name { position: absolute; inset: 18px 4px auto; font-size: 9.5px; color: var(--text-dim); text-align: center; line-height: 1.3; z-index: 0; }
+  .deck-img-tile .dit-img img + .dit-name { display: none; }
+  .deck-img-tile .dit-lv { position: absolute; left: 3px; top: 3px; font-size: 8.5px; background: rgba(0,0,0,.65); color: #fff; border-radius: 3px; padding: 0 3px; }
+  .deck-img-tile .dit-count { position: absolute; right: -4px; bottom: -5px; font-size: 11px; font-weight: 900; background: var(--accent); color: #06201c; border-radius: 9px; padding: 1px 6px; box-shadow: 0 0 0 2px var(--panel); }
+  .deck-img-tile .dit-pm { position: absolute; left: 3px; bottom: 3px; display: flex; gap: 3px; }
+  .deck-img-tile .dit-pm button { width: 20px; height: 20px; padding: 0; font-size: 12px; line-height: 1; border-radius: 4px; border: 1px solid rgba(255,255,255,.35); background: rgba(0,0,0,.72); color: #fff; cursor: pointer; }
+  .deck-img-tile .dit-pm button:hover { border-color: var(--accent); }
+  .deck-actions-row .deck-practice-btn { border-color: #22c55e; color: #86efac; font-weight: 800; }
+  .deck-actions-row .btn.deck-save-mine { background: #1e3a8a; border-color: #60a5fa; color: #fff; }
+  .deck-actions-row .deck-add-btn, .deck-actions-row .deck-more-btn, .deck-search-close { display: none; }
+  .deck-search-head { display: flex; gap: 6px; align-items: center; }
+  .deck-search-head input { flex: 1; min-width: 0; }
+  #tab-deck.deck-ro #deckNameInput { opacity: .85; }
 
   .deck-validation {
     font-size: 12px;
@@ -3597,6 +3637,53 @@
     body.ls-mode #practiceBoardPanel .status-badges-row { flex-wrap: nowrap; gap: 2px; width: auto; white-space: nowrap; }
     body.ls-mode #practiceBoardPanel .status-badges-row .kw-pill { min-width: 16px; height: 16px; padding: 0 2px; font-size: 10px; }
     body.ls-mode #practiceBoardPanel .status-badges-row .kw-pill-more { font-size: 8.5px; font-weight: 800; opacity: 0.8; padding: 0 3px; }
+    /* ---- デッキ構築の横画面(スマホ横): 細いタブ・左に一覧・中央に画像・下にボタン・検索は右から出す ---- */
+    @media (orientation: landscape) and (max-height: 500px) {
+      body.tab-deck header { display: none; }
+      body.tab-deck nav.tabs { padding: 0 8px; position: relative; }
+      body.tab-deck nav.tabs button { padding: 6px 10px; font-size: 11.5px; }
+      body.tab-deck nav.tabs .nav-gear { display: inline-block; }
+      body.tab-deck main { padding: 0; max-width: none; }
+      body.tab-deck #tab-deck > .panel { padding: 0; border-radius: 0; border: none; margin: 0; }
+      body.tab-deck .deck-hover-preview { display: none !important; }
+      body.tab-deck .deck-layout { flex-direction: row; gap: 0; height: calc(100vh - 31px); height: calc(100dvh - 31px); position: relative; align-items: stretch; }
+      body.tab-deck .deck-list-col { flex: 0 0 150px; padding: 6px; border-right: 1px solid var(--border); overflow-y: auto; box-sizing: border-box; }
+      body.tab-deck .deck-seg button { font-size: 10.5px; padding: 5px 0; }
+      body.tab-deck .deck-seg .seg-long { display: none; }
+      body.tab-deck .deck-list-col { padding: 6px 6px 44px 8px !important; }
+      body.tab-deck .deck-list-filter { font-size: 10.5px; padding: 4px 6px; margin-bottom: 5px; }
+      body.tab-deck .deck-seg-note { font-size: 9.5px; margin-bottom: 5px; }
+      body.tab-deck .my-deck-list { max-height: none; gap: 4px; }
+      body.tab-deck .my-deck-item { padding: 5px 7px; }
+      body.tab-deck .my-deck-item .mdi-name { font-size: 11px; }
+      body.tab-deck .deck-build-col { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 6px 8px 0; box-sizing: border-box; overflow: hidden; }
+      body.tab-deck .deck-build-col > *:not(.deck-actions-row):not(.deck-validation):not(.deck-status-msg) { flex: none; }
+      body.tab-deck .deck-header-row { margin-bottom: 4px; }
+      body.tab-deck .deck-header-row input[type="text"] { padding: 4px 8px; font-size: 12px; font-weight: 700; }
+      body.tab-deck .deck-src-row { margin: 0 0 3px; }
+      body.tab-deck .deck-section-title { margin: 2px 0; font-size: 10px; }
+      body.tab-deck .deck-build-col { overflow-y: auto; padding-bottom: 44px; }
+      body.tab-deck .deck-list.deck-img-grid { grid-template-columns: repeat(9, minmax(0, 1fr)); gap: 6px 5px; }
+      body.tab-deck .deck-img-tile .dit-pm button { width: 17px; height: 17px; font-size: 10px; }
+      body.tab-deck .deck-img-tile .dit-count { font-size: 9.5px; padding: 0 4px; }
+      body.tab-deck .deck-actions-row { position: fixed; left: 0; right: 0; bottom: 0; margin: 0; padding: 4px 8px calc(4px + env(safe-area-inset-bottom, 0px)); gap: 5px; flex-wrap: nowrap; background: var(--bg); border-top: 1px solid var(--border); z-index: 40; align-items: center; }
+      body.tab-deck .deck-actions-row .btn { font-size: 11px; padding: 6px 9px; white-space: nowrap; }
+      body.tab-deck .deck-actions-row .deck-add-btn { display: inline-flex; border-color: var(--accent); color: var(--accent); font-weight: 800; margin-right: auto; }
+      body.tab-deck #tab-deck.deck-ro .deck-actions-row .deck-add-btn { display: none; }
+      body.tab-deck #tab-deck.deck-ro .deck-actions-row .deck-practice-btn { margin-left: auto; }
+      body.tab-deck .deck-actions-row .deck-more-btn { display: inline-flex; }
+      body.tab-deck .deck-actions-row .deck-sub { display: none !important; }
+      body.tab-deck .deck-validation, body.tab-deck .deck-status-msg { position: fixed; left: 160px; bottom: 40px; margin: 0; z-index: 41; background: var(--bg); padding: 0 6px; border-radius: 4px; min-height: 0; }
+      /* カード検索は普段は隠し、「＋ カードを追加」で右から出す */
+      body.tab-deck .deck-search-col { position: fixed; top: 31px; bottom: 38px; right: 0; width: min(400px, 55vw); z-index: 45; background: var(--panel); border-left: 2px solid var(--accent); box-shadow: -10px 0 24px rgba(0,0,0,.6); padding: 6px 8px; box-sizing: border-box; display: flex; flex-direction: column; transform: translateX(105%); transition: transform .18s ease; }
+      body.tab-deck.deck-search-open .deck-search-col { transform: none; }
+      body.tab-deck .deck-search-close { display: inline-flex; font-size: 11px; padding: 4px 8px; color: #fca5a5; }
+      body.tab-deck .deck-search-col .card-grid { max-height: none; flex: 1; min-height: 0; grid-auto-rows: max-content; align-content: start; grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); margin-top: 6px; }
+      body.tab-deck .deck-search-col .card-tile img { aspect-ratio: 63 / 88; width: 100%; height: auto; object-fit: cover; }
+      body.tab-deck .deck-search-col .card-tile .tile-info { padding: 2px 3px; }
+      body.tab-deck .deck-search-col .card-tile .tile-number { display: none; }
+      body.tab-deck .deck-search-col .card-tile .tile-name { font-size: 9px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    }
     /* ---- 横画面固定: 縦持ちのままbody全体を90度回す(端末の画面回転ロック中でも横画面で遊べる) ---- */
   html.ls-rot body { overflow: hidden; }
   /* ---- Safariのツールバーをたためるようにする ----
@@ -3638,7 +3725,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.90.0</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.91.0</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -3655,6 +3742,7 @@
   <button class="tab-btn active" data-tab="search">🔍 カード検索</button>
   <button class="tab-btn" data-tab="deck">🃏 デッキ構築</button>
   <button class="tab-btn" data-tab="practice">🎮 練習</button>
+  <button type="button" class="nav-gear" id="navSettingsBtn" title="設定">⚙</button>
 </nav>
 
 <main>
@@ -3721,18 +3809,30 @@
     <div class="panel">
       <div class="deck-layout">
         <div class="deck-col deck-list-col">
-          <h3 style="font-size:12px;color:var(--text-dim);margin:0 0 10px;">マイデッキ</h3>
+          <div class="deck-seg" id="deckSeg">
+            <button type="button" data-seg="mine" class="on">📱 マイ<span class="seg-long">デッキ</span><small id="deckSegMineN"></small></button>
+            <button type="button" data-seg="shared">☁ 共有<span class="seg-long">デッキ</span><small id="deckSegSharedN"></small></button>
+          </div>
+          <input type="text" id="deckListFilter" class="deck-list-filter" placeholder="🔍 デッキ名で絞り込み">
+          <div class="deck-seg-note" id="deckSegNote"></div>
           <div class="my-deck-list" id="myDeckList"></div>
         </div>
 
         <div class="deck-col deck-search-col">
-          <input type="text" id="deckSearchText" placeholder="カード名で検索して追加...">
+          <div class="deck-search-head">
+            <input type="text" id="deckSearchText" placeholder="カード名で検索して追加...">
+            <button type="button" class="btn deck-search-close" id="deckSearchCloseBtn">✕ 閉じる</button>
+          </div>
           <div class="card-grid" id="deckSearchGrid"></div>
         </div>
 
         <div class="deck-col deck-build-col">
           <div class="deck-header-row">
             <input type="text" id="deckNameInput" placeholder="デッキ名">
+          </div>
+          <div class="deck-src-row">
+            <span class="deck-src-line" id="deckSrcLine"></span>
+            <span class="deck-view-toggle" id="deckViewToggle"><button type="button" data-view="img" title="画像で並べる">🖼 画像</button><button type="button" data-view="list" title="文字のリスト">≣ リスト</button></span>
           </div>
 
           <div class="deck-section-title">
@@ -3747,12 +3847,16 @@
           </div>
           <div class="deck-list" id="mainList"></div>
 
-          <div class="deck-actions-row">
+          <div class="deck-actions-row" id="deckActionsRow">
+            <button class="btn deck-add-btn" id="deckAddCardBtn">＋ カードを追加</button>
+            <button class="btn deck-practice-btn" id="deckPracticeBtn">▶ このデッキで練習</button>
             <button class="btn" id="newDeckBtn">新規</button>
-            <button class="btn primary" id="saveDeckBtn">保存</button>
-            <button class="btn" id="deleteDeckBtn">削除</button>
-            <button class="btn" id="bulkImportDeckBtn">📋 一括インポート</button>
-            <button class="btn" id="exportDeckBtn" title="今のデッキを「カード番号 枚数」の文字にしてコピーします。友達は「一括インポート」に貼り付けると同じデッキを作れます">📤 書き出し</button>
+            <button class="btn primary deck-save-mine" id="saveMineDeckBtn">📱 マイデッキに保存</button>
+            <button class="btn primary deck-save-shared" id="saveDeckBtn">☁ 共有に保存</button>
+            <button class="btn deck-more-btn" id="deckMoreBtn">⋯</button>
+            <button class="btn deck-sub" id="deleteDeckBtn">削除</button>
+            <button class="btn deck-sub" id="bulkImportDeckBtn">📋 一括インポート</button>
+            <button class="btn deck-sub" id="exportDeckBtn" title="今のデッキを「カード番号 枚数」の文字にしてコピーします。友達は「一括インポート」に貼り付けると同じデッキを作れます">📤 書き出し</button>
           </div>
           <div class="deck-validation" id="deckValidation"></div>
           <div class="deck-status-msg" id="deckStatusMsg"></div>
@@ -4059,9 +4163,14 @@
   <div class="modal">
     <h2 class="mono">⚙ 設定</h2>
     <div class="field">
+      <label for="ghNickname">ニックネーム</label>
+      <input type="text" id="ghNickname" placeholder="例: かぼ茶" autocomplete="off" maxlength="20">
+      <div class="hint">デッキの作者として表示されます。トークンも入れている場合は、マイデッキをGitHubの「decks/users/ニックネーム.json」に保存するので、PCとスマホで同じニックネームを入れると同じマイデッキが使えます(ファイルは公開リポジトリに置かれるため、中身を見ようと思えば見られます)。</div>
+    </div>
+    <div class="field">
       <label for="ghToken">GitHub Personal Access Token</label>
       <input type="password" id="ghToken" placeholder="ghp_xxxxxxxxxxxx" autocomplete="off">
-      <div class="hint">入力しなくても使えます。共有デッキ(decks.json)への保存・削除やDB更新のコミットをしたい人だけ設定してください。ブラウザのlocalStorageに保存され、外部には送信されません。</div>
+      <div class="hint">入力しなくても使えます。共有デッキへの保存・削除、GitHubへのマイデッキ保存、DB更新のコミットをしたい人だけ設定してください。ブラウザのlocalStorageに保存され、外部には送信されません。</div>
     </div>
     <div class="field">
       <label for="ghRepo">リポジトリ(owner/repo)</label>
@@ -4106,6 +4215,7 @@
     db: document.getElementById('tab-db'),
   };
   function showTab(tabKey) {
+    Object.keys(tabPanels).forEach(k => document.body.classList.toggle('tab-' + k, k === tabKey));
     tabButtons.forEach(b => b.classList.toggle('active', b.dataset.tab === tabKey));
     Object.entries(tabPanels).forEach(([key, el]) => {
       el.style.display = (key === tabKey) ? '' : 'none';
@@ -4117,6 +4227,7 @@
   tabButtons.forEach(btn => {
     btn.addEventListener('click', () => showTab(btn.dataset.tab));
   });
+  document.body.classList.add('tab-search');
 
   // DB管理は主要タブと並べず、ヘッダーの控えめなリンクから開く
   document.getElementById('openDbTab').addEventListener('click', () => showTab('db'));
@@ -4133,16 +4244,21 @@
   const DEFAULT_GH_REPO = 'KaboTea/DEGICAtool';
   function loadSettings() {
     tokenInput.value = localStorage.getItem('digica_gh_token') || '';
+    document.getElementById('ghNickname').value = localStorage.getItem('digica_nickname') || '';
     repoInput.value = localStorage.getItem('digica_gh_repo') || DEFAULT_GH_REPO;
   }
 
   openBtn.addEventListener('click', () => { loadSettings(); modal.classList.add('open'); });
+  document.getElementById('navSettingsBtn').addEventListener('click', () => openBtn.click());
   closeBtn.addEventListener('click', () => modal.classList.remove('open'));
   modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.remove('open'); });
 
   saveBtn.addEventListener('click', () => {
     localStorage.setItem('digica_gh_token', tokenInput.value.trim());
     localStorage.setItem('digica_gh_repo', repoInput.value.trim());
+    localStorage.setItem('digica_nickname', document.getElementById('ghNickname').value.trim());
+    // ニックネーム/トークンが変わるとマイデッキの置き場所が変わるので読み直す
+    if (typeof refreshMyDeckList === 'function') refreshMyDeckList();
     saveMsg.style.display = 'inline';
     setTimeout(() => { saveMsg.style.display = 'none'; }, 1800);
   });
@@ -4814,6 +4930,10 @@
   }
 
   function adjustDeckCount(card, delta) {
+    if (typeof deckReadOnly === 'function' && deckReadOnly()) {
+      showToast('共有デッキは見るだけです。直したいときは「📱 マイデッキにコピー」してから編集してください', true);
+      return;
+    }
     const target = card.category === 'digi-egg' ? 'eggs' : 'main';
     const map = deckState[target];
     const current = map[card.number] || 0;
@@ -4863,10 +4983,12 @@
     labelEl.classList.toggle('over', total > limit);
 
     listEl.innerHTML = '';
+    listEl.classList.toggle('deck-img-grid', deckView === 'img' && entries.length > 0);
     if (entries.length === 0) {
       listEl.innerHTML = '<div class="empty-state" style="padding:6px 0;">カードがありません</div>';
       return;
     }
+    if (deckView === 'img') { renderDeckImageGrid(listEl, entries, target); return; }
     entries.sort((a, b) => a[0].localeCompare(b[0]));
     const frag = document.createDocumentFragment();
     entries.forEach(([number, count]) => {
@@ -4900,6 +5022,36 @@
     listEl.appendChild(frag);
   }
 
+  // デッキの中身を画像で並べる(カード検索と同じ見た目)。デジタマ→デジモン(Lv順)→テイマー→オプションの順
+  const DECK_CAT_ORDER = { 'digi-egg': 0, digimon: 1, tamer: 2, option: 3 };
+  function deckEntrySortKey(number) {
+    const c = cardIndexByNumber.get(number);
+    if (!c) return [9, 99, number];
+    return [DECK_CAT_ORDER[c.category] ?? 5, c.level ?? 99, number];
+  }
+  function renderDeckImageGrid(listEl, entries, target) {
+    const ro = typeof deckReadOnly === 'function' && deckReadOnly();
+    entries.sort((a, b) => { const x = deckEntrySortKey(a[0]), y = deckEntrySortKey(b[0]); return x[0] - y[0] || x[1] - y[1] || String(x[2]).localeCompare(String(y[2])); });
+    const frag = document.createDocumentFragment();
+    entries.forEach(([number, count]) => {
+      const card = cardIndexByNumber.get(number);
+      const t = document.createElement('div');
+      t.className = 'deck-img-tile';
+      const lab = card ? (card.category === 'digimon' || card.category === 'digi-egg' ? (card.level != null ? `Lv${card.level}` : '') : card.category === 'tamer' ? 'テイマー' : card.category === 'option' ? 'オプション' : '') : '?';
+      t.innerHTML = `<div class="dit-img">${card && card.img ? `<img src="${escapeHtml(card.img)}" alt="${escapeHtml(card.name || '')}" loading="lazy" onerror="this.remove()">` : ''}<span class="dit-name">${escapeHtml(card ? card.name : number)}</span>${lab ? `<span class="dit-lv">${escapeHtml(lab)}</span>` : ''}<span class="dit-count mono">×${count}</span>${ro ? '' : '<span class="dit-pm"><button type="button" class="dit-minus" title="1枚減らす">−</button><button type="button" class="dit-plus" title="1枚増やす">＋</button></span>'}</div>`;
+      t.querySelector('.dit-img').addEventListener('click', () => { if (card) openCardDetail(card); });
+      const mi = t.querySelector('.dit-minus'), pl = t.querySelector('.dit-plus');
+      if (mi) mi.addEventListener('click', (e) => { e.stopPropagation(); if (card) adjustDeckCount(card, -1); else adjustDeckCountByNumber(target, number, -1); });
+      if (pl) pl.addEventListener('click', (e) => { e.stopPropagation(); if (card) adjustDeckCount(card, 1); else showToast('DBに存在しないカードのため追加できません', true); });
+      if (card) {
+        t.addEventListener('mouseenter', (e) => showCardHoverPreview(e, card));
+        t.addEventListener('mousemove', (e) => positionDeckPreview(e));
+        t.addEventListener('mouseleave', () => hideDeckPreview());
+      }
+      frag.appendChild(t);
+    });
+    listEl.appendChild(frag);
+  }
   function updateDeckStatusHeader() {
     const wrap = document.getElementById('statDeckWrap');
     const nameEl = document.getElementById('statDeckName');
@@ -4923,6 +5075,7 @@
     if (mainTotal > 50) msgs.push(`メインが上限(50枚)を超えています(${mainTotal}枚)`);
     deckValidation.textContent = msgs.join(' / ');
     updateDeckStatusHeader();
+    if (typeof updateDeckActionsUi === 'function') updateDeckActionsUi();
   }
 
   // ---------- デッキ一括インポート(カード番号+枚数のテキストを貼り付け) ----------
@@ -5054,26 +5207,42 @@
     deckSearchDebounce = setTimeout(renderDeckSearchGrid, 150);
   });
 
-  async function loadDecksFile() {
-    const existing = await window.DigicaGitHub.getFile('decks/decks.json');
-    if (!existing) return { data: { decks: [] }, sha: undefined };
-    try {
-      return { data: JSON.parse(existing.content), sha: existing.sha };
-    } catch (e) {
-      return { data: { decks: [] }, sha: existing.sha };
-    }
-  }
-
-  let cachedDecks = [];
-
-  // ---------- デッキの保存先: 共有(GitHubのdecks/decks.json) と この端末(localStorage) ----------
-  // ・共有デッキは、トークン/リポジトリが未設定でも、サイトと同じ場所の decks/decks.json を読み込んで使える(読むだけ)。
-  //   保存・削除できるのはトークンを設定している人だけ。
-  // ・この端末のデッキは、トークンなしで誰でも保存できる(そのブラウザにだけ残る)。
+  // ---------- デッキの置き場所 ----------
+  // ・共有デッキ(shared): GitHubの decks/decks.json。誰でも見られて練習に使える。保存・削除はトークンのある人だけ
+  // ・マイデッキ(user):  トークン+ニックネームがある人は GitHubの decks/users/<ニックネーム>.json(端末をまたいで同じ)
+  // ・マイデッキ(local): それ以外の人は、この端末(ブラウザ)の中
+  const SHARED_DECKS_PATH = 'decks/decks.json';
   const LOCAL_DECKS_KEY = 'digica_local_decks';
+  let cachedDecks = [];
+  let deckSeg = (() => { try { return localStorage.getItem('digica_deck_seg') || 'mine'; } catch (e) { return 'mine'; } })();
+  let deckView = (() => { try { return localStorage.getItem('digica_deck_view') || 'img'; } catch (e) { return 'img'; } })();
+  let pendingPracticeDeckId = null;
+  function deckNickname() { try { return (localStorage.getItem('digica_nickname') || '').trim(); } catch (e) { return ''; } }
   function canWriteSharedDecks() {
     const { token, repo } = window.DigicaGitHub.config();
     return !!(token && repo);
+  }
+  function canUseUserDecks() { return canWriteSharedDecks() && !!deckNickname(); }
+  function userDecksPath(nick) {
+    const safe = (nick || '').replace(/[\\/:*?"<>|#%\s.]+/g, '_').slice(0, 40) || 'user';
+    return `decks/users/${safe}.json`;
+  }
+  async function loadJsonDecksFile(path) {
+    const existing = await window.DigicaGitHub.getFile(path);
+    if (!existing) return { data: { decks: [] }, sha: undefined };
+    try { const d = JSON.parse(existing.content); if (!Array.isArray(d.decks)) d.decks = []; return { data: d, sha: existing.sha }; }
+    catch (e) { return { data: { decks: [] }, sha: existing.sha }; }
+  }
+  async function loadDecksFile() { return loadJsonDecksFile(SHARED_DECKS_PATH); }
+  // 読み直してから変更を当てて書く(同時に別の端末から書かれても消さない)。409なら1回やり直す
+  async function updateJsonDecksFile(path, mutate, message) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const { data, sha } = await loadJsonDecksFile(path);
+      data.decks = (data.decks || []).map(stripDeckMeta);
+      mutate(data);
+      try { await window.DigicaGitHub.putFile(path, JSON.stringify(data), message, sha); return; }
+      catch (e) { if (attempt === 0 && /409/.test(e.message)) continue; throw e; }
+    }
   }
   function loadLocalDecks() {
     try {
@@ -5084,55 +5253,85 @@
   function saveLocalDecks(decks) {
     try { localStorage.setItem(LOCAL_DECKS_KEY, JSON.stringify({ decks })); return true; } catch (e) { return false; }
   }
+  // 共有デッキ: トークンがあればAPIで。なければ GitHubの最新(API→raw)→サイトのファイル の順に試す
   async function loadSharedDecks() {
     if (canWriteSharedDecks()) {
       const { data } = await loadDecksFile();
       return data.decks || [];
     }
-    try {
-      const res = await fetch('decks/decks.json', { cache: 'no-store' });
-      if (!res.ok) return [];
-      const j = await res.json();
-      return Array.isArray(j.decks) ? j.decks : [];
-    } catch (e) { return []; }
+    const repo = window.DigicaGitHub.config().repo || DEFAULT_GH_REPO;
+    const tries = [
+      async () => { const r = await fetch(`https://api.github.com/repos/${repo}/contents/${SHARED_DECKS_PATH}`, { cache: 'no-store', headers: { Accept: 'application/vnd.github.raw+json' } }); if (!r.ok) throw new Error(r.status); return r.json(); },
+      async () => { const r = await fetch(`https://raw.githubusercontent.com/${repo}/main/${SHARED_DECKS_PATH}?t=${Date.now()}`, { cache: 'no-store' }); if (!r.ok) throw new Error(r.status); return r.json(); },
+      async () => { const r = await fetch(SHARED_DECKS_PATH, { cache: 'no-store' }); if (!r.ok) throw new Error(r.status); return r.json(); },
+    ];
+    for (const t of tries) {
+      try { const j = await t(); if (j && Array.isArray(j.decks)) return j.decks; } catch (e) { /* 次を試す */ }
+    }
+    return [];
+  }
+  async function loadUserDecks() {
+    if (!canUseUserDecks()) return [];
+    const { data } = await loadJsonDecksFile(userDecksPath(deckNickname()));
+    return data.decks || [];
   }
   const stripDeckMeta = (d) => { const o = Object.assign({}, d); delete o._src; return o; };
+  const deckIsMine = (d) => d._src === 'user' || d._src === 'local';
+  function deckReadOnly() { return deckState.src === 'shared' && !canWriteSharedDecks(); }
+  const DECK_SRC_LABEL = { user: '📱 マイデッキ', local: '📱 マイデッキ(この端末)', shared: '☁ 共有デッキ' };
 
   function renderMyDeckList() {
     hideDeckPreview();
-    if (cachedDecks.length === 0) {
-      myDeckList.innerHTML = '<div class="empty-state" style="padding:8px 0;">保存済みデッキはありません</div>';
+    const mine = cachedDecks.filter(deckIsMine), shared = cachedDecks.filter(d => d._src === 'shared');
+    document.getElementById('deckSegMineN').textContent = mine.length;
+    document.getElementById('deckSegSharedN').textContent = shared.length;
+    document.querySelectorAll('#deckSeg button').forEach(b => b.classList.toggle('on', b.dataset.seg === deckSeg));
+    const note = document.getElementById('deckSegNote');
+    const writable = canWriteSharedDecks();
+    if (deckSeg === 'shared') {
+      note.className = 'deck-seg-note ok';
+      note.innerHTML = writable ? '👁 中身を見る・▶ 練習に使えます<br><span>トークンがあるので上書き・削除もできます</span>' : '👁 中身を見る・▶ 練習に使えます<br><span>自分用に直したいときは「📱⇣ マイへ」でコピー</span>';
+    } else {
+      note.className = 'deck-seg-note';
+      note.innerHTML = canUseUserDecks() ? `<span>「${escapeHtml(deckNickname())}」のマイデッキ(GitHub・どの端末でも同じ)</span>`
+        : writable ? '<span>⚙設定でニックネームを入れると、マイデッキをGitHubに置いて端末をまたいで使えます(今はこの端末だけ)</span>'
+        : '<span>この端末(ブラウザ)に保存されます</span>';
+    }
+    const q = (document.getElementById('deckListFilter').value || '').trim().toLowerCase();
+    const list = (deckSeg === 'shared' ? shared : mine).filter(d => !q || (d.name || '').toLowerCase().includes(q));
+    myDeckList.innerHTML = '';
+    if (!list.length) {
+      myDeckList.innerHTML = `<div class="empty-state" style="padding:12px 4px;font-size:11.5px;line-height:1.6;">${q ? '見つかりません' : deckSeg === 'shared' ? '共有デッキはまだありません' : 'マイデッキはまだありません。<br>共有デッキの「📱⇣ マイへ」でコピーするか、「新規」で作れます'}</div>`;
       return;
     }
-    myDeckList.innerHTML = '';
     const frag = document.createDocumentFragment();
-    let lastSrc = null;
-    cachedDecks.forEach(d => {
-      if (d._src !== lastSrc) {
-        lastSrc = d._src;
-        const head = document.createElement('div');
-        head.className = 'my-deck-group';
-        head.textContent = d._src === 'local' ? '📱 この端末のデッキ' : `☁ 共有デッキ${canWriteSharedDecks() ? '' : '(見るだけ)'}`;
-        frag.appendChild(head);
-      }
+    list.forEach(d => {
       const eggCount = (d.eggs || []).reduce((s, c) => s + c.count, 0);
       const mainCount = (d.main || []).reduce((s, c) => s + c.count, 0);
       const row = document.createElement('div');
-      row.className = 'my-deck-item' + (d.id === deckState.id ? ' active' : '');
+      row.className = 'my-deck-item' + (d.id === deckState.id && d._src === deckState.src ? ' active' : '');
+      const isShared = d._src === 'shared';
+      const chips = isShared
+        ? `<div class="mdi-chips"><button type="button" class="mdi-chip go" data-act="practice">▶ 練習</button><button type="button" class="mdi-chip" data-act="copyMine" title="マイデッキにコピー/移動">📱⇣ マイへ</button></div>`
+        : `<div class="mdi-chips"><button type="button" class="mdi-chip go" data-act="practice">▶ 練習</button>${writable ? '<button type="button" class="mdi-chip" data-act="copyShared" title="共有デッキにコピー/移動">☁⇡ 共有へ</button>' : ''}${d._src === 'local' && canUseUserDecks() ? '<span class="mdi-tag">この端末</span>' : ''}</div>`;
       row.innerHTML = `
         <div class="mdi-main">
           <div class="mdi-name">${escapeHtml(d.name || '無題')}</div>
-          <div class="mdi-meta mono">${mainCount}/50・${eggCount}/5・${escapeHtml(d.updated || '')}</div>
+          <div class="mdi-meta mono">${mainCount}/50・${eggCount}/5${d.updated ? '・' + escapeHtml(d.updated.slice(5)) : ''}${isShared && d.author ? ` <span class="mdi-author">作: ${escapeHtml(d.author)}</span>` : ''}</div>
+          ${chips}
         </div>
-        ${d._src === 'shared' && !canWriteSharedDecks() ? '' : '<button type="button" class="mdi-delete" title="削除">✕</button>'}
+        ${isShared && !writable ? '' : '<button type="button" class="mdi-delete" title="削除">✕</button>'}
       `;
-      row.querySelector('.mdi-main').addEventListener('click', () => { hideDeckPreview(); loadDeckById(d.id); });
-      const delBtn = row.querySelector('.mdi-delete');
-      if (delBtn) delBtn.addEventListener('click', (e) => {
+      row.querySelector('.mdi-main').addEventListener('click', () => { hideDeckPreview(); loadDeckById(d.id, d._src); });
+      row.querySelectorAll('.mdi-chip').forEach(b => b.addEventListener('click', (e) => {
         e.stopPropagation();
         hideDeckPreview();
-        deleteDeckById(d.id, d.name);
-      });
+        if (b.dataset.act === 'practice') practiceWithDeck(d);
+        else if (b.dataset.act === 'copyMine') askCopyOrMove(e, d, 'mine');
+        else if (b.dataset.act === 'copyShared') askCopyOrMove(e, d, 'shared');
+      }));
+      const delBtn = row.querySelector('.mdi-delete');
+      if (delBtn) delBtn.addEventListener('click', (e) => { e.stopPropagation(); hideDeckPreview(); deleteDeckById(d.id, d.name, d._src); });
       const repImg = getDeckRepresentativeImage(d);
       row.addEventListener('mouseenter', (e) => showDeckPreview(e, repImg));
       row.addEventListener('mousemove', (e) => positionDeckPreview(e));
@@ -5141,22 +5340,57 @@
     });
     myDeckList.appendChild(frag);
   }
+  document.querySelectorAll('#deckSeg button').forEach(b => b.addEventListener('click', () => {
+    deckSeg = b.dataset.seg;
+    try { localStorage.setItem('digica_deck_seg', deckSeg); } catch (e) {}
+    renderMyDeckList();
+  }));
+  document.getElementById('deckListFilter').addEventListener('input', () => renderMyDeckList());
 
   async function refreshMyDeckList() {
-    let shared = [];
+    let shared = [], user = [];
     try { shared = await loadSharedDecks(); } catch (e) { console.error(e); }
+    try { user = await loadUserDecks(); } catch (e) { console.error(e); flashDeckStatus(`マイデッキ(GitHub)を読めませんでした: ${e.message}`); }
     const local = loadLocalDecks();
     cachedDecks = [
-      ...shared.map(d => Object.assign({}, d, { _src: 'shared' })),
+      ...user.map(d => Object.assign({}, d, { _src: 'user' })),
       ...local.map(d => Object.assign({}, d, { _src: 'local' })),
+      ...shared.map(d => Object.assign({}, d, { _src: 'shared' })),
     ];
     renderMyDeckList();
+    updateDeckActionsUi();
+    if (typeof populatePracticeDeckSelects === 'function' && document.getElementById('practiceDeckA')) populatePracticeDeckSelects();
   }
 
   function flashDeckStatus(msg) {
     deckStatusMsg.textContent = msg;
-    setTimeout(() => { deckStatusMsg.textContent = ''; }, 2200);
+    setTimeout(() => { deckStatusMsg.textContent = ''; }, 2600);
   }
+  // 編集中のデッキの出どころ・ボタンの出し分け
+  function updateDeckActionsUi() {
+    const src = deckState.src;
+    const ro = deckReadOnly();
+    const writable = canWriteSharedDecks();
+    const line = document.getElementById('deckSrcLine');
+    line.textContent = !src ? '🆕 新しいデッキ(まだ保存していません)'
+      : src === 'shared' ? (ro ? '☁ 共有デッキ(中身を見る・練習に使えます)' : '☁ 共有デッキを編集中')
+      : `${DECK_SRC_LABEL[src]}を編集中`;
+    line.className = 'deck-src-line src-' + (src || 'new');
+    const show = (id, on) => { const el = document.getElementById(id); if (el) el.style.display = on ? '' : 'none'; };
+    show('saveDeckBtn', writable);
+    show('deleteDeckBtn', !!deckState.id && !ro);
+    show('bulkImportDeckBtn', !ro);
+    show('deckPracticeBtn', !!deckState.id);
+    document.getElementById('saveMineDeckBtn').textContent = ro ? '📱 マイデッキにコピー' : '📱 マイデッキに保存';
+    document.querySelectorAll('#deckViewToggle button').forEach(b => b.classList.toggle('on', b.dataset.view === deckView));
+    document.getElementById('tab-deck').classList.toggle('deck-ro', ro);
+    deckNameInput.readOnly = ro;
+  }
+  document.querySelectorAll('#deckViewToggle button').forEach(b => b.addEventListener('click', () => {
+    deckView = b.dataset.view;
+    try { localStorage.setItem('digica_deck_view', deckView); } catch (e) {}
+    renderDeckLists();
+  }));
 
   newDeckBtn.addEventListener('click', () => {
     deckState = { id: null, eggs: {}, main: {}, src: null };
@@ -5167,61 +5401,126 @@
     flashDeckStatus('新規デッキを作成しました');
   });
 
-  async function loadDeckById(id) {
-    try {
-      const found = cachedDecks.find(d => d.id === id);
-      if (!found) return;
-      deckState = {
-        id: found.id,
-        src: found._src || null,
-        eggs: Object.fromEntries((found.eggs || []).map(e => [e.number, e.count])),
-        main: Object.fromEntries((found.main || []).map(e => [e.number, e.count])),
-      };
-      deckNameInput.value = found.name || '';
-      renderDeckLists();
-      renderMyDeckList();
-      flashDeckStatus('読み込みました');
-    } catch (e) {
-      deckValidation.textContent = `読込エラー: ${e.message}`;
-    }
+  function loadDeckById(id, src) {
+    const found = cachedDecks.find(d => d.id === id && (!src || d._src === src)) || cachedDecks.find(d => d.id === id);
+    if (!found) return;
+    deckState = {
+      id: found.id,
+      src: found._src || null,
+      author: found.author || '',
+      eggs: Object.fromEntries((found.eggs || []).map(e => [e.number, e.count])),
+      main: Object.fromEntries((found.main || []).map(e => [e.number, e.count])),
+    };
+    deckNameInput.value = found.name || '';
+    renderDeckLists();
+    renderMyDeckList();
   }
 
-  async function deleteDeckById(id, name) {
-    const target = cachedDecks.find(d => d.id === id);
-    const isLocal = target ? target._src === 'local' : String(id).startsWith('local_');
-    if (!isLocal && !canWriteSharedDecks()) {
+  function newDeckId(kind) {
+    if (kind === 'local') return `local_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    return (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : `deck_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  }
+  function deckObjFrom(d, id) {
+    return {
+      id, name: d.name || '無題のデッキ',
+      ...(d.author ? { author: d.author } : {}),
+      updated: new Date().toISOString().slice(0, 10),
+      eggs: d.eggs, main: d.main,
+    };
+  }
+  // デッキを1つ書く。kind: 'shared' | 'user' | 'local'
+  async function writeDeck(kind, obj, label) {
+    if (kind === 'local') {
+      const decks = loadLocalDecks();
+      const i = decks.findIndex(x => x.id === obj.id);
+      if (i >= 0) decks[i] = obj; else decks.push(obj);
+      if (!saveLocalDecks(decks)) throw new Error('この端末に保存できませんでした(ブラウザの保存領域が使えない可能性があります)');
+      return;
+    }
+    const path = kind === 'shared' ? SHARED_DECKS_PATH : userDecksPath(deckNickname());
+    await updateJsonDecksFile(path, (data) => {
+      const i = data.decks.findIndex(x => x.id === obj.id);
+      if (i >= 0) data.decks[i] = obj; else data.decks.push(obj);
+    }, `${label}: ${obj.name}`);
+  }
+  const mineKind = () => (canUseUserDecks() ? 'user' : 'local');
+
+  // 保存: 'mine' / 'shared'。開いているデッキと同じ場所なら上書き、違う場所ならコピーを作る
+  async function saveDeckTo(target) {
+    const btns = [saveDeckBtn, document.getElementById('saveMineDeckBtn')];
+    btns.forEach(b => { b.disabled = true; });
+    try {
+      if (target === 'shared' && !canWriteSharedDecks()) throw new Error('共有に保存するには⚙設定でGitHubのトークンを入れてください');
+      const kind = target === 'shared' ? 'shared' : (deckState.src === 'local' || deckState.src === 'user') ? deckState.src : mineKind();
+      const same = deckState.src === kind && !!deckState.id;
+      const nick = deckNickname();
+      const obj = deckObjFrom({
+        name: deckNameInput.value.trim() || '無題のデッキ',
+        author: same ? (deckState.author || nick) : (nick || deckState.author || ''),
+        eggs: Object.entries(deckState.eggs).map(([number, count]) => ({ number, count })),
+        main: Object.entries(deckState.main).map(([number, count]) => ({ number, count })),
+      }, same ? deckState.id : newDeckId(kind));
+      await writeDeck(kind, obj, kind === 'shared' ? 'デッキ保存(共有)' : 'デッキ保存(マイ)');
+      const wasSrc = deckState.src;
+      deckState.id = obj.id; deckState.src = kind; deckState.author = obj.author || '';
+      flashDeckStatus(same ? '保存しました' : wasSrc ? `${kind === 'shared' ? '共有デッキ' : 'マイデッキ'}にコピーして保存しました` : `${kind === 'shared' ? '共有デッキ' : 'マイデッキ'}に保存しました`);
+      deckSeg = kind === 'shared' ? 'shared' : 'mine';
+      try { localStorage.setItem('digica_deck_seg', deckSeg); } catch (e) {}
+      await refreshMyDeckList();
+    } catch (e) {
+      deckValidation.textContent = `保存エラー: ${e.message}`;
+      console.error(e);
+    } finally {
+      btns.forEach(b => { b.disabled = false; });
+    }
+  }
+  // 一覧の「☁⇡ 共有へ」「📱⇣ マイへ」: コピー(元も残す)か移動(元は消す)を選ぶ。元を消せない人(共有×トークンなし)はコピーだけ
+  function askCopyOrMove(ev, d, target) {
+    const toName = target === 'shared' ? '共有デッキ' : 'マイデッキ';
+    const canMove = d._src !== 'shared' || canWriteSharedDecks();
+    if (!canMove) { copyDeckTo(d, target, false); return; }
+    openZonePopup(ev, `「${d.name || '無題'}」を${toName}へ`, [
+      { label: `📄 コピー(${d._src === 'shared' ? '共有' : 'マイ'}にも残す)`, onClick: () => copyDeckTo(d, target, false) },
+      { label: `➡ 移動(${d._src === 'shared' ? '共有' : 'マイ'}からは消す)`, onClick: () => copyDeckTo(d, target, true) },
+    ]);
+  }
+  async function copyDeckTo(d, target, move) {
+    try {
+      const kind = target === 'shared' ? 'shared' : mineKind();
+      // 移動は同じidのまま運ぶ(開いていたら、そのまま新しい場所のデッキとして開き続ける)
+      const obj = deckObjFrom({ name: d.name, author: d.author || deckNickname() || '', eggs: d.eggs || [], main: d.main || [] }, move ? d.id : newDeckId(kind));
+      await writeDeck(kind, obj, kind === 'shared' ? `デッキ${move ? '移動' : 'コピー'}(共有へ)` : `デッキ${move ? '移動' : 'コピー'}(マイへ)`);
+      if (move) {
+        if (d._src === 'local') saveLocalDecks(loadLocalDecks().filter(x => x.id !== d.id));
+        else await updateJsonDecksFile(d._src === 'shared' ? SHARED_DECKS_PATH : userDecksPath(deckNickname()), (data) => { data.decks = data.decks.filter(x => x.id !== d.id); }, `デッキ移動(元を削除): ${d.name || d.id}`);
+        if (deckState.id === d.id && deckState.src === d._src) deckState.src = kind;
+      }
+      showToast(`「${d.name || '無題'}」を${kind === 'shared' ? '共有デッキ' : 'マイデッキ'}に${move ? '移動' : 'コピー'}しました`);
+      await refreshMyDeckList();
+    } catch (e) {
+      showToast(`${move ? '移動' : 'コピー'}できませんでした: ${e.message}`, true);
+    }
+  }
+  // ▶ 練習: 練習タブへ移って、このデッキをデッキAに選んだ状態にする
+  function practiceWithDeck(d) {
+    pendingPracticeDeckId = d.id;
+    document.querySelector('.tab-btn[data-tab="practice"]').click();
+    setTimeout(() => { if (pendingPracticeDeckId) populatePracticeDeckSelects(); }, 50);
+  }
+
+  async function deleteDeckById(id, name, src) {
+    const target = cachedDecks.find(d => d.id === id && (!src || d._src === src));
+    const kind = target ? target._src : (String(id).startsWith('local_') ? 'local' : 'shared');
+    if (kind === 'shared' && !canWriteSharedDecks()) {
       flashDeckStatus('共有デッキは削除できません(GitHubの設定をした人だけ削除できます)');
       return;
     }
     if (!confirm(`「${name || '無題'}」を削除しますか?この操作は取り消せません。`)) return;
-    if (isLocal) {
-      saveLocalDecks(loadLocalDecks().filter(d => d.id !== id));
-      if (deckState.id === id) {
-        deckState = { id: null, eggs: {}, main: {}, src: null };
-        deckNameInput.value = '';
-        renderDeckLists();
-      }
-      await refreshMyDeckList();
-      flashDeckStatus('削除しました');
-      return;
-    }
     try {
-      const { data, sha } = await loadDecksFile();
-      data.decks = (data.decks || []).filter(d => d.id !== id);
-      const content = JSON.stringify(data);
-      const message = `デッキ削除: ${name || id}`;
-      try {
-        await window.DigicaGitHub.putFile('decks/decks.json', content, message, sha);
-      } catch (e) {
-        if (e.message.includes('409')) {
-          const retry = await loadDecksFile();
-          await window.DigicaGitHub.putFile('decks/decks.json', content, message, retry.sha);
-        } else {
-          throw e;
-        }
-      }
-      if (deckState.id === id) {
-        deckState = { id: null, eggs: {}, main: {} };
+      if (kind === 'local') saveLocalDecks(loadLocalDecks().filter(d => d.id !== id));
+      else await updateJsonDecksFile(kind === 'shared' ? SHARED_DECKS_PATH : userDecksPath(deckNickname()), (data) => { data.decks = data.decks.filter(d => d.id !== id); }, `デッキ削除: ${name || id}`);
+      if (deckState.id === id && deckState.src === kind) {
+        deckState = { id: null, eggs: {}, main: {}, src: null };
         deckNameInput.value = '';
         renderDeckLists();
       }
@@ -5233,83 +5532,33 @@
     }
   }
 
-  saveDeckBtn.addEventListener('click', async () => {
-    saveDeckBtn.disabled = true;
-    // 保存先: 共有デッキを編集中で書き込める → 共有 / この端末のデッキ → この端末 /
-    // 新規 → GitHub設定があれば共有、なければこの端末 / 共有デッキを書き込めない人が編集 → この端末にコピー
-    const writable = canWriteSharedDecks();
-    let toLocal = deckState.src === 'local' || (!deckState.src && !writable) || (deckState.src === 'shared' && !writable);
-    if (toLocal) {
-      try {
-        const copiedFromShared = deckState.src === 'shared';
-        const name = deckNameInput.value.trim() || '無題のデッキ';
-        const id = (deckState.src === 'local' && deckState.id) ? deckState.id : `local_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-        const deckObj = {
-          id, name,
-          updated: new Date().toISOString().slice(0, 10),
-          eggs: Object.entries(deckState.eggs).map(([number, count]) => ({ number, count })),
-          main: Object.entries(deckState.main).map(([number, count]) => ({ number, count })),
-        };
-        const decks = loadLocalDecks();
-        const idx = decks.findIndex(d => d.id === id);
-        if (idx >= 0) decks[idx] = deckObj; else decks.push(deckObj);
-        if (!saveLocalDecks(decks)) throw new Error('この端末に保存できませんでした(ブラウザの保存領域が使えない可能性があります)');
-        deckState.id = id;
-        deckState.src = 'local';
-        flashDeckStatus(copiedFromShared ? '共有デッキは編集できないため、この端末にコピーとして保存しました' : 'この端末に保存しました');
-        await refreshMyDeckList();
-      } catch (e) {
-        deckValidation.textContent = `保存エラー: ${e.message}`;
-      } finally {
-        saveDeckBtn.disabled = false;
-      }
-      return;
-    }
-    try {
-      const { data, sha } = await loadDecksFile();
-      data.decks = (data.decks || []).map(stripDeckMeta);
-      const name = deckNameInput.value.trim() || '無題のデッキ';
-      const deckObj = {
-        id: deckState.id || (window.crypto && crypto.randomUUID ? crypto.randomUUID() : `deck_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`),
-        name,
-        updated: new Date().toISOString().slice(0, 10),
-        eggs: Object.entries(deckState.eggs).map(([number, count]) => ({ number, count })),
-        main: Object.entries(deckState.main).map(([number, count]) => ({ number, count })),
-      };
-      data.decks = data.decks || [];
-      const idx = data.decks.findIndex(d => d.id === deckObj.id);
-      if (idx >= 0) data.decks[idx] = deckObj; else data.decks.push(deckObj);
-      deckState.id = deckObj.id;
-      deckState.src = 'shared';
-
-      const content = JSON.stringify(data);
-      const message = `デッキ保存: ${name}`;
-      try {
-        await window.DigicaGitHub.putFile('decks/decks.json', content, message, sha);
-      } catch (e) {
-        if (e.message.includes('409')) {
-          const retry = await loadDecksFile();
-          await window.DigicaGitHub.putFile('decks/decks.json', content, message, retry.sha);
-        } else {
-          throw e;
-        }
-      }
-      flashDeckStatus('保存しました');
-      await refreshMyDeckList();
-    } catch (e) {
-      deckValidation.textContent = `保存エラー: ${e.message}`;
-      console.error(e);
-    } finally {
-      saveDeckBtn.disabled = false;
-    }
+  saveDeckBtn.addEventListener('click', () => saveDeckTo('shared'));
+  document.getElementById('saveMineDeckBtn').addEventListener('click', () => saveDeckTo('mine'));
+  document.getElementById('deckPracticeBtn').addEventListener('click', () => {
+    const d = cachedDecks.find(x => x.id === deckState.id && x._src === deckState.src);
+    if (d) practiceWithDeck(d); else flashDeckStatus('保存してから練習に使えます');
   });
+  // 横画面: 削除・一括インポート・書き出しは「⋯」にまとめる
+  document.getElementById('deckMoreBtn').addEventListener('click', (e) => {
+    const items = [];
+    if (document.getElementById('deleteDeckBtn').style.display !== 'none') items.push({ label: '削除', onClick: () => document.getElementById('deleteDeckBtn').click() });
+    if (document.getElementById('bulkImportDeckBtn').style.display !== 'none') items.push({ label: '📋 一括インポート', onClick: (ev) => openBulkImportPopup(ev || e) });
+    items.push({ label: '📤 書き出し', onClick: () => document.getElementById('exportDeckBtn').click() });
+    openZonePopup(e, 'その他の操作', items);
+  });
+  // 横画面: カード検索は「＋ カードを追加」で右から出す
+  document.getElementById('deckAddCardBtn').addEventListener('click', () => {
+    document.body.classList.add('deck-search-open');
+    setTimeout(() => deckSearchText.focus(), 50);
+  });
+  document.getElementById('deckSearchCloseBtn').addEventListener('click', () => document.body.classList.remove('deck-search-open'));
 
   deleteDeckBtn.addEventListener('click', () => {
     if (!deckState.id) {
       flashDeckStatus('保存済みのデッキを選択してください');
       return;
     }
-    deleteDeckById(deckState.id, deckNameInput.value);
+    deleteDeckById(deckState.id, deckNameInput.value, deckState.src);
   });
 
   refreshMyDeckList();
@@ -5421,7 +5670,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.90.0`);
+    log(`DigiCA Tool build v0.91.0`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -5628,14 +5877,26 @@
     [practiceDeckA, practiceDeckB].forEach(sel => {
       const prevValue = sel.value;
       sel.innerHTML = '<option value="">-- 選択 --</option>';
-      cachedDecks.forEach(d => {
-        const opt = document.createElement('option');
-        opt.value = d.id;
-        opt.textContent = (d.name || '無題') + (d._src === 'local' ? '(この端末)' : '');
-        sel.appendChild(opt);
+      const groups = [['📱 マイデッキ', cachedDecks.filter(d => d._src === 'user' || d._src === 'local')], ['☁ 共有デッキ', cachedDecks.filter(d => d._src === 'shared')]];
+      groups.forEach(([label, list]) => {
+        if (!list.length) return;
+        const og = document.createElement('optgroup');
+        og.label = label;
+        list.forEach(d => {
+          const opt = document.createElement('option');
+          opt.value = d.id;
+          opt.textContent = (d.name || '無題') + (d._src === 'local' && canUseUserDecks() ? '(この端末)' : '') + (d._src === 'shared' && d.author ? `(作: ${d.author})` : '');
+          og.appendChild(opt);
+        });
+        sel.appendChild(og);
       });
       if (prevValue) sel.value = prevValue;
     });
+    if (pendingPracticeDeckId && cachedDecks.some(d => d.id === pendingPracticeDeckId)) {
+      practiceDeckA.value = pendingPracticeDeckId;
+      if (!practiceDeckB.value) practiceDeckB.value = pendingPracticeDeckId;
+      pendingPracticeDeckId = null;
+    }
   }
 
   let practiceState = null; // the live game state once started
