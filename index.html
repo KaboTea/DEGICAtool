@@ -3536,7 +3536,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.86.2</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.87.0</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -5314,7 +5314,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.86.2`);
+    log(`DigiCA Tool build v0.87.0`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -11876,22 +11876,24 @@
     return { kind: 'and', parts };
   }
   function costHandlersFor(e, holderStack) {
-    if (!practiceState || e.costPaid) return [];
+    if (!practiceState) return [];
+    if (!e.__costFallbackBusy) resolveCostPending(e);
+    if (e.costPaid) return [];
     const costs = extractEffectCosts(e.text);
     const splits = costs.map(c => splitCompoundCost(c.cost));
     if (!splits.some(Boolean)) {
       const hs = costHandlersForSingle(e, holderStack);
       if (hs.length || !costs.length) return hs;
-      return costs.flatMap(c => costFallbackHandlers(e, c.cost, () => { e.costPaid = true; }));
+      return costs.flatMap(c => costFallbackHandlers(e, c.cost, null));
     }
     const out = [];
     // 代償1つ分だけのボタンを作る。払ったら onPaid を呼ぶ
-    const partHandlers = (part, onPaid) => {
+    const partHandlers = (part, onPaid, desc) => {
       const sub = Object.create(e);
       Object.defineProperty(sub, 'text', { value: part + 'ことで、≪1ドロー≫。', writable: true });
       Object.defineProperty(sub, 'costPaid', { get: () => false, set: (v) => { if (v) onPaid(); } });
       const hs = costHandlersForSingle(sub, holderStack);
-      return hs.length ? hs : costFallbackHandlers(e, part, onPaid);
+      return hs.length ? hs : costFallbackHandlers(e, part, desc || null);
     };
     costs.forEach((c, ci) => {
       const sp = splits[ci];
@@ -11915,68 +11917,89 @@
       const hs = partHandlers(sp.parts[k], () => {
         e.costSteps[ci] = k + 1;
         if (k + 1 >= sp.parts.length) e.costPaid = true;
-      });
+      }, { ci, k, n: sp.parts.length });
       if (!hs.length) return;
       hs.forEach(h => { h.label = h.label.replace(/^💸 代償: /, `💸 代償${k + 1}/${sp.parts.length}: `); out.push(h); });
     });
     return out;
   }
   // 代償専用のボタンが作れない書き方は、その文を効果として読んだときのボタン(登場/進化/アタックなど)を代償ボタンとして使う。
-  // 押した時点で代償を払ったことにする(途中でやめたときは、効果パネルの「代償を払っていない」に戻すため Undo を使う)。
+  // 押したあと盤面が実際に動いたら、代償を払ったことにする(resolveCostPending)。途中でやめたら払っていないまま。
   // ラベル用: 条件のあとに「の」をつなぐ(「赤」→「赤の」、「特徴に「X」を持つ」→そのまま)
   function withNo(x) { return !x ? '' : /(つ|る|ない|た|の)$/.test(x) ? x : x + 'の'; }
-  function costFallbackHandlers(e, cost, onPaid) {
+  // 盤面が動いたかどうかを見るための簡単な目印
+  function costStateSig() {
+    return practiceState.players.map(p => [p.hand.length, p.trash.length, p.library.length, p.security.length, (p.eggLibrary || []).length,
+      p.raising ? p.raising.cards.length + (p.raising.rested ? 'r' : '') : '-', p.battle.map(st => st.cards.length + (st.rested ? 'r' : '') + ((st.links || []).length || '')).join(',')].join('/')).join('|') + '|' + practiceState.memory + '|' + (attackState ? 'atk' : '');
+  }
+  // 登場/進化などを代償にするボタンを押したあと、盤面が実際に動いていたら「払った」ことにする(途中でやめたら払っていないまま)
+  function resolveCostPending(e) {
+    const pd = e.costPending;
+    if (!pd || costStateSig() === pd.sig) return false;
+    delete e.costPending;
+    const d = pd.desc;
+    if (!d) e.costPaid = true;
+    else { if (!e.costSteps) e.costSteps = {}; e.costSteps[d.ci] = d.k + 1; if (d.k + 1 >= d.n) e.costPaid = true; }
+    return true;
+  }
+  function costFallbackHandlers(e, cost, desc) {
     if (e.__costFallbackBusy) return [];
     const sub = Object.assign({}, e, { text: '【メイン】' + cost.replace(/^このテイマーの下にある/, 'このテイマーの下から、') + '。', costPaid: false, __costFallbackBusy: true });
-    delete sub.costSteps;
+    delete sub.costSteps; delete sub.costPending;
     let hs = [];
     try { hs = getEffectHandlers(sub); } catch (er) { hs = []; }
     return hs.filter(h => h && h.run && !h.isCost && !/ターン終了|効果を終える/.test(h.label)).map(h => ({
       isCost: true, label: `💸 代償: ${h.label.replace(/^\p{Extended_Pictographic}\uFE0F?\s*/u, '')}`,
-      run: () => { h.run(); onPaid(); renderPracticeBoard(); renderEffectPanel(); },
+      run: () => {
+        e.costPending = { sig: costStateSig(), desc: desc || null };
+        h.run();
+        if (resolveCostPending(e)) { renderPracticeBoard(); renderEffectPanel(); }
+      },
     }));
   }
   // ---------- 代償用に作ったカードの動かし方を、代償以外の効果(「〜する」「〜できる」)のボタンにも使う ----------
   // 効果文を短い文に区切り、今のボタンが出ていない「カードの移動」を、代償と同じ処理で普通の効果ボタンにする(💸なし・代償扱いしない)。
   const MOVE_CLAUSE_CACHE = new Map();
   let moveClauseBusy = false;
+  // 効果文 → 移動の候補になる短い文(文の切り出しだけを覚えておく。盤面で変わる判定は覚えない)
   function movementClausesOf(e) {
     const text = e.text || '';
     if (MOVE_CLAUSE_CACHE.has(text)) return MOVE_CLAUSE_CACHE.get(text);
     const out = [];
-    moveClauseBusy = true;
-    try {
-      // 代償の部分(「〜ことで」の前)は除く
-      let body = text;
-      extractEffectCosts(text).slice().sort((a, b) => b.from - a.from).forEach(c => { body = body.slice(0, c.from) + '\u0002'.repeat(Math.max(0, c.to - c.from)) + body.slice(c.to); });
-      body = body.replace(/^(?:[【［\[][^】］\]]*[】］\]])+/, '').replace(/（[^）]*）/g, '').replace(/≪[^≫]*≫/g, m0 => m0);
-      body.split(/。|、その後、/).forEach(seg => {
-        let cl = seg.replace(/\u0002+(?:ことで)?、?/g, '').replace(/^その後、/, '').replace(/^.*?(?:とき|なら|場合)、/, '').trim();
-        if (!cl || /\u0002|ごとに|の間|ターン終了時|まで、|その中|そのカード|そのデジモン|この効果で|選んだ|オープンした|残り|相手は|代わりに/.test(cl)) return;
-        if (/^(その|それ)/.test(cl)) return;
-        if (!/(する|できる|させる|戻す|置く|加える|置ける|戻せる|させられる)$/.test(cl)) return;
-        const cost = cl.replace(/ことができる$/, '').replace(/(破棄|リンク|オープン)できる$/, '$1する').replace(/消滅できる$/, '消滅させる').replace(/登場できる$/, '登場させる')
-          .replace(/戻せる$/, '戻す').replace(/置ける$/, '置く').replace(/加えられる$/, '加える').replace(/させられる$/, 'させる').replace(/にできる$/, 'にする').replace(/できる$/, 'する');
-        // 今の効果ボタンがすでに出る書き方は、二重に出さない
-        let base = [];
-        try { base = getEffectHandlers(Object.assign({}, e, { text: '【メイン】' + cl + '。', costPaid: true })); } catch (er) { base = []; }
-        if (base.length) return;
-        out.push({ clause: cl, cost });
-      });
-    } finally { moveClauseBusy = false; }
+    // 代償の部分(「〜ことで」の前)は除く
+    let body = text;
+    extractEffectCosts(text).slice().sort((a, b) => b.from - a.from).forEach(c => { body = body.slice(0, c.from) + '\u0002'.repeat(Math.max(0, c.to - c.from)) + body.slice(c.to); });
+    body = body.replace(/^(?:[【［\[][^】］\]]*[】］\]])+/, '').replace(/（[^）]*）/g, '');
+    body.split(/。|、その後、/).forEach(seg => {
+      const cl = seg.replace(/\u0002+(?:ことで)?、?/g, '').replace(/^その後、/, '').replace(/^.*?(?:とき|なら|場合)、/, '').trim();
+      if (!cl || /\u0002|ごとに|の間|ターン終了時|まで、|その中|そのカード|そのデジモン|この効果で|選んだ|オープンした|残り|相手は|代わりに/.test(cl)) return;
+      if (/^(その|それ)/.test(cl)) return;
+      if (!/(する|できる|させる|戻す|置く|加える|置ける|戻せる|させられる)$/.test(cl)) return;
+      const cost = cl.replace(/ことができる$/, '').replace(/(破棄|リンク|オープン)できる$/, '$1する').replace(/消滅できる$/, '消滅させる').replace(/登場できる$/, '登場させる')
+        .replace(/戻せる$/, '戻す').replace(/置ける$/, '置く').replace(/加えられる$/, '加える').replace(/させられる$/, 'させる').replace(/にできる$/, 'にする').replace(/できる$/, 'する');
+      out.push({ clause: cl, cost });
+    });
     MOVE_CLAUSE_CACHE.set(text, out);
     return out;
   }
   function effectMovementHandlersFor(e, holderStack) {
     if (!practiceState || moveClauseBusy || e.deferred || e.burst) return [];
     const out = [];
-    movementClausesOf(e).forEach(({ cost }) => {
+    movementClausesOf(e).forEach(({ clause, cost }, ci) => {
+      // 今の効果ボタンがすでに出る書き方は、二重に出さない(盤面で変わるので毎回確かめる)
+      let base = [];
+      moveClauseBusy = true;
+      try { base = getEffectHandlers(Object.assign({}, e, { text: '【メイン】' + clause + '。', costPaid: true })); } catch (er) { base = []; } finally { moveClauseBusy = false; }
+      if (base.length) return;
       const sub = Object.create(e);
       Object.defineProperty(sub, 'text', { value: cost + 'ことで、≪1ドロー≫。' });
-      Object.defineProperty(sub, 'costPaid', { get: () => false, set: () => {} });
+      // 動かし終わったら「済」にする(同じボタンをうっかり2回押さないように)
+      Object.defineProperty(sub, 'costPaid', { get: () => false, set: (v) => { if (v) { if (!e.moveDone) e.moveDone = {}; e.moveDone[ci] = true; } } });
       let hs = [];
       try { hs = costHandlersForSingle(sub, holderStack); } catch (er) { hs = []; }
-      hs.forEach(h => out.push({ label: h.label.replace(/^💸 代償: /, '🔀 '), run: h.run }));
+      const done = !!(e.moveDone && e.moveDone[ci]);
+      hs.forEach(h => out.push(Object.assign({ label: (done ? '✔済 ' : '🔀 ') + h.label.replace(/^💸 代償: /, ''), run: h.run },
+        done ? { condNg: '済', ngMsg: 'この動きはもう実行済みです' } : {})));
     });
     return out;
   }
@@ -13464,6 +13487,42 @@
         extractEffectCosts(e.text).forEach(x => gate(x.from, x.to, (h) => { h.condNg = '代償'; h.ngMsg = '先に代償(💸)を払ってください'; }));
       }
     } catch (err) { console.warn(err); }
+    // 「Aする。その後、Bする」: Aのボタンをまだ押していないうちは、Bのボタンを薄くする(2回押せば実行できる)
+    try {
+      const stripped = engineStripNotes(e.text || '');
+      if (/その後、/.test(stripped) && handlers.some(h => !h.isCost)) {
+        const lead = (/^(?:[【［\[][^】］\]]*[】］\]])+/.exec(stripped) || [''])[0].length;
+        const cuts = [lead];
+        const re = /(?:。|、)?その後、/g; let mm;
+        while ((mm = re.exec(stripped))) cuts.push(mm.index);
+        cuts.push(stripped.length);
+        if (cuts.length > 2) {
+          const segOf = new Map();
+          for (let i = 0; i < cuts.length - 1; i++) {
+            const reduced = stripped.slice(0, cuts[i]) + (i > 0 ? '。' : '') + stripped.slice(cuts[i + 1]).replace(i === 0 ? /^(?:。|、)?その後、/ : /^$/, '');
+            const cnt = {};
+            getEffectHandlers(Object.assign({}, e, { text: reduced })).forEach(h => { cnt[h.label] = (cnt[h.label] || 0) + 1; });
+            const seen = {};
+            handlers.forEach(h => {
+              if (h.isCost) return;
+              seen[h.label] = (seen[h.label] || 0) + 1;
+              if (seen[h.label] > (cnt[h.label] || 0) && !segOf.has(h)) segOf.set(h, i);
+            });
+          }
+          const segHas = {};
+          segOf.forEach((i) => { segHas[i] = true; });
+          const ran = e.segRun || {};
+          handlers.forEach(h => {
+            if (h.isCost || !segOf.has(h)) return;
+            const i = segOf.get(h);
+            const waiting = [...Array(i).keys()].some(j => segHas[j] && !ran[j]);
+            if (waiting && !h.condNg) { h.condNg = 'その後'; h.ngMsg = '「その後」より前の処理がまだです'; }
+            const run0 = h.run;
+            h.run = () => { if (!e.segRun) e.segRun = {}; e.segRun[i] = true; run0(); const q = getEffectQueue(); if (q.current === e) renderEffectPanel(); };
+          });
+        }
+      }
+    } catch (err) { console.warn(err); }
     return { handlers, conds };
   }
   function getEffectHandlers(e) {
@@ -14844,8 +14903,9 @@
     document.body.classList.toggle('field-picking', !!fp);
     // 横向きレイアウト: 相手側のカードを選ぶときは相手の場を大きくする
     const oppP = practiceState ? practiceState.players[1 - practiceState.viewingIndex] : null;
-    const pickOnOpp = !!fp && !!oppP && [...fp.candidates, ...(fp.showExtra ? fp.extra : [])]
-      .some(st => { const f = findStackOwnerAndZone(st); return f && f.player === oppP; });
+    // (自分の場にも候補があるときは拡大しない。自分側が小さくなって選びにくいため)
+    const pickSides = !!fp && !!oppP ? [...fp.candidates, ...(fp.showExtra ? fp.extra : [])].map(st => { const f = findStackOwnerAndZone(st); return f ? f.player === oppP : null; }) : [];
+    const pickOnOpp = pickSides.includes(true) && !pickSides.includes(false);
     document.body.classList.toggle('ls-pick-opp', pickOnOpp);
     if (!fp) { banner.hidden = true; return; }
     banner.hidden = false;
