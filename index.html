@@ -3762,7 +3762,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.92.1</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.93.0</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -5761,7 +5761,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.92.1`);
+    log(`DigiCA Tool build v0.93.0`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -11288,7 +11288,8 @@
   const TARGET_RE = /([^、。]*?)(?:(相手|自分|お互い)の)?((?:デジモン|テイマー)(?:(?:\/|か|と)(?:デジモン|テイマー))?)(?:(\d+)体(まで)?(ずつ)?|全て)(を|の進化元を|と、|は|の(?=【))/g;
   // TARGET_REの一致から、対象の指定(側・種類・数)を作る。場のカードの指定でなさそうなら null
   function targetSpecFromMatch(m) {
-    const prefix = m[1].split('\n').pop();
+    // 文頭の【登場時】【進化時】［ターンに1回］などは対象の前置きではないので外す
+    const prefix = m[1].split('\n').pop().replace(/^(?:【[^】]*】|［[^］]*］|\[[^\]]*\])+/, '');
     let side = m[2] === '相手' ? 'opp' : m[2] === '自分' ? 'own' : null;
     if (!m[2]) {
       // 側の指定がないときは、前置きが空か「〜の」で終わるもの(「Lv.6以下のデジモン1体」等)だけを場の指定とみなす
@@ -13809,6 +13810,45 @@
         showToast(`「${stackLabel(holderStack)}」をアクティブにしました`);
       } });
     }
+    // このテイマー/このデジモンをレストする・できる(代償の「〜ことで」は除く)
+    const rm = /(?<!その)(?<!相手の)この(テイマー|デジモン)をレスト(させる|させ|する|できる)/.exec(t);
+    if (rm && notCost(rm.index, rm[0].length - rm[2].length)) {
+      out.push({ label: `😴 この${rm[1]}をレストする`, run: () => {
+        const f = holderStack && findStackOwnerAndZone(holderStack);
+        if (!f) { showToast(`この${rm[1]}が場にいません`, true); return; }
+        if (holderStack.rested) { showToast(`この${rm[1]}はもうレストしています`); return; }
+        if (hasLock(holderStack, 'noRest')) showToast(`🔒「${stackLabel(holderStack)}」はレストできないロックが付いています`, true);
+        snapshotPracticeState();
+        holderStack.rested = true;
+        renderPracticeBoard();
+        showToast(`「${stackLabel(holderStack)}」をレストしました`);
+      } });
+    }
+    // 自分の「X」1体をレストする・できる
+    const nm = /自分の「([^」]+)」1体をレスト(させる|させ|する|できる)/.exec(t);
+    if (nm && notCost(nm.index, nm[0].length - nm[2].length)) {
+      out.push({ label: `😴 自分の「${nm[1]}」1体をレストする`, run: () => {
+        if (!guard()) return;
+        const cands = battleStacksOf(pi).filter(st => !st.rested && cardHasName(getStackTopCard(st), nm[1]));
+        if (!cands.length) { showToast(`レストできる「${nm[1]}」がいません`, true); return; }
+        const doRest = (st) => { snapshotPracticeState(); st.rested = true; renderPracticeBoard(); showToast(`「${stackLabel(st)}」をレストしました`); };
+        if (cands.length === 1) { doRest(cands[0]); return; }
+        startFieldPick({ title: `😴 レストする「${nm[1]}」をタップ`, candidates: cands, onDone: (sel) => { if (sel[0]) doRest(sel[0]); } });
+      } });
+    }
+    // ≪進撃≫: メモリーが相手側の1以上なら、このデジモンでアタックできる(16-16)
+    if (/≪進撃≫/.test(t) && holderStack && !/「[^」]*≪進撃≫/.test(t) && !/≪進撃≫を(得|与え)/.test(t)) {
+      out.push({ label: '🏹 ≪進撃≫でアタック', run: () => {
+        const f = findStackOwnerAndZone(holderStack);
+        if (!f) { showToast('このデジモンが場にいません', true); return; }
+        if (pi !== practiceState.viewingIndex) { showToast('このデジモンの持ち主の視点に切り替えてから実行してください', true); return; }
+        const toward = practiceState.turn.playerIndex === pi ? memoryTowardOpponentOfTurnPlayer() : -memoryTowardOpponentOfTurnPlayer();
+        if (toward < 1) { showToast('≪進撃≫はメモリーが相手側の1以上のときだけアタックできます(16-16-5)', true); return; }
+        if (holderStack.rested) { showToast('このデジモンはレストしているのでアタックできません', true); return; }
+        setAdvanceAvailable(holderStack, false);
+        declareTurnEndAttack(holderStack, '🏹 ≪進撃≫');
+      } });
+    }
     // 「このデジモンでアタックする/できる」(付与された「【自分のメインフェイズ開始時】このデジモンでアタックする」など)
     const atk = /(?<!「[^」]*)このデジモンでアタック(する|できる)/.exec(t);
     if (atk && !/「\u0003|の効果を(得|与え)/.test(t.slice(atk.index, atk.index + 40))) {
@@ -14006,6 +14046,14 @@
         }
       }
     } catch (err) { console.warn(err); }
+    // メモリー±・ドローは1回押したら「✔済」にする(もう一度押すには2回タップ)。数を選ぶボタンは除く
+    handlers.forEach(h => {
+      if (h.isCost || !/^(?:⚡ メモリー[+\-]\d|🃏 \d+枚ドロー)/.test(h.label)) return;
+      const key = h.label;
+      if (e.oneShotDone && e.oneShotDone[key]) { h.label = '✔済 ' + h.label.replace(/^\S+\s/, ''); h.condNg = '済'; h.ngMsg = 'この処理はもう実行済みです(もう一度押すと、もう1回実行します)'; }
+      const run0 = h.run;
+      h.run = () => { run0(); if (!e.oneShotDone) e.oneShotDone = {}; e.oneShotDone[key] = true; const q = getEffectQueue(); if (q.current === e) renderEffectPanel(); };
+    });
     return { handlers, conds };
   }
   function getEffectHandlers(e) {
