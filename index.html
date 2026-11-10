@@ -924,6 +924,12 @@
   .deck-actions-row .btn.deck-save-mine { background: #1e3a8a; border-color: #60a5fa; color: #fff; }
   .deck-actions-row .deck-add-btn, .deck-actions-row .deck-more-btn, .deck-search-close { display: none; }
   .deck-search-head { display: flex; gap: 6px; align-items: center; }
+  .deck-search-filters { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 8px 0 10px; }
+  .deck-search-filters .dsf-colors { display: flex; gap: 4px; }
+  .deck-search-filters .dsf-color { width: 20px; height: 20px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; opacity: .45; padding: 0; }
+  .deck-search-filters .dsf-color.on { opacity: 1; border-color: #fff; box-shadow: 0 0 0 2px var(--accent); }
+  .deck-search-filters select { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 3px 4px; font-size: 11.5px; }
+  .deck-search-filters .dsf-clear { background: none; border: 1px solid var(--border); color: #fca5a5; border-radius: 5px; font-size: 11px; padding: 2px 7px; cursor: pointer; visibility: hidden; }
   .deck-search-head input { flex: 1; min-width: 0; }
   #tab-deck.deck-ro #deckNameInput { opacity: .85; }
 
@@ -3677,6 +3683,9 @@
       /* カード検索は普段は隠し、「＋ カードを追加」で右から出す */
       body.tab-deck .deck-search-col { position: fixed; top: 31px; bottom: 38px; right: 0; width: min(400px, 55vw); z-index: 45; background: var(--panel); border-left: 2px solid var(--accent); box-shadow: -10px 0 24px rgba(0,0,0,.6); padding: 6px 8px; box-sizing: border-box; display: flex; flex-direction: column; transform: translateX(105%); transition: transform .18s ease; }
       body.tab-deck.deck-search-open .deck-search-col { transform: none; }
+      body.tab-deck .deck-search-filters { margin: 5px 0 0; gap: 4px; flex-wrap: nowrap; }
+      body.tab-deck .deck-search-filters .dsf-color { width: 17px; height: 17px; }
+      body.tab-deck .deck-search-filters select { font-size: 10.5px; padding: 2px 2px; }
       body.tab-deck .deck-search-close { display: inline-flex; font-size: 11px; padding: 4px 8px; color: #fca5a5; }
       body.tab-deck .deck-search-col .card-grid { max-height: none; flex: 1; min-height: 0; grid-auto-rows: max-content; align-content: start; grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); margin-top: 6px; }
       body.tab-deck .deck-search-col .card-tile img { aspect-ratio: 63 / 88; width: 100%; height: auto; object-fit: cover; }
@@ -3725,7 +3734,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.91.0</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.91.1</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -3822,6 +3831,12 @@
           <div class="deck-search-head">
             <input type="text" id="deckSearchText" placeholder="カード名で検索して追加...">
             <button type="button" class="btn deck-search-close" id="deckSearchCloseBtn">✕ 閉じる</button>
+          </div>
+          <div class="deck-search-filters" id="deckSearchFilters">
+            <span class="dsf-colors"><button type="button" class="dsf-color" data-color="red" style="background:var(--c-red)" title="赤"></button><button type="button" class="dsf-color" data-color="blue" style="background:var(--c-blue)" title="青"></button><button type="button" class="dsf-color" data-color="yellow" style="background:var(--c-yellow)" title="黄"></button><button type="button" class="dsf-color" data-color="green" style="background:var(--c-green)" title="緑"></button><button type="button" class="dsf-color" data-color="black" style="background:var(--c-black)" title="黒"></button><button type="button" class="dsf-color" data-color="purple" style="background:var(--c-purple)" title="紫"></button><button type="button" class="dsf-color" data-color="white" style="background:var(--c-white)" title="白"></button></span>
+            <select id="deckFilterCategory" title="種類"><option value="">種類</option><option value="digimon">デジモン</option><option value="digi-egg">デジタマ</option><option value="tamer">テイマー</option><option value="option">オプション</option></select>
+            <select id="deckFilterLevel" title="Lv"><option value="">Lv</option><option value="2">Lv2</option><option value="3">Lv3</option><option value="4">Lv4</option><option value="5">Lv5</option><option value="6">Lv6</option><option value="7">Lv7</option></select>
+            <button type="button" class="dsf-clear" id="deckFilterClear" title="絞り込みを外す">✕</button>
           </div>
           <div class="card-grid" id="deckSearchGrid"></div>
         </div>
@@ -5177,11 +5192,15 @@
       return;
     }
     const query = deckSearchText.value.trim().toLowerCase();
-    if (!query) {
-      deckSearchGrid.innerHTML = '<div class="empty-state">カード名を入力すると候補が表示されます。クリックでデッキに追加します。</div>';
+    const colors = new Set([...document.querySelectorAll('#deckSearchFilters .dsf-color.on')].map(b => b.dataset.color));
+    const category = document.getElementById('deckFilterCategory').value;
+    const level = document.getElementById('deckFilterLevel').value;
+    document.getElementById('deckFilterClear').style.visibility = (colors.size || category || level) ? 'visible' : 'hidden';
+    if (!query && !colors.size && !category && !level) {
+      deckSearchGrid.innerHTML = '<div class="empty-state">カード名を入れるか、色・種類・Lvで絞り込むと候補が出ます。クリックでデッキに追加します。</div>';
       return;
     }
-    const results = currentDb.cards.filter(c => matchesFilters(c, { query })).sort(compareCardsNewestFirst);
+    const results = currentDb.cards.filter(c => matchesFilters(c, { query, colors, category, level })).sort(compareCardsNewestFirst);
     if (results.length === 0) {
       deckSearchGrid.innerHTML = '<div class="empty-state">見つかりません</div>';
       return;
@@ -5201,6 +5220,14 @@
     }
   }
 
+  document.querySelectorAll('#deckSearchFilters .dsf-color').forEach(b => b.addEventListener('click', () => { b.classList.toggle('on'); renderDeckSearchGrid(); }));
+  ['deckFilterCategory', 'deckFilterLevel'].forEach(id => document.getElementById(id).addEventListener('change', renderDeckSearchGrid));
+  document.getElementById('deckFilterClear').addEventListener('click', () => {
+    document.querySelectorAll('#deckSearchFilters .dsf-color.on').forEach(b => b.classList.remove('on'));
+    document.getElementById('deckFilterCategory').value = '';
+    document.getElementById('deckFilterLevel').value = '';
+    renderDeckSearchGrid();
+  });
   let deckSearchDebounce;
   deckSearchText.addEventListener('input', () => {
     clearTimeout(deckSearchDebounce);
@@ -5670,7 +5697,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.91.0`);
+    log(`DigiCA Tool build v0.91.1`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
