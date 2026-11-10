@@ -3762,7 +3762,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.94.0</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.94.1</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -5761,7 +5761,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.94.0`);
+    log(`DigiCA Tool build v0.94.1`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -14097,14 +14097,32 @@
         declareTurnEndAttack(holderStack, '🏹 ≪進撃≫');
       } });
     }
-    // 「このデジモンでアタックする/できる」(付与された「【自分のメインフェイズ開始時】このデジモンでアタックする」など)
-    const atk = /(?<!「[^」]*)このデジモンでアタック(する|できる)/.exec(t);
-    if (atk && !/「\u0003|の効果を(得|与え)/.test(t.slice(atk.index, atk.index + 40))) {
-      out.push({ label: `⚔️ このデジモンでアタック${atk[1] === 'する' ? 'する' : ''}`, run: () => {
-        const f = holderStack && findStackOwnerAndZone(holderStack);
-        if (!f) { showToast('このデジモンが場にいません', true); return; }
+    // 「(このデジモン|〜自分のデジモン1体|そのデジモン)で(レストせずに)(相手のデジモンに/プレイヤーに)アタックする/できる」
+    // (付与された「【自分のメインフェイズ開始時】このデジモンでアタックする」、【自分のターン終了時】のアタックなど)
+    const atk = /(?<!「[^」]*)(このデジモン|そのデジモン|([^、。]{0,60}?)自分のデジモン1体)で(レストせずに)?(相手のデジモンに|(?:相手)?プレイヤーに)?アタック(する|できる)/.exec(t);
+    if (atk && !/「\u0003|の効果を(得|与え)/.test(t.slice(atk.index, atk.index + 60)) && !/[」』]を得る/.test(t.slice(atk.index + atk[0].length, atk.index + atk[0].length + 6))) {
+      const noRest = !!atk[3];
+      const only = atk[4] ? (/プレイヤー/.test(atk[4]) ? 'player' : 'digimon') : null;
+      const who = atk[1] === 'このデジモン' ? 'このデジモン' : 'デジモン';
+      const filter = (atk[2] || '').replace(/^.*[、。]/, '').replace(/^(?:その後|そして)/, '').replace(/の$/, '').trim();
+      const toWhere = only === 'player' ? 'プレイヤーに' : only === 'digimon' ? '相手のデジモンに' : '';
+      out.push({ label: `⚔️ ${who}で${noRest ? 'レストせずに' : ''}${toWhere}アタック${atk[5] === 'する' ? 'する' : ''}`, run: () => {
         if (pi !== practiceState.viewingIndex) { showToast('このデジモンの持ち主の視点に切り替えてから実行してください', true); return; }
-        declareAttack(holderStack);
+        if (attackState) { showToast('アタック中です。今のアタックが終わってから実行してください', true); return; }
+        const go = (st) => {
+          if (!noRest && st.rested) { showToast(`「${stackLabel(st)}」はレストしているのでアタックできません`, true); return; }
+          declareAttack(st, false, { noRest, only, label: '⚔️ 効果' });
+        };
+        if (who === 'このデジモン') {
+          const f = holderStack && findStackOwnerAndZone(holderStack);
+          if (!f || f.zone !== 'battle') { showToast('このデジモンがバトルエリアにいません', true); return; }
+          go(holderStack);
+          return;
+        }
+        const cands = battleStacksOf(pi).filter(st => isDigimonLikeStack(st) && (noRest || !st.rested) && (!filter || stackMatchesFilterText(st, filter, null) !== false));
+        if (!cands.length) { showToast(`アタックできる${filter ? `「${filter}」の` : ''}デジモンがいません`, true); return; }
+        if (cands.length === 1) { go(cands[0]); return; }
+        startFieldPick({ title: `⚔️ アタックするデジモンをタップ${filter ? `(${filter})` : ''}`, candidates: cands, onDone: (sel) => { if (sel[0]) go(sel[0]); } });
       } });
     }
     // 「このカードを(自分の)セキュリティの下に表向きで置く」
@@ -19884,23 +19902,34 @@
     return { clientX: window.innerWidth / 2 - 130, clientY: 70 };
   }
 
-  function declareAttack(stack, rxChecked) {
+  // opts: { noRest: レストせずにアタック, only: 'player'|'digimon' アタック先の指定(効果によるアタック) }
+  function declareAttack(stack, rxChecked, opts) {
+    const o = opts || {};
     // 🚫「進化元を持たないデジモンではアタックできない」
     if (!rxChecked && stack.cards.length <= 1 && restrictionsFor(practiceState.viewingIndex, 'noAttackNoMat').length) {
-      confirmIfRestricted(practiceState.viewingIndex, 'noAttackNoMat', 'アタックする', () => declareAttack(stack, true));
+      confirmIfRestricted(practiceState.viewingIndex, 'noAttackNoMat', 'アタックする', () => declareAttack(stack, true, opts));
       return;
     }
     const attackerOwner = practiceState.players[practiceState.viewingIndex];
     const defenderOwner = practiceState.players[1 - practiceState.viewingIndex];
     snapshotPracticeState();
-    stack.rested = true;
+    if (!o.noRest) stack.rested = true;
     attackState = {
       attackerStack: stack, attackerOwner, defenderOwner, targetType: null, targetStack: null,
       renkeiCount: 0, renkeiBonusDP: 0, sAttackManualDelta: 0,
       preAttackHistoryLength: practiceHistory.length - 1,
+      onlyTarget: o.only || null,
     };
     cardDetailModal.classList.remove('open');
     renderPracticeBoard();
+    if (o.label) showToast(`${o.label}: 「${stackLabel(stack)}」でアタックを宣言しました${o.noRest ? '(レストしない)' : ''}`);
+    // 「プレイヤーにアタックできる」: 対象選びは出さずにそのままプレイヤーへ
+    if (o.only === 'player') {
+      attackState.targetType = 'player';
+      attackState.targetStack = null;
+      showAttackTriggerStep();
+      return;
+    }
     showAttackTargetStep();
   }
 
@@ -19926,16 +19955,16 @@
     // 通常はレスト状態のデジモンのみ対象にできるが、「衝突」等アクティブなデジモンを対象にする効果も
     // あるため、「アクティブも対象にする(効果)」で選べるようにしておく(判定はプレイヤーに委ねる)。
     startFieldPick({
-      title: `「${stackLabel(attackState.attackerStack)}」のアタック対象: レスト状態の相手デジモンをタップ、またはプレイヤーへ`,
+      title: `「${stackLabel(attackState.attackerStack)}」のアタック対象: レスト状態の相手デジモンをタップ${attackState.onlyTarget === 'digimon' ? '' : '、またはプレイヤーへ'}`,
       candidates: restedTargets,
       extra: activeTargets,
       extraLabel: noDigimon ? 'それでもデジモンを対象にする' : 'アクティブも対象にする(効果)',
       showExtra: false,
       emptyMsg: noDigimon ? `🔒 ${noDigimon}` : 'レスト状態の相手デジモンはいません',
-      sub: noPlayer ? `🔒 ${noPlayer}` : '',
+      sub: attackState.onlyTarget === 'digimon' ? '⚔️ この効果では相手のデジモンにアタックします' : noPlayer ? `🔒 ${noPlayer}` : '',
       attackStep: true,
       noCancel: true,
-      buttons: [noPlayer ? {
+      buttons: attackState.onlyTarget === 'digimon' ? [] : [noPlayer ? {
         label: `🛡 相手プレイヤーへ(🔒 アタックできない)`,
         onClick: () => openDecisionUi(`「${stackLabel(attackState.attackerStack)}」は${noPlayer.replace(/^ロック: /, '')}(🔒)`, [
           { label: 'やめる(対象を選び直す)', primary: true, onClick: () => showAttackTargetStep() },

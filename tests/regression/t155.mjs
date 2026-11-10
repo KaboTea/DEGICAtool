@@ -1,0 +1,20 @@
+// v0.94.1: 「〜でアタックできる」の効果ボタン(レストせずに/プレイヤーに/相手のデジモンに/条件つきの自分のデジモン1体)
+import { page, ev, errs, browser, banner } from '../head.mjs';
+await page.waitForTimeout(1200);
+const o = {};
+const pi = await ev('practiceState.turn.playerIndex');
+const omega = await ev(`[...cardIndexByNumber.values()].find(c=>c.category==='digimon'&&c.name.includes('オメガモン')).number`);
+const run = (num, line, idx) => ev(`(() => { const P=practiceState.players[${pi}]; simpleActionHandlersFor({ownerIndex:${pi}, cardNumber:'${num}', field:'effect', text:${JSON.stringify(line)}}, P.battle[${idx}])[0].run(); })()`);
+await ev(`(() => { const P=practiceState.players[${pi}], O=practiceState.players[1-${pi}]; P.battle=[{cards:['BT1-010'],rested:true},{cards:['BT1-019','${omega}'],rested:false}]; O.battle=[{cards:['BT1-010'],rested:false}]; renderPracticeBoard(); })()`);
+await run('AD1-007', '【自分のターン終了時】このデジモンでレストせずにアタックできる。', 0); await page.waitForTimeout(300);
+o.noRest = await ev(`!!attackState && attackState.attackerStack === practiceState.players[${pi}].battle[0] && practiceState.players[${pi}].battle[0].rested === true`);
+await ev('endAttack()'); await page.waitForTimeout(200);
+await run('BT17-081', '【自分のターン終了時】名称に「オメガモン」を含む自分のデジモン1体でプレイヤーにアタックできる。', 1); await page.waitForTimeout(300);
+o.player = await ev(`!!attackState && attackState.targetType === 'player' && attackState.attackerStack === practiceState.players[${pi}].battle[1] && practiceState.players[${pi}].battle[1].rested`);
+await ev('endAttack()'); await page.waitForTimeout(200);
+await ev(`practiceState.players[${pi}].battle.forEach(s=>s.rested=false)`);
+await run('BT14-054', '【自分のターン終了時】このデジモンで相手のデジモンにアタックできる。', 0); await page.waitForTimeout(300);
+o.digimonOnly = !/相手プレイヤーへ/.test(await banner());
+const ng = Object.entries(o).filter(([k, x]) => x !== true).map(([k]) => k);
+console.log(JSON.stringify(o));
+await browser.close(); console.log(ng.length ? ng : errs);
