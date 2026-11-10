@@ -3762,7 +3762,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.93.0</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.93.1</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -5761,7 +5761,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.93.0`);
+    log(`DigiCA Tool build v0.93.1`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -14732,6 +14732,32 @@
     applyAutoEndToggleUi();
     if (!autoEndEnabled) autoEndDisarm();
   });
+  // ターン終了条件のメモリー(ふつうは相手側の1以上。6-1-4-1)。
+  // 「【自分のターン】ターン終了条件が、メモリーが相手側の3以上に移動したときになる」(フェンリルガモン)を持つと3になる。
+  // バトルエリアの自分のデジモンの、一番上の効果と進化元効果(「このデジモンが名称に「X」を含む間」の条件つき)を見る
+  function turnEndThreshold(pi) {
+    if (!practiceState) return 1;
+    if (pi == null) pi = practiceState.turn.playerIndex;
+    let n = 1;
+    const re = /ターン終了条件が、?メモリーが相手側の(\d+)以上/;
+    battleStacksOf(pi).forEach(st => {
+      const top = getStackTopCard(st);
+      if (!top || st.dualAsOption) return;
+      const check = (text, isSource) => {
+        engineStripNotes(text || '').split('\n').forEach(line => {
+          const m = re.exec(line);
+          if (!m) return;
+          if (/【相手のターン】/.test(line)) return;
+          const cm = /このデジモンが名称に「([^」]+)」を含む間/.exec(line);
+          if (cm && !cardNameHas(top, cm[1])) return;
+          n = Math.max(n, parseInt(m[1], 10));
+        });
+      };
+      check(top.effect, false);
+      st.cards.slice(0, -1).forEach(x => { if (!cardEntryFaceDown(x)) { const c = cardIndexByNumber.get(cardEntryNum(x)); if (c) check(matInheritedOf(c), true); } });
+    });
+    return n;
+  }
   function memoryTowardOpponentOfTurnPlayer() {
     return practiceState.turn.playerIndex === 0 ? practiceState.memory : -practiceState.memory;
   }
@@ -14746,12 +14772,18 @@
     if (!practiceState) { autoEndDisarm(); autoEnd.stateRef = null; return; }
     const t = practiceState.turn;
     const mt = memoryTowardOpponentOfTurnPlayer();
+    const need = t.phase === 'main' ? turnEndThreshold(t.playerIndex) : 1;
     const sameBoard = autoEnd.stateRef === practiceState && autoEnd.turnCount === t.count;
-    if (!sameBoard || t.phase !== 'main' || mt < 1) autoEndDisarm();
-    if (sameBoard && t.phase === 'main' && autoEnd.prevMt != null && autoEnd.prevMt < 1 && mt >= 1 && autoEndEnabled && effectPanelEnabled) {
+    if (!sameBoard || t.phase !== 'main' || mt < need) autoEndDisarm();
+    if (sameBoard && t.phase === 'main' && autoEnd.prevMt != null && autoEnd.prevMt < need && mt >= need && autoEndEnabled && effectPanelEnabled) {
       autoEnd.armed = true;
       autoEnd.okCount = 0;
       if (!autoEnd.timer) autoEnd.timer = setInterval(autoEndTick, 400);
+    }
+    // フェンリルガモンなどで終了条件が上がっているときは、相手側に移っても続くことを1回知らせる
+    if (sameBoard && t.phase === 'main' && need > 1 && mt >= 1 && mt < need && autoEnd.prevMt != null && autoEnd.prevMt < 1 && autoEnd.toldNeedTurn !== t.count) {
+      autoEnd.toldNeedTurn = t.count;
+      showToast(`ターン終了条件が「メモリーが相手側の${need}以上」になっているため、まだターンは続きます`);
     }
     autoEnd.stateRef = practiceState;
     autoEnd.turnCount = t.count;
@@ -14775,7 +14807,7 @@
   function autoEndBusy() { return !!autoEndBusyReason(); }
   function autoEndTick() {
     if (!autoEnd.armed || !practiceState || !autoEndEnabled || !effectPanelEnabled) { autoEndDisarm(); return; }
-    if (practiceState.turn.phase !== 'main' || memoryTowardOpponentOfTurnPlayer() < 1) { autoEndDisarm(); return; }
+    if (practiceState.turn.phase !== 'main' || memoryTowardOpponentOfTurnPlayer() < turnEndThreshold()) { autoEndDisarm(); return; }
     const why = autoEndBusyReason();
     if (why) {
       autoEnd.okCount = 0;
@@ -20918,9 +20950,12 @@
       // ターン終了条件(メモリーが相手側1以上)を満たさなくなるため、ターンは終了せず
       // メインフェイズに戻る(6-6-4)。
       const memoryTowardOpponent = turn.playerIndex === 0 ? practiceState.memory : -practiceState.memory;
-      if (memoryTowardOpponent < 1) {
+      const endNeed = turnEndThreshold(turn.playerIndex);
+      if (memoryTowardOpponent < endNeed) {
         turn.phase = 'main';
-        showToast('メモリーが自分側に戻ったためターンは終了せず、メインフェイズに戻ります');
+        showToast(endNeed > 1 && memoryTowardOpponent >= 1
+          ? `ターン終了条件が「メモリーが相手側の${endNeed}以上」になっているため、ターンは終了せず、メインフェイズに戻ります`
+          : 'メモリーが自分側に戻ったためターンは終了せず、メインフェイズに戻ります');
         cancelTargetModes();
         renderPracticeBoard();
         return;
