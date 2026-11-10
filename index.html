@@ -3762,7 +3762,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.95.0</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.95.1</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -5761,7 +5761,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.95.0`);
+    log(`DigiCA Tool build v0.95.1`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -6915,7 +6915,7 @@
   // 期間つきのものは practiceState.fieldEffects に kind:'restrict' で積む(DP増減と同じ期間・一覧・解除の仕組み)。
   // 場のカードの常在効果(【お互いのターン】お互いは〜 等)は、場を見て毎回自動で検出する(積まない)。
   // 該当する操作をしたときは確認(やめる/それでも)を出す。完全には止めない。
-  const RESTRICT_LABELS = { noOption: 'オプション使用不可', noSecEffect: 'セキュリティ効果無効', noAttackNoMat: '進化元なしでアタック不可' };
+  const RESTRICT_LABELS = { noOption: 'オプション使用不可', noSecEffect: 'セキュリティ効果無効', noAttackNoMat: '進化元なしでアタック不可', noPlayByEffect: '効果で登場不可', noPlayLowDp: '登場不可(DP条件)' };
   function restrictTargetPis(r) {
     if (r.target === 'both') return [0, 1];
     return [r.target === 'own' ? r.ownerIndex : 1 - r.ownerIndex];
@@ -6926,7 +6926,9 @@
   // 「「青ミラージュ」はオプションカードを使用できない」の形の説明
   function restrictDescribe(r) {
     const names = restrictTargetPis(r).map(pi => `「${practiceState.players[pi].deckName}」`).join('と');
-    const what = r.restrict === 'noOption' ? 'はオプションカードを使用できない'
+    const what = r.restrict === 'noPlayByEffect' ? `は${r.detail || '効果でデジモンを登場できない'}`
+      : r.restrict === 'noPlayLowDp' ? `は${r.detail || '指定のデジモンを登場できない'}`
+      : r.restrict === 'noOption' ? 'はオプションカードを使用できない'
       : r.restrict === 'noAttackNoMat' ? 'は進化元を持たないデジモンではアタックできない'
       : `のセキュリティの${r.optionOnly ? 'オプションの' : ''}【セキュリティ】効果を発揮しない`;
     return names + what;
@@ -6943,6 +6945,10 @@
       const SIDE = (w) => w === '相手' ? 'opp' : w === '自分' ? 'own' : 'both';
       let m = /(相手|お互い|自分)は[^。、]*?オプションカードを使用できな/.exec(sent);
       if (m) push(m, 'noOption', SIDE(m[1]));
+      m = /(相手|お互い|自分)は((?:トラッシュから、?)?(?:デジモンとテイマーを効果で|効果でデジモン(?:とテイマー)?を)登場でき)(?:な|ず)/.exec(sent);
+      if (m) push(m, 'noPlayByEffect', SIDE(m[1]), { detail: m[2] + 'ない' });
+      m = /(相手|お互い|自分)は(DP(\d+)以下のデジモンを登場でき)(?:な|ず)/.exec(sent);
+      if (m) push(m, 'noPlayLowDp', SIDE(m[1]), { detail: m[2] + 'ない', dpMax: parseInt(m[3], 10) });
       m = /(相手|お互い|自分)は進化元を持たないデジモンではアタックできな/.exec(sent);
       if (m) push(m, 'noAttackNoMat', SIDE(m[1]));
       m = /(相手|自分)の(オプションカードの)?【セキュリティ】効果全ては発揮しな/.exec(sent);
@@ -6969,7 +6975,7 @@
               if (r.duration !== 'permanent') return;
               // 「〜がいる間、相手はオプションカードを使用できない」: 条件を満たしていないときは制限しない
               if (r.cond && evalEffectCondition(r.cond, holder, pi) === false) return;
-              res.push({ kind: 'restrict', restrict: r.restrict, target: SIDE_TO_TARGET[r.side], ownerIndex: pi, optionOnly: r.optionOnly,
+              res.push({ kind: 'restrict', restrict: r.restrict, target: SIDE_TO_TARGET[r.side], ownerIndex: pi, optionOnly: r.optionOnly, detail: r.detail, dpMax: r.dpMax,
                 refCardName: src.card.name, cond: r.cond, auto: true });
             });
           });
@@ -7016,7 +7022,7 @@
   function restrictHandlersFor(e) {
     if (!practiceState) return [];
     return parsePlayerRestrictions(e.text).filter(r => r.duration !== 'permanent').map(r => {
-      const entry = { kind: 'restrict', restrict: r.restrict, target: SIDE_TO_TARGET[r.side], ownerIndex: e.ownerIndex, optionOnly: r.optionOnly,
+      const entry = { kind: 'restrict', restrict: r.restrict, target: SIDE_TO_TARGET[r.side], ownerIndex: e.ownerIndex, optionOnly: r.optionOnly, detail: r.detail, dpMax: r.dpMax,
         duration: r.duration, refCardName: e.cardName, refCardNumber: e.cardNumber };
       const who = restrictTargetPis(entry).map(pi => `「${practiceState.players[pi].deckName}」`).join('と');
       return {
@@ -8810,6 +8816,9 @@
     noReturn: '手札/デッキに戻らない',
     noDestroyByEffect: '効果で消滅しない',
     noBattleDestroy: 'バトルで消滅しない',
+    noBeBlocked: 'ブロックされない',
+    noBeAttacked: 'アタックされない',
+    noRetarget: 'アタックの対象を変更されない',
   };
   // 耐性マーク「⛨」(盾に十字)。端末によって記号フォントが無く□になるのを避けるため、SVGで描く。
   const RESIST_ICON_HTML = '<svg class="resist-ico" viewBox="0 0 16 16" width="1em" height="1em" aria-hidden="true" style="vertical-align:-0.12em"><path d="M8 1.2 14 3.3V8c0 3.4-2.5 5.9-6 6.9C4.5 13.9 2 11.4 2 8V3.3Z" fill="currentColor" fill-opacity="0.18" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M8 3.6v9.6M3.6 7.3h8.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>';
@@ -8937,10 +8946,13 @@
       if (/DPをマイナスされ(ず|ない)/.test(sent)) types.push('noDpMinus');
       if (/≪退化≫の効果を受けない/.test(sent)) types.push('noDegen');
       if (/(手札|デッキ)[^、。]{0,6}に?戻らず|戻らない/.test(sent)) types.push('noReturn');
-      if (/効果で消滅しない/.test(sent)) types.push('noDestroyByEffect');
-      if (/バトルで消滅しない/.test(sent)) types.push('noBattleDestroy');
+      if (/効果では?消滅しない/.test(sent)) types.push('noDestroyByEffect');
+      if (/バトルでは?消滅しない/.test(sent)) types.push('noBattleDestroy');
+      if (/ブロックされ(ない|ず)/.test(sent)) types.push('noBeBlocked');
+      if (/アタックされ(ない|ず)/.test(sent)) types.push('noBeAttacked');
+      if (/アタックの対象(は|を)変更されない/.test(sent)) types.push('noRetarget');
       if (!types.length) return;
-      const until = /(次の)?相手のターン終了まで/.test(sent) ? 'oppTurnEnd' : (/ターン終了まで/.test(sent) ? 'turnEnd' : 'manual');
+      const until = /(次の)?相手のターン終了時?まで/.test(sent) ? 'oppTurnEnd' : (/ターン終了時?まで|このターンの間/.test(sent) ? 'turnEnd' : 'manual');
       const target = /このデジモン/.test(sent) ? 'self' : (/自分のデジモン(\d+体|全て)/.test(sent) ? (/全て/.test(sent) ? 'allOwn' : 'pickOwn') : 'self');
       out.push({ types, until, target });
     });
@@ -10995,12 +11007,19 @@
   function warnPlayProhibited(stack, pi) {
     if (!practiceState || !stack) return;
     const top = getStackTopCard(stack);
-    if (!top || top.category !== 'digimon') return;
+    if (!top || (top.category !== 'digimon' && top.category !== 'tamer')) return;
+    const isDigi = top.category === 'digimon';
     const info = stack.entryInfo || {};
-    const list = [
+    const list = !isDigi ? [] : [
       ...(info.byEffect ? prohibitionsForPlayer(pi, 'playByEffect') : []),
       ...prohibitionsOn(stack, 'play'),
     ].filter(r => r.holder !== stack);
+    // 効果で期間つきにかけられた制限(「相手のターン終了まで、相手はデジモンとテイマーを効果で登場できない」等)
+    const timed = [
+      ...(info.byEffect ? restrictionsFor(pi, 'noPlayByEffect').filter(r => isDigi || /テイマー/.test(r.detail || '')) : []),
+      ...(isDigi ? restrictionsFor(pi, 'noPlayLowDp').filter(r => getEffectiveDP(stack) <= r.dpMax) : []),
+    ].filter(r => !r.auto || !list.length);
+    timed.forEach(r => list.push({ srcName: r.refCardName || '?', text: restrictDescribe(r) }));
     if (list.length) showToast(`🚫 登場できない状態でした — ${prohibText(list)}(↩ 元に戻すで戻せます)`, true);
   }
   function canEvolveOntoStack(card, stack) {
@@ -11648,7 +11667,8 @@
   // ---------- アタック対象の変更(効果用) ----------
   function retargetAttack(target, checked) {
     if (!attackState) { showToast('アタック中ではありません', true); return; }
-    const pl = checked ? [] : prohibitionsOn(attackState.attackerStack, 'noRetarget');
+    const pl = checked ? [] : [...prohibitionsOn(attackState.attackerStack, 'noRetarget'),
+      ...(hasResist(attackState.attackerStack, 'noRetarget') ? [{ srcName: stackLabel(attackState.attackerStack), text: '⛨ アタックの対象を変更されない(効果で付与)' }] : [])];
     if (pl.length) { confirmProhibited(pl, '対象を変更する', () => retargetAttack(target, true), () => { if (lastAttackStepFn) lastAttackStepFn(); else renderPracticeBoard(); }); return; }
     snapshotPracticeState();
     if (target === 'player') {
@@ -14539,7 +14559,7 @@
     }
     const f = findStackByUid(e.stackUid);
     // 進化元効果・リンク効果・消滅時(場を離れた後)・手札の効果などでも、ドローだけは使えるようにする
-    if (!f || e.field !== 'effect') return [...securityCardHandlersFor(e), ...keywordGrantHandlersFor(e, f && f.stack), ...effectGrantHandlersFor(e, f && f.stack), ...effectRefHandlersFor(e), ...targetHandlersFor(e, f && f.stack), ...retargetHandlersFor(e, f && f.stack), ...memoryHandlersFor(e), ...drawHandlersFor(e)];
+    if (!f || e.field !== 'effect') return [...securityCardHandlersFor(e), ...keywordGrantHandlersFor(e, f && f.stack), ...effectGrantHandlersFor(e, f && f.stack), ...effectRefHandlersFor(e), ...targetHandlersFor(e, f && f.stack), ...retargetHandlersFor(e, f && f.stack), ...(f ? resistGrantHandlersFor(e, f.stack) : []), ...memoryHandlersFor(e), ...drawHandlersFor(e)];
     const stack = f.stack;
     const line = e.text;
     const list = [];
@@ -14603,6 +14623,20 @@
         list.push({ label: o.buttonLabel, run: () => activateCostTriggerDP(stack, o) });
       });
     }
+    list.push(...resistGrantHandlersFor(e, stack));
+    if (['登場時', '進化時'].includes(e.timing)) {
+      getSecDiscardOppBroadcastDPOptions(stack).forEach(o => {
+        list.push({ label: o.buttonLabel, run: () => activateSecDiscardOppBroadcastDP(stack, o) });
+      });
+    }
+    return list;
+  }
+
+  // 耐性(⛨)の付与ボタン。進化元効果・リンク効果の行でも使う
+  function resistGrantHandlersFor(e, stack) {
+    const list = [];
+    if (!stack) return list;
+    const line = e.text;
     parseResistGrants(line).forEach(g => {
       const names = g.types.map(t => RESIST_LABELS[t]).join('・');
       const dur = RESIST_DURATION_LABELS[g.until];
@@ -14634,14 +14668,8 @@
         });
       }
     });
-    if (['登場時', '進化時'].includes(e.timing)) {
-      getSecDiscardOppBroadcastDPOptions(stack).forEach(o => {
-        list.push({ label: o.buttonLabel, run: () => activateSecDiscardOppBroadcastDP(stack, o) });
-      });
-    }
     return list;
   }
-
   // 手動で誘発を追加する(検出から漏れた「〜したとき」系など)
   function openManualTriggerPicker(ev) {
     if (!practiceState) return;
@@ -20127,7 +20155,8 @@
       showAttackTriggerStep();
     };
     const toTarget = (s, checked) => {
-      const pl = checked ? [] : [...prohibitionsOn(s, 'beAttacked'), ...prohibitionsOn(attackState.attackerStack, 'attackThis').filter(r => r.holder === s)];
+      const pl = checked ? [] : [...prohibitionsOn(s, 'beAttacked'), ...prohibitionsOn(attackState.attackerStack, 'attackThis').filter(r => r.holder === s),
+        ...(hasResist(s, 'noBeAttacked') ? [{ srcName: stackLabel(s), text: '⛨ アタックされない(効果で付与)' }] : [])];
       if (pl.length) { confirmProhibited(pl, 'このデジモンにアタックする', () => toTarget(s, true), () => showAttackTargetStep()); return; }
       attackState.targetType = 'digimon';
       attackState.targetStack = s;
@@ -20339,7 +20368,9 @@
   // このデジモンでブロックすることへの禁止(ブロックできない・レストできない・アタック中のデジモンがブロックされない)
   function blockProhibitionsFor(s) {
     if (!attackState) return [];
-    return [...prohibitionsOn(s, 'block'), ...prohibitionsOn(s, 'rest'), ...beBlockedProhibitions(attackState.attackerStack, s)];
+    const a = attackState.attackerStack;
+    const byResist = hasResist(a, 'noBeBlocked') ? [{ srcName: stackLabel(a), text: '⛨ ブロックされない(効果で付与)' }] : [];
+    return [...prohibitionsOn(s, 'block'), ...prohibitionsOn(s, 'rest'), ...beBlockedProhibitions(a, s), ...byResist];
   }
   function showAttackBlockStep() {
     lastAttackStepFn = showAttackBlockStep;
