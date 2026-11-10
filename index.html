@@ -3762,7 +3762,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.93.1</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.94.0</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -5761,7 +5761,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.93.1`);
+    log(`DigiCA Tool build v0.94.0`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -6024,7 +6024,7 @@
   function getEffectiveDP(stack) {
     const c = getStackTopCard(stack);
     const base = stack.actingAsDigimon ? (stack.assignedDP ?? 0) : (c ? (c.dp ?? 0) : 0);
-    return base + (stack.dpModifier || 0) + getTempDPModifierSum(stack) + getMaterialTurnDPBonus(stack) + getSelfEffectDPBonus(stack) + getMaterialConditionSelfDPBonus(stack) + getMaterialConditionInheritedDPBonus(stack) + getAllOwnBroadcastDPBonus(stack) + getFieldEffectDPBonus(stack) + getSecurityStaticDPBonus(stack) + getConditionalSelfDPBonus(stack);
+    return base + (stack.dpModifier || 0) + getTempDPModifierSum(stack) + getMaterialTurnDPBonus(stack) + getSelfEffectDPBonus(stack) + getMaterialConditionSelfDPBonus(stack) + getMaterialConditionInheritedDPBonus(stack) + getAllOwnBroadcastDPBonus(stack) + getFieldEffectDPBonus(stack) + getSecurityStaticDPBonus(stack) + getConditionalSelfDPBonus(stack) + getExtraDPBonus(stack);
   }
   // 「【自分のターン】〜間、このデジモンはDP+N」: 条件の判定ができて満たしている間だけ自動で加える
   // (進化元の名称/特徴だけを見る定型の書き方は getMaterialCondition〜 側で扱っているので除く)
@@ -6061,7 +6061,7 @@
         parseConditionalSelfDPLines(src.text).forEach(cl => {
           if (!lineAllowedInZone({ prefix: cl.prefix }, f.zone)) return;
           if (!engineTurnLabelOk(cl.labels, pi)) return;
-          if (evalEffectCondition(cl.cond, stack, pi) === true) sum += cl.dp;
+          if (evalExtraCond(cl.cond, stack, pi) === true) sum += cl.dp;
         });
       });
       return sum;
@@ -6282,6 +6282,254 @@
         }
         const numStr = signedAmount.replace('＋', '+').replace('－', '-');
         sum += parseInt(numStr, 10);
+      });
+    });
+    return sum;
+  }
+
+  // ---------- v0.94: これまで読めていなかった常在のDP増減 ----------
+  // ・2文ある効果の1文目(「このデジモンをDP+2000。このデジモンのDPが10000以上の間、≪貫通≫を得る」)
+  // ・「〜N枚/体/色ごとに、このデジモンをDP+M」(数えた数÷N 切り捨て × M)
+  // ・「進化元が4枚以上あるこのデジモンをDP+」「〜の間、このデジモンは≪X≫を得て、DP+」など書き方の違うもの
+  // ・「(条件つきの)自分のデジモン全て/自分の「X」全てをDP±」(進化元効果のものも含む)・「レスト状態の相手のデジモン全てをDP-」
+  // ・「相手/自分のセキュリティデジモン全てをDP±」(セキュリティチェックのバトルで使う: 15-1-8)
+  // 既にほかの関数で足しているもの(1行まるごとの定型文・「〜間、このデジモンをDP+」など)は二重にならないよう読み飛ばす。
+  // 数える対象が分からないものは足さない(間違ったDPを出さない)。
+  const EXTRA_DP_CACHE = new Map();
+  const EXTRA_DP_NUM = (s) => parseInt(String(s).replace('＋', '+').replace('－', '-'), 10);
+  function parseExtraDPLines(text) {
+    if (EXTRA_DP_CACHE.has(text)) return EXTRA_DP_CACHE.get(text);
+    const out = [];
+    (text || '').split('\n').forEach(line => {
+      const ln = line.trim();
+      if (!ln || /^(［セキュリティ］|\[セキュリティ\])/.test(ln)) return; // ［セキュリティ］は securityStaticRulesFor 側
+      if (SELF_TURN_DP_PATTERN.test(ln) || MATERIAL_COND_DP_PATTERN.test(ln)) return;
+      const parsed = parseEffectLine(ln);
+      if (!parsed.labels.length || !parsed.labels.every(l => /^(自分のターン|相手のターン|お互いのターン)$/.test(l))) return;
+      const body = engineStripNotes(parsed.text).replace(/^(?:［[^］]*］|\[[^\]]*\]|【[^】]+】)+/, '').replace(/[＋]/g, '+').replace(/[－]/g, '-');
+      if (/とき|終了時|開始時|ことで/.test(body)) return; // 誘発するもの・コストのあるものは効果ボタン側
+      const coveredAllOwn = ALL_OWN_BROADCAST_DP_RE.test(ln);
+      body.split('。').forEach((sent0, si) => {
+        let s = sent0.trim();
+        if (!s) return;
+        // 1行まるごとの定型文の1文目だけ(2文ある効果)
+        if (si === 0 && /^このデジモン(?:をDP|のDPを)([+\-]\d+)(?:する)?$/.test(s)) {
+          out.push({ prefix: parsed.prefix, labels: parsed.labels, kind: 'self', cond: null, qual: null, per: null, dp: EXTRA_DP_NUM(/([+\-]\d+)/.exec(s)[1]) });
+          return;
+        }
+        // 「〜間、このデジモンをDP+N」は getConditionalSelfDPBonus 側
+        const cm0 = /^(.+?)間、このデジモン(?:は|の)?(?:をDP|のDPを|DP)([+\-]\d+)/.exec(s);
+        if (cm0 && !/とき|このターン|ことで|この効果/.test(cm0[1])) return;
+        let cond = null, m;
+        if ((m = /^(.+?)(?:の)?間、/.exec(s)) && !/ごとに/.test(m[1])) { cond = m[1]; s = s.slice(m[0].length); }
+        let per = null;
+        if ((m = /^(.+?)(\d+)(枚|体|色)ごとに、?/.exec(s))) { per = { what: m[1], n: +m[2], unit: m[3] }; s = s.slice(m[0].length); }
+        const DPTAIL = '(?:[^。]*?(?:を得て|を受けず|を与え)、)?(?:をDP|のDPを|DP)([+\\-]\\d+)';
+        // 相手/自分のセキュリティデジモン全て
+        if ((m = new RegExp('^(相手|自分)のセキュリティデジモン全て(?:は|を|の)?' + DPTAIL).exec(s))) {
+          out.push({ prefix: parsed.prefix, labels: parsed.labels, kind: 'sec', side: m[1], cond, per, dp: EXTRA_DP_NUM(m[2]) });
+          return;
+        }
+        // (条件つきの)自分のデジモン全て/自分の「X」全て/相手のデジモン全て
+        if ((m = new RegExp('^(.*?)(自分|相手)の(デジモン|(?:「[^」]+」\\/?)+)全て(?:は|を|の|に)?' + DPTAIL).exec(s))) {
+          const pre = m[1] + (m[3] === 'デジモン' ? '' : m[3]);
+          if (/このデジモン(?!と同じ名称)|1体|ごとに/.test(m[1])) return;
+          const lvMin = /Lv\.(\d+)以上/.exec(pre), lvMax = /Lv\.(\d+)以下/.exec(pre);
+          out.push({
+            prefix: parsed.prefix, labels: parsed.labels, kind: m[2] === '自分' ? 'all' : 'oppAll', cond, per, dp: EXTRA_DP_NUM(m[4]),
+            coveredAllOwn: coveredAllOwn && m[2] === '自分',
+            other: /他の/.test(m[1]), sameName: /このデジモンと同じ名称の/.test(m[1]),
+            rested: /レスト状態の/.test(m[1]) ? true : /アクティブ状態の/.test(m[1]) ? false : null,
+            subj: { filters: parseSubjectFilters(pre.replace(/このデジモンと同じ名称の/, '')), colors: parseSubjectColors(m[1] + '自分'), lvMin: lvMin ? +lvMin[1] : null, lvMax: lvMax ? +lvMax[1] : null },
+          });
+          return;
+        }
+        // このデジモン(「進化元が4枚以上ある」「特徴に「X」を持つ」などの修飾つきも)
+        let qual = null;
+        if ((m = /^(進化元が\d+枚以上ある|進化元に(?:「[^」]+」\/?)+が(?:\d+枚以上)?ある|特徴に(?:「[^」]+」\/?)+を持つ)(?=このデジモン)/.exec(s))) { qual = m[1]; s = s.slice(m[0].length); }
+        if ((m = new RegExp('(?:^|、)このデジモン(?:は|の|を)?' + DPTAIL).exec(s))) {
+          // 「このデジモンはこのデジモンの進化元の色全てを得て」のような、色やカードを変える効果は読まない
+          if (/の色全てを得て/.test(s)) return;
+          out.push({ prefix: parsed.prefix, labels: parsed.labels, kind: 'self', cond, qual, per, dp: EXTRA_DP_NUM(m[1]) });
+          return;
+        }
+      });
+    });
+    EXTRA_DP_CACHE.set(text, out);
+    return out;
+  }
+  function extraTraitsOf(card) { return [card && card.type, card && card.form, card && card.attribute].filter(Boolean).join('/').split('/').filter(Boolean); }
+  // 「このデジモン」の修飾(進化元が4枚以上ある 等)を満たしているか
+  function extraQualOk(qual, stack) {
+    if (!qual) return true;
+    const top = getStackTopCard(stack);
+    const mats = stack.cards.slice(0, -1);
+    let m;
+    if ((m = /^進化元が(\d+)枚以上ある$/.exec(qual))) return mats.length >= +m[1];
+    if ((m = /^進化元に((?:「[^」]+」\/?)+)が(?:(\d+)枚以上)?ある$/.exec(qual))) {
+      const names = (m[1].match(/「([^」]+)」/g) || []).map(x => x.slice(1, -1));
+      const k = mats.filter(e => !cardEntryFaceDown(e) && names.some(n => cardHasName(cardIndexByNumber.get(cardEntryNum(e)), n) || (miniCardName(cardEntryNum(e)) || '').includes(n) || extraTraitsOf(cardIndexByNumber.get(cardEntryNum(e))).some(t => t === n))).length;
+      return k >= (m[2] ? +m[2] : 1);
+    }
+    if ((m = /^特徴に((?:「[^」]+」\/?)+)を持つ$/.exec(qual))) {
+      const names = (m[1].match(/「([^」]+)」/g) || []).map(x => x.slice(1, -1));
+      return names.some(n => extraTraitsOf(top).some(t => t.includes(n)));
+    }
+    return false;
+  }
+  // 条件の判定(これまでの判定で分からなかった言い回しをいくつか足してから、いつもの判定へ)
+  function evalExtraCond(cond, stack, pi) {
+    if (!cond) return true;
+    const c = cond.trim();
+    let m;
+    const P = practiceState.players[pi];
+    if ((m = /^このデジモンが進化元を(\d+)枚以上持つ$/.exec(c))) return stack.cards.length - 1 >= +m[1];
+    if (/^このデジモンと同じ名称の他の自分のデジモンがいる$/.test(c)) {
+      const top = getStackTopCard(stack);
+      return P.battle.some(st => st !== stack && isDigimonLikeStack(st) && (getStackTopCard(st) || {}).name === (top || {}).name);
+    }
+    if (/^自分のデジモン全てがレスト状態$/.test(c)) {
+      const ds = P.battle.filter(isDigimonLikeStack);
+      return ds.length > 0 && ds.every(st => st.rested);
+    }
+    let r = null;
+    try { r = evalEffectCondition(c, stack, pi); } catch (e) { r = null; }
+    if (r == null) { try { r = evalStackCondition(c, stack, pi); } catch (e) { r = null; } }
+    return r;
+  }
+  // 「〜N枚/体/色ごとに」の数える対象を数える(分からなければ null)
+  function extraCountSubject(per, stack, pi) {
+    const me = practiceState.players[pi], op = practiceState.players[1 - pi];
+    const top = getStackTopCard(stack);
+    const mats = stack.cards.slice(0, -1);
+    const faceUpMats = mats.filter(e => !cardEntryFaceDown(e)).map(e => cardIndexByNumber.get(cardEntryNum(e))).filter(Boolean);
+    const colorCount = (cards) => new Set(cards.filter(Boolean).flatMap(c => c.color || [])).size;
+    let w = per.what.trim(), m;
+    // 「特徴に「X」を持つこのデジモンの〜」: このデジモンが条件に合わなければ 0
+    if ((m = /^(特徴に(?:「[^」]+」\/?)+を持つ)(?=このデジモン)/.exec(w))) {
+      if (!extraQualOk(m[1], stack)) return 0;
+      w = w.slice(m[0].length);
+    }
+    if (per.unit === '色') {
+      if (/^このデジモンの進化元の色$/.test(w)) return colorCount(faceUpMats);
+      if (/^このデジモンの色$/.test(w)) return colorCount([top]);
+      if (/^自分のテイマーの色$/.test(w)) return colorCount(me.battle.map(getStackTopCard).filter(c => c && c.category === 'tamer'));
+      if (/^(?:自分の)?デジモンとテイマーの色$/.test(w)) return colorCount(me.battle.map(getStackTopCard).filter(c => c && (c.category === 'tamer' || c.category === 'digimon')));
+      if ((m = /^(自分|相手)のトラッシュのカードの色$/.exec(w))) return colorCount((m[1] === '自分' ? me : op).trash.map(e => cardIndexByNumber.get(cardEntryNum(e))));
+      return null;
+    }
+    if (per.unit === '枚') {
+      if (/^このデジモンの進化元$/.test(w)) return mats.length;
+      if ((m = /^このデジモンの進化元の(.+)$/.exec(w))) {
+        const f = { filters: parseSubjectFilters(m[1]), colors: [] };
+        if (!f.filters.length) return null;
+        return faceUpMats.filter(c => cardMatchesSubject(c, f) && (!/デジモンカード/.test(m[1]) || c.category === 'digimon')).length;
+      }
+      if ((m = /^(自分|相手)のセキュリティ$/.exec(w))) return (m[1] === '自分' ? me : op).security.length;
+      if ((m = /^(自分|相手)のトラッシュ$/.exec(w))) return (m[1] === '自分' ? me : op).trash.length;
+      if ((m = /^(自分|相手)のトラッシュの(.+)$/.exec(w))) {
+        const f = { filters: parseSubjectFilters(m[2]), colors: [] };
+        if (!f.filters.length) return null;
+        return (m[1] === '自分' ? me : op).trash.map(e => cardIndexByNumber.get(cardEntryNum(e))).filter(c => c && cardMatchesSubject(c, f) && (!/デジモンカード/.test(m[2]) || c.category === 'digimon')).length;
+      }
+      return null;
+    }
+    // 体: 「(他の)(レスト状態の)(自分の/相手の)(条件)デジモン/テイマー」
+    if (!(m = /(デジモン|テイマー)$/.exec(w))) return null;
+    const kind = m[1];
+    const other = /他の/.test(w);
+    const rested = /レスト状態の/.test(w) ? true : /アクティブ状態の/.test(w) ? false : null;
+    const sameName = /このデジモンと同じ名称の/.test(w);
+    const players = /相手の/.test(w) ? [op] : /自分の/.test(w) ? [me] : [me, op];
+    const colors = parseSubjectColors(w);
+    const rest = w.replace(/このデジモンと同じ名称の|他の|レスト状態の|アクティブ状態の|自分の|相手の|(デジモン|テイマー)$/g, '').replace(/(?:[赤青黄緑黒紫白](?:か|\/)?)+の/, '').replace(/か、/g, 'か');
+    const f = { filters: parseSubjectFilters(rest), colors };
+    if (rest.trim() && !f.filters.length) return null; // 読めない条件
+    let k = 0;
+    players.forEach(P => P.battle.forEach(st => {
+      if (other && st === stack) return;
+      const c = getStackTopCard(st);
+      if (!c) return;
+      if (kind === 'デジモン' ? !isDigimonLikeStack(st) : c.category !== 'tamer') return;
+      if (rested != null && !!st.rested !== rested) return;
+      if (sameName && (!top || c.name !== top.name)) return;
+      if ((f.filters.length || f.colors.length) && !cardMatchesSubject(c, f)) return;
+      k++;
+    }));
+    return k;
+  }
+  function extraRuleAmount(r, holderStack, pi) {
+    if (!r.per) return r.dp;
+    const k = extraCountSubject(r.per, holderStack, pi);
+    if (k == null) return 0;
+    return Math.floor(k / r.per.n) * r.dp;
+  }
+  let extraDpBusy = false;
+  function getExtraDPBonus(stack) {
+    if (!practiceState || extraDpBusy || !isDigimonLikeStack(stack)) return 0;
+    const f = findStackOwnerAndZone(stack);
+    if (!f) return 0;
+    const pi = practiceState.players.indexOf(f.player);
+    extraDpBusy = true;
+    try {
+      let sum = 0;
+      // このデジモン自身の効果
+      getStackEffectSources(stack).forEach(src => {
+        parseExtraDPLines(src.text).forEach(r => {
+          if (r.kind !== 'self') return;
+          if (!lineAllowedInZone({ prefix: r.prefix }, f.zone) || !engineTurnLabelOk(r.labels, pi)) return;
+          if (!extraQualOk(r.qual, stack)) return;
+          if (r.cond && evalExtraCond(r.cond, stack, pi) !== true) return;
+          sum += extraRuleAmount(r, stack, pi);
+        });
+      });
+      // 自分/相手の場のデジモンから届く「〜全て」(バトルエリアのデジモンだけが受ける)
+      if (f.zone === 'battle') {
+        const top = getStackTopCard(stack);
+        [0, 1].forEach(spi => {
+          practiceState.players[spi].battle.forEach(srcStack => {
+            if (!isDigimonLikeStack(srcStack)) return;
+            getStackEffectSources(srcStack).forEach(src => {
+              parseExtraDPLines(src.text).forEach(r => {
+                if (r.kind !== 'all' && r.kind !== 'oppAll') return;
+                if (r.kind === 'all' ? spi !== pi : spi === pi) return;
+                if (r.coveredAllOwn && src.field === 'effect') return; // getAllOwnBroadcastDPBonus が足している
+                if (!lineAllowedInZone({ prefix: r.prefix }, 'battle') || !engineTurnLabelOk(r.labels, spi)) return;
+                if (r.other && srcStack === stack) return;
+                if (r.rested != null && !!stack.rested !== r.rested) return;
+                if (r.sameName && (getStackTopCard(srcStack) || {}).name !== (top || {}).name) return;
+                if (!cardMatchesSubject(top, r.subj)) return;
+                if (r.subj.lvMin != null && !(top && top.level >= r.subj.lvMin)) return;
+                if (r.subj.lvMax != null && !(top && top.level <= r.subj.lvMax)) return;
+                if (r.cond && evalExtraCond(r.cond, srcStack, spi) !== true) return;
+                const amt = extraRuleAmount(r, srcStack, spi);
+                // 相手の効果によるDPマイナスを受けない耐性
+                if (r.kind === 'oppAll' && amt < 0 && hasAnyResist(stack) && (hasResist(stack, 'immuneOpp') || hasResist(stack, 'noDpMinus') || hasResist(stack, 'immuneOppDigimon'))) return;
+                sum += amt;
+              });
+            });
+          });
+        });
+      }
+      return sum;
+    } catch (e) { return 0; } finally { extraDpBusy = false; }
+  }
+  // セキュリティチェックでめくったデジモン(セキュリティデジモン)のDP: 印刷DP + 場の「セキュリティデジモン全てをDP±」
+  function getSecurityDigimonDP(card, defPi) {
+    let sum = card && card.dp != null ? card.dp : 0;
+    if (!practiceState) return sum;
+    [0, 1].forEach(spi => {
+      practiceState.players[spi].battle.forEach(srcStack => {
+        if (!isDigimonLikeStack(srcStack)) return;
+        getStackEffectSources(srcStack).forEach(src => {
+          parseExtraDPLines(src.text).forEach(r => {
+            if (r.kind !== 'sec') return;
+            if (r.side === '相手' ? spi === defPi : spi !== defPi) return;
+            if (!lineAllowedInZone({ prefix: r.prefix }, 'battle') || !engineTurnLabelOk(r.labels, spi)) return;
+            if (r.cond && evalExtraCond(r.cond, srcStack, spi) !== true) return;
+            sum += extraRuleAmount(r, srcStack, spi);
+          });
+        });
       });
     });
     return sum;
@@ -15783,7 +16031,9 @@
     }
     // 進化元の1枚をリンクにする場合は、抜き出した先の進化元スタック(=元々入っていたスタック)
     // 自身にリンクすることも可能(進化元から抜けて横に差し込む扱いになるため)。
-    const routes = buildLinkRoutes(card);
+    let routes = buildLinkRoutes(card);
+    const linkReds = collectLinkCostReductions(card, targetStack, practiceState.turn.playerIndex);
+    if (linkReds.length && routes.length) routes = applyReductionsToRoutes(routes, linkReds).routes;
     openEvolveRouteModal(
       card, null,
       `「${card.name}」をリンク`,
@@ -18251,7 +18501,7 @@
         const name = src.card.name + (src.field === 'inherited' ? '(進化元)' : src.field === 'link' ? '(リンク)' : src.field === 'keisho' ? (/^📜/.test(src.sourceLabel) ? '(継承)' : '(得た効果)') : '');
         let m;
         if (kind === 'evolve') {
-          m = /^((?:レスト状態の|裏向きの進化元を持つ)?)(このデジモン(?:か自分のテイマー)?|(.*?)自分のデジモン)が(?:(.+?)に)?進化するとき、(?:(.+?)なら、)?支払う(?:進化)?コスト[-－](\d+)/.exec(body);
+          m = /^((?:レスト状態の|裏向きの進化元を持つ)?)(このデジモン(?:か自分のテイマー)?|(.*?)自分のデジモン)が(?:(.+?)に)?進化するとき(?:、|に)(?:(.+?)なら、)?(?:(.+?)ごとに、?)?支払う(?:進化)?コスト[-－](\d+)/.exec(body);
           if (!m) return;
           const t = ctx.target;
           if (!t) return;
@@ -18265,7 +18515,7 @@
           if (dest && !revealCondMatches(card, dest.replace(/(デジモン)?カード$|デジモン$/, '') + (/(デジモン)?カード$|デジモン$/.test(dest) ? 'デジモンカード' : ''))) return;
           const h = condOf(m[5], st);
           if (h === false) return;
-          out.push({ n: nOf(m[6]), label: `「${name}」の効果`, holds: h, cond: m[5] || '', once: isOncePerTurnText(parsed.text) ? entry : null });
+          out.push({ n: nOf(m[7]), label: `「${name}」の効果`, holds: h, cond: m[5] || '', scaling: m[6] ? `${m[6]}ごとに-${m[7]}` : null, once: isOncePerTurnText(parsed.text) ? entry : null });
         } else {
           m = /^(?:自分の)?(?:手札の|手札から、?)?(.+?)(?:が|を)登場(?:する|させる)とき、(?:(.+?)なら、)?支払う(?:登場)?コスト[-－](\d+)(?:できる)?。?(.*)$/.exec(body);
           if (!m || /このカード/.test(m[1])) return;
@@ -18288,12 +18538,20 @@
       if (/この効果で|ことで/.test(body)) return;
       let m;
       if (kind === 'evolve') {
-        m = /^(.*?)(?:自分の)?デジモンが(?:手札の)?このカードに進化するとき、(?:(.+?)ごとに、)?支払う(?:進化)?コスト[-－](\d+)/.exec(body);
+        // 「このカードを登場させるときか、このカードに進化するとき、〜なら、支払う登場/進化コスト-N」
+        const both = /^このカードを登場させるときか、このカードに進化するとき、(?:(.+?)なら、)?支払う(?:登場\/進化|進化)?コスト[-－](\d+)/.exec(body);
+        if (both) {
+          const h2 = condOf(both[1], ctx.target);
+          if (h2 === false) return;
+          out.push({ n: nOf(both[2]), label: 'このカードの効果', holds: h2, cond: both[1] || '', scaling: null });
+          return;
+        }
+        m = /^(.*?)(?:自分の)?デジモンが(?:手札の)?このカードに進化するとき、(?:(.+?)ごとに、?)?支払う(?:進化)?コスト[-－](\d+)/.exec(body);
         if (!m) return;
         if (m[1] && ctx.target && !stackMatchesFilterText(ctx.target, m[1].replace(/自分の$/, '').replace(/の$/, ''), null)) return;
         out.push({ n: nOf(m[3]), label: 'このカードの効果', holds: true, cond: '', scaling: m[2] ? `${m[2]}ごとに-${m[3]}` : null });
       } else {
-        m = /^(?:(.+?)間、)?(?:手札の)?このカード(?:が(?:手札から)?登場する|を登場させる|を使用する)とき、(?:(.+?)なら、)?(?:(.+?)ごとに、?)?支払う(?:登場|使用)?コスト[-－](\d+)/.exec(body);
+        m = /^(?:(.+?)間、)?(?:手札の)?このカード(?:が(?:手札から)?登場する|を登場させる|を使用する)とき(?:か、このカードに進化するとき)?、(?:(.+?)なら、)?(?:(.+?)ごとに、?)?支払う(?:登場\/進化|登場|使用)?コスト[-－](\d+)/.exec(body);
         if (!m) return;
         const cond = m[1] ? m[1] : m[2];
         const h = condOf(cond);
@@ -18301,6 +18559,48 @@
         out.push({ n: nOf(m[4]), label: 'このカードの効果', holds: h, cond: cond || '', scaling: m[3] ? `${m[3]}ごとに-${m[4]}` : null });
       }
     });
+    // 「〜N体/枚/色ごとに」: 数えられるものは数えて、確実な軽減にする(数えられないものは今までどおり注記)
+    return out.filter(r => {
+      if (!r.scaling) return true;
+      const k = costScalingCount(r.scaling, card, ctx);
+      if (k == null) return true;
+      if (k.total <= 0) return false;
+      r.n = k.total;
+      r.label += `(${k.count}${k.unit}→-${k.total})`;
+      r.scaling = null;
+      return true;
+    });
+  }
+  function costScalingCount(scaling, card, ctx) {
+    const m = /^(.+?)(\d+)(枚|体|色)ごとに-(\d+)$/.exec(scaling || '');
+    if (!m) return null;
+    let count;
+    if (/^そのカードの色$/.test(m[1].trim())) count = ((card && card.color) || []).length;
+    else {
+      try { count = extraCountSubject({ what: m[1], n: +m[2], unit: m[3] }, ctx.target || { cards: [] }, ctx.pi); } catch (e) { count = null; }
+    }
+    if (count == null) return null;
+    return { count, unit: m[3], total: Math.floor(count / +m[2]) * +m[4] };
+  }
+  // リンクするときの軽減(「このデジモンに特徴「X」を持つカードがリンクするとき、支払うコスト-N(できる)」)
+  function collectLinkCostReductions(card, targetStack, pi) {
+    const out = [];
+    if (!card || !targetStack || !practiceState || practiceState.turn.playerIndex !== pi) return out;
+    const f = findStackOwnerAndZone(targetStack);
+    if (!f) return out;
+    getStackEffectSources(targetStack).forEach(src => src.text.split('\n').forEach((line, lineIndex) => {
+      const parsed = parseEffectLine(line);
+      if (!lineAllowedInZone(parsed, f.zone)) return;
+      if (parsed.labels.some(l => !/^(自分のターン|お互いのターン)$/.test(l)) || !engineTurnLabelOk(parsed.labels, pi)) return;
+      const body = engineStripNotes(parsed.text).replace(/^(【[^】]+】|［[^］]*］|\[[^\]]*\]|\{[^}]*\})+/, '');
+      const m = /^このデジモンに(.*?)(?:カード)?がリンクするとき、支払う(?:リンク)?コスト[-－](\d+)/.exec(body);
+      if (!m) return;
+      if (m[1] && !cardMatchesSubject(card, { filters: parseSubjectFilters(m[1]), colors: parseSubjectColors(m[1] + 'デジモン') })) return;
+      const entry = { ownerIndex: pi, stackUid: ensureStackUid(targetStack), cardNumber: src.cardNumber, field: src.field, lineIndex, text: parsed.text };
+      if (isOnceUsed(entry)) return;
+      const name = src.card.name + (src.field === 'inherited' ? '(進化元)' : src.field === 'link' ? '(リンク)' : '');
+      out.push({ n: parseInt(m[2], 10), label: `「${name}」の効果`, holds: true, cond: '', once: isOncePerTurnText(parsed.text) ? entry : null });
+    }));
     return out;
   }
   // ルート一覧に軽減を反映した行を足す(確実な軽減はまとめて1行、判定できない条件つきは個別の行、「〜ごとに」は注記)
@@ -20230,7 +20530,7 @@
     }
     const isDigimon = card.category === 'digimon';
     const atkDP = getEffectiveDP(attackState.attackerStack) + renkeiBonus;
-    const secDP = card.dp ?? 0;
+    const secDP = isDigimon ? getSecurityDigimonDP(card, defPi) : (card.dp ?? 0);
     const resolve = (destination) => {
       if (!attackState || attackState.secPending !== pend) return;
       attackState.secPending = null;
@@ -20245,7 +20545,8 @@
       // 13-1-5: チェックしているデジモンがバトルエリアにいなければバトルしない
       if (isDigimon && findStackOwnerAndZone(attackState.attackerStack)) {
         const atkNow = getEffectiveDP(attackState.attackerStack) + renkeiBonus;
-        if (atkNow <= secDP) {
+        const secNow = getSecurityDigimonDP(card, defPi);
+        if (atkNow <= secNow) {
           // ≪ジャミング≫(16-9): バトル自体(DP比較)は通常通り発生するが、その結果による
           // アタック側の消滅だけを常に防ぐ(選択の余地なく発動する)。
           if (hasJammingKeyword(attackState.attackerStack)) {
