@@ -3765,7 +3765,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.96.11</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.96.12</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -5765,7 +5765,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.96.11`);
+    log(`DigiCA Tool build v0.96.12`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -15928,6 +15928,15 @@
     document.body.classList.toggle('ls-hand-up');
     renderLsHandTab();
   });
+  // 横画面: 手札を開いているとき、盤面や他のパネルを押したら手札をしまう(手札・手札のボタン・選ぶ画面・確認は除く)
+  document.addEventListener('click', (e) => {
+    if (!lsActive || !document.body.classList.contains('ls-hand-up')) return;
+    const t = e.target;
+    if (!t || !t.closest) return;
+    if (t.closest('.hand-row, #lsHandTab, .hand-action-bar, #zonePopup, #cardDetailModal, #evolveRouteModal, #attackBar, #fieldPickBanner, .modal-backdrop.open')) return;
+    document.body.classList.remove('ls-hand-up');
+    renderLsHandTab();
+  });
   function renderLsHandTab() {
     const b = document.getElementById('lsHandTab');
     if (!b || !practiceState) return;
@@ -18494,10 +18503,12 @@
   }
   // デジモン(スタック)詳細の中のボタン(進化元の「送る▾」等)からポップアップを開いたときは、詳細を閉じてポップアップを前に出す
   // (横画面ではポップアップが右の列に出るため、詳細が上に重なって操作できなくなっていた)。
-  // トラッシュ/セキュリティの一覧などは続けて操作するため閉じない。
+  // トラッシュ/セキュリティ/手札の一覧やまとめて選ぶ画面の「送る▾」も同じく閉じて、送り先のボタンにそのまま進む(スマホで詳細の下に隠れていた)。
   let lastDetailClickAt = 0;
   document.addEventListener('click', (e) => {
-    if (cardDetailModal.contains(e.target) && e.target.closest && e.target.closest('.stack-row-move, [data-stack-actions]')) lastDetailClickAt = Date.now();
+    if (!cardDetailModal.contains(e.target) || !e.target.closest) return;
+    const b = e.target.closest('button');
+    if (e.target.closest('.stack-row-move, .sec-row-move, .trash-row-move, [data-stack-actions]') || (b && /送る|移動▾/.test(b.textContent || ''))) lastDetailClickAt = Date.now();
   }, true);
   function openZonePopup(e, title, actions, persistent) {
     if (cardDetailModal.classList.contains('open') && Date.now() - lastDetailClickAt < 800) {
