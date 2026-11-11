@@ -2929,6 +2929,7 @@
   .fe-kind { flex-shrink: 0; font-size: 10px; font-weight: 800; padding: 1px 5px; border-radius: 4px; }
   .fe-kind.dp { background: rgba(90,160,255,.18); color: #9cc6ff; }
   .fe-kind.rx { background: rgba(255,92,92,.16); color: #ffb3b3; }
+  .fe-kind.kw { background: rgba(120,220,140,.16); color: #a8f0b8; }
   /* ---- PC: 中央の帯を1行に(C)。左に補助ボタン(2段)、真ん中にメモリーゲージ、右にフェイズと「次のフェーズへ」 ---- */
   @media (min-width: 769px) {
     body:not(.ls-mode) #practiceBoardPanel .arena-hud {
@@ -3762,7 +3763,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.96.9</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.96.10</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -5762,7 +5763,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.96.9`);
+    log(`DigiCA Tool build v0.96.10`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -6097,7 +6098,7 @@
                 if (r.dp != null && !isTamer) return; // 「デジモン・DPNとしても扱い」はテイマーだけ
               }
               if (r.cond) { let ok = null; try { ok = evalExtraCond(r.cond, holder, hpi); } catch (e) { ok = null; } if (ok !== true) return; }
-              out.push({ dp: r.dp, kws: r.kws, srcName: src.card.name });
+              out.push({ dp: r.dp, kws: r.kws, srcName: src.card.name, text: r.text, holder });
             });
           });
         });
@@ -6422,6 +6423,7 @@
       body.split('。').forEach((sent0, si) => {
         let s = sent0.trim();
         if (!s) return;
+        const sentence0 = s;
         // 1行まるごとの定型文の1文目だけ(2文ある効果)
         if (si === 0 && /^このデジモン(?:をDP|のDPを)([+\-]\d+)(?:する)?$/.test(s)) {
           out.push({ prefix: parsed.prefix, labels: parsed.labels, kind: 'self', cond: null, qual: null, per: null, dp: EXTRA_DP_NUM(/([+\-]\d+)/.exec(s)[1]) });
@@ -6437,7 +6439,7 @@
         const DPTAIL = '(?:[^。]*?(?:を得て|を受けず|を与え)、)?(?:をDP|のDPを|DP)([+\\-]\\d+)';
         // 相手/自分のセキュリティデジモン全て
         if ((m = new RegExp('^(相手|自分)のセキュリティデジモン全て(?:は|を|の)?' + DPTAIL).exec(s))) {
-          out.push({ prefix: parsed.prefix, labels: parsed.labels, kind: 'sec', side: m[1], cond, per, dp: EXTRA_DP_NUM(m[2]) });
+          out.push({ prefix: parsed.prefix, labels: parsed.labels, kind: 'sec', side: m[1], cond, per, dp: EXTRA_DP_NUM(m[2]), text: sentence0 });
           return;
         }
         // (条件つきの)自分のデジモン全て/自分の「X」全て/相手のデジモン全て
@@ -6446,7 +6448,7 @@
           if (/このデジモン(?!と同じ名称)|1体|ごとに/.test(m[1])) return;
           const lvMin = /Lv\.(\d+)以上/.exec(pre), lvMax = /Lv\.(\d+)以下/.exec(pre);
           out.push({
-            prefix: parsed.prefix, labels: parsed.labels, kind: m[2] === '自分' ? 'all' : 'oppAll', cond, per, dp: EXTRA_DP_NUM(m[4]),
+            prefix: parsed.prefix, labels: parsed.labels, kind: m[2] === '自分' ? 'all' : 'oppAll', cond, per, dp: EXTRA_DP_NUM(m[4]), text: sentence0,
             coveredAllOwn: coveredAllOwn && m[2] === '自分',
             other: /他の/.test(m[1]), sameName: /このデジモンと同じ名称の/.test(m[1]),
             rested: /レスト状態の/.test(m[1]) ? true : /アクティブ状態の/.test(m[1]) ? false : null,
@@ -7560,7 +7562,9 @@
     const btn = document.getElementById('fieldEffectsBtn');
     if (btn) {
       const dpCount = (practiceState.fieldEffects || []).filter(f => f.kind !== 'restrict' && isFieldEffectActive(f)).length;
-      const n = dpCount + list.length;
+      let staticCount = 0;
+      try { staticCount = collectStaticFieldDisplay().length; } catch (e) { staticCount = 0; }
+      const n = dpCount + list.length + staticCount;
       const html = '<span class="bi">🌐</span> <span class="bl">フィールド効果</span><span class="bs">場の効果</span>' + (n ? `<span class="fe-badge">${n}</span>` : '');
       if (btn.innerHTML !== html) btn.innerHTML = html;
     }
@@ -11478,7 +11482,8 @@
   }
   function isEffectEntryValid(e) {
     if (isOnceUsed(e)) return false;
-    if (selfRestCostUnpayable(e)) return false;
+    // 処理中の効果は、代償のボタンでレストさせた後も続けられるように除く
+    if (selfRestCostUnpayable(e) && getEffectQueue().current !== e) return false;
     if (e.deferred && e.deferred.targetUid && !findStackByUid(e.deferred.targetUid)) return false;
     if (e.manual && !e.stackUid) return true;
     if (e.lki) return true; // 【消滅時】等: 場を離れた後に発揮する
@@ -15489,19 +15494,15 @@
     const q = getEffectQueue();
     // 保留処理の対象(この効果で登場/進化したデジモン)を見分けるため、処理を始めた時点の盤面を覚えておく
     if (q.current && !q.current._startTops && !q.current.deferred) q.current._startTops = boardTopsSnapshot();
-    // 処理中にした効果に「このテイマーをレストさせることで」があれば、そのコストとして自動でレストさせる
-    // (既にレスト状態なら発揮できないので取りやめる)
-    if (q.current && selfRestCostOf(q.current) && !q.current.restPaid) {
+    // 処理中にした効果に「このテイマーをレストさせることで」があっても、自動ではレストさせない(💸代償のボタンを押したときにレストする)。
+    // 処理中にする時点で既にレスト状態(またはレストできない)なら、コストを払えないので取りやめる
+    if (q.current && selfRestCostOf(q.current) && !q.current.restPaid && !q.current._restChecked) {
       const cur = q.current;
+      cur._restChecked = true;
       const f = findStackByUid(cur.stackUid);
       if (f && (f.stack.rested || hasLock(f.stack, 'noRest'))) {
         q.current = null;
         showToast(`「${cur.cardName}」はレスト状態(またはレストできない)のため、この効果は発揮できません`, true);
-      } else if (f) {
-        f.stack.rested = true;
-        cur.restPaid = true;
-        showToast(`「${cur.cardName}」をレストさせました(効果のコスト)`);
-        setTimeout(() => { if (practiceState) renderPracticeBoard(); }, 0);
       }
     }
     const validPending = q.pending.filter(isEffectEntryValid);
@@ -22488,11 +22489,48 @@
     }[effect.duration] || '';
     return `${targetLabel} ${amountLabel}(${durationLabel})`;
   }
+  // 場のカードから自動で効いている常在効果(付与・〜全てのDP・禁止)を、フィールド効果の一覧に出す形にまとめる
+  function collectStaticFieldDisplay() {
+    const rows = [];
+    if (!practiceState) return rows;
+    const nameOf = (st) => stackLabel(st);
+    const sideName = (pi) => pi === practiceState.viewingIndex ? '自分' : '相手';
+    // 付与(≪ブロッカー≫・デジモンとしても扱う・Sアタック)
+    const grants = new Map();
+    practiceState.players.forEach((p, tpi) => p.battle.forEach(st => {
+      fieldStaticGrantsOn(st).forEach(g => {
+        const key = g.srcName + '|' + g.text;
+        if (!grants.has(key)) grants.set(key, { g, targets: [] });
+        grants.get(key).targets.push(`${nameOf(st)}`);
+      });
+    }));
+    grants.forEach(({ g, targets }) => { const hp = practiceState.players.findIndex(p => p.battle.includes(g.holder) || p.raising === g.holder); rows.push({ kind: 'kw', label: '付与', text: `「${g.srcName}」${hp >= 0 ? `(${sideName(hp)})` : ''}: ${g.text}`, sub: `対象: ${targets.join('、')}` }); });
+    // 〜全てのDP・セキュリティデジモンのDP
+    practiceState.players.forEach((p, hpi) => p.battle.forEach(holder => {
+      if (!isDigimonLikeStack(holder)) return;
+      getStackEffectSources(holder).forEach(src => parseExtraDPLines(src.text).forEach(r => {
+        if (!['all', 'oppAll', 'sec'].includes(r.kind) || !r.text) return;
+        if (!lineAllowedInZone({ prefix: r.prefix }, 'battle') || !engineTurnLabelOk(r.labels, hpi)) return;
+        if (r.cond) { let ok = null; try { ok = evalExtraCond(r.cond, holder, hpi); } catch (e) { ok = null; } if (ok !== true) return; }
+        rows.push({ kind: 'dp', label: 'DP', text: `「${src.card.name}」(${sideName(hpi)}): ${r.text}` });
+      }));
+    }));
+    // 禁止(〜できない・されない)
+    const seen = new Set();
+    activeProhibitions().forEach(r => {
+      const key = r.srcName + '|' + r.text;
+      if (seen.has(key)) return;
+      seen.add(key);
+      rows.push({ kind: 'rx', label: '禁止', text: `「${r.srcName}」(${sideName(r.holderPi)}): ${r.text}${r.unsure ? '(※条件を確認)' : ''}` });
+    });
+    return rows;
+  }
   function renderFieldEffectsList() {
     const listEl = document.getElementById('fieldEffectsList');
     const effects = (practiceState && practiceState.fieldEffects) || [];
     const autos = practiceState ? collectStaticRestrictions() : [];
-    if (effects.length === 0 && autos.length === 0) {
+    const statics = practiceState ? collectStaticFieldDisplay() : [];
+    if (effects.length === 0 && autos.length === 0 && statics.length === 0) {
       listEl.innerHTML = '<div class="placeholder">現在、場全体にかかっている効果はありません。</div>';
       return;
     }
@@ -22517,6 +22555,17 @@
       row.innerHTML = `
         <div style="font-size:12px;display:flex;gap:6px;align-items:flex-start;">
           <span class="fe-kind rx">制限</span><span>${escapeHtml(fieldEffectDescribe(effect))}</span>
+        </div>
+        <span style="font-size:10px;color:var(--text-dim);flex-shrink:0;">自動(カードが離れると消える)</span>
+      `;
+      listEl.appendChild(row);
+    });
+    statics.forEach(st => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 4px;border-bottom:1px solid var(--border);';
+      row.innerHTML = `
+        <div style="font-size:12px;display:flex;gap:6px;align-items:flex-start;">
+          <span class="fe-kind ${st.kind}">${st.label}</span><span>${escapeHtml(st.text)}${st.sub ? `<br><span style="color:var(--text-dim);font-size:11px;">${escapeHtml(st.sub)}</span>` : ''}</span>
         </div>
         <span style="font-size:10px;color:var(--text-dim);flex-shrink:0;">自動(カードが離れると消える)</span>
       `;

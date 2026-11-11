@@ -9,6 +9,9 @@ console.log('BT12-087:', await txt('BT12-087'));
 await ev(`(() => { practiceState.turn.phase='main'; practiceState.turn.playerIndex=${v}; const p=${P(v)}; p.battle=[{cards:['BT1-010'],rested:false},{cards:['BT1-030','BT12-087'],rested:false}]; p.memory=0; renderPracticeBoard(); clearEffectQueue(); const st=p.battle[1]; enqueueEffects([], [{ownerIndex:${v}, stackUid: ensureStackUid(st), cardNumber:'BT12-087', cardName:'テストA', field:'effect', lineIndex:0, text:'【自分のターン】このテイマーをレストさせ、自分のテイマーの下のカード1枚をそのデジモンの進化元の下に置くことで、≪1ドロー≫。', timing:'自分のターン', event:'t'}]); renderEffectPanel(); })()`);
 console.log('A0', await cls());
 console.log('A1 rested', await ev(`${P(v)}.battle[1].rested`));
+// v0.96.10: レストの代償はボタンを押すまでレストしない
+await clickAuto('代償1/2'); await page.waitForTimeout(150);
+console.log('A1b rested', await ev(`${P(v)}.battle[1].rested`));
 await clickAuto('代償2/2'); await page.waitForTimeout(150);
 console.log('picker:', await clickBtn('置く'));
 await page.evaluate(()=>{ const el=[...document.querySelectorAll('*')].find(x=>x.offsetParent && x.children.length===0 && x.textContent.trim()==='ゴマモン'); el && el.click(); });
