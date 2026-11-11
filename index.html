@@ -3855,7 +3855,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.97.3</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.97.4</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -6005,7 +6005,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.97.3`);
+    log(`DigiCA Tool build v0.97.4`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -12207,6 +12207,8 @@
         else if ((am = /^、?(?:((?:次の)?(?:相手の|自分の)?ターン終了時?まで|このターンの間|このターン中)、?)?([^、。]{1,40}?)ごとに、?(?:((?:次の)?(?:相手の|自分の)?ターン終了時?まで|このターンの間|このターン中)、?)?DP([+\-]\d+)/.exec(rest))) action = { type: 'dp', amount: parseInt(am[4], 10), durPhrase: am[1] || am[3] || null, per: am[2] };
         else if (/^消滅(させ|でき)/.test(rest)) action = { type: 'destroy' };
         else if ((am = /^≪退化(\d+)≫/.exec(rest))) action = { type: 'degen', n: parseInt(am[1], 10) };
+        // 「相手のデジモン1体を自分の表向きのセキュリティ1枚ごとに、≪退化1≫」: 数に応じて退化の枚数が増える
+        else if ((am = /^、?([^、。]{1,40}?)ごとに、?≪退化(\d+)≫/.exec(rest))) action = { type: 'degen', n: parseInt(am[2], 10), per: am[1] };
         else if (/^レスト(させ|でき)/.test(rest)) action = { type: 'rest' };
         else if (/^アクティブに(する|でき)/.test(rest)) action = { type: 'active' };
         // 場から別の場所へ移す(進化元はルールでトラッシュへ)
@@ -12320,6 +12322,7 @@
     }
     if ((m = /^このデジモンのDP(\d+)$/.exec(per))) return holder ? Math.max(0, Math.floor(getEffectiveDP(holder) / parseInt(m[1], 10))) : null;
     if ((m = /^(自分|相手)のセキュリティ1枚$/.exec(per))) return practiceState.players[m[1] === '自分' ? ownerIndex : 1 - ownerIndex].security.length;
+    if ((m = /^(自分|相手)の表向きのセキュリティ1枚$/.exec(per))) return practiceState.players[m[1] === '自分' ? ownerIndex : 1 - ownerIndex].security.filter(cardEntryFaceUp).length;
     if (/^相手側のメモリー1$/.test(per)) {
       const toward = ownerIndex === 0 ? practiceState.memory : -practiceState.memory;
       return Math.max(0, toward);
@@ -12430,6 +12433,16 @@
       if (dead.length) checkAllBattleAreaRuleViolations();
       return;
     }
+    if (a.type === 'degen' && a.per && !a.perResolved) {
+      // 「〜1枚ごとに、≪退化1≫」: 数えた数 × N 枚の≪退化≫にする(0なら何もしない)
+      const holderStack = ta.holder || (e.stackUid != null ? findStackByUid(e.stackUid) : null);
+      const k = countPerUnit(a.per, e.ownerIndex, holderStack && holderStack.stack ? holderStack.stack : holderStack, targets[0]);
+      if (k == null) { showToast(`「${a.per}ごとに」を数えられませんでした。≪退化${a.n}≫として処理します`, true); runTargetAction(Object.assign({}, ta, { action: Object.assign({}, a, { perResolved: true }) }), e, targets); return; }
+      if (k <= 0) { showToast(`${a.per}が0なので、≪退化≫はしません`); return; }
+      showToast(`${a.per}が${k}なので、≪退化${a.n * k}≫`);
+      runTargetAction(Object.assign({}, ta, { action: Object.assign({}, a, { perResolved: true, n: a.n * k }) }), e, targets);
+      return;
+    }
     if (a.type === 'degen') {
       const blocked = targets.filter(s => degenBlockReason(s));
       if (blocked.length) showToast(blocked.map(s => `「${(getStackTopCard(s) || {}).name || '?'}」は${degenBlockReason(s)}`).join(' / '), true);
@@ -12510,7 +12523,7 @@
       title: `${label}: 対象をタップ`,
       sub: [ta.eachBy ? '1体ずつ選ぶと実行します(片方にいない場合は、いる方だけで進みます)' : ta.count > 1 && !ta.upTo ? `${ta.count}体選ぶと実行します` : (ta.count > 1 ? '選び終わったら「決定」' : ''), rs.note].filter(Boolean).join(' / '),
       emptyMsg: rs.blocked.length ? '耐性を持たない対象がいません(「条件外も選ぶ」から選べます)' : undefined,
-      candidates: cands, extra,
+      candidates: cands, extra, showExtra: false, strict: true,
       max: ta.count, upTo: ta.upTo,
       groupOf: eachGroupFn(ta), perGroup: ta.eachN || 1,
       initialSelected: eachPreselect(ta, cands),
@@ -12536,7 +12549,7 @@
   function targetActionLabel(ta) {
     const a = ta.action;
     const MOVE_LABEL = { hand: '手札に戻す', deckTop: 'デッキの上に戻す', deckBottom: 'デッキの下に戻す', secTop: 'セキュリティの上に置く', secBottom: 'セキュリティの下に置く' };
-    const what = a.type === 'dp' ? `${a.per ? a.per + 'ごとに' : ''}DP${a.amount > 0 ? '+' : ''}${a.amount}` : a.type === 'destroy' ? '消滅' : a.type === 'degen' ? `≪退化${a.n}≫` : a.type === 'rest' ? 'レスト' : a.type === 'active' ? 'アクティブ'
+    const what = a.type === 'dp' ? `${a.per ? a.per + 'ごとに' : ''}DP${a.amount > 0 ? '+' : ''}${a.amount}` : a.type === 'destroy' ? '消滅' : a.type === 'degen' ? `${a.per ? a.per + 'ごとに' : ''}≪退化${a.n}≫` : a.type === 'rest' ? 'レスト' : a.type === 'active' ? 'アクティブ'
       : a.type === 'move' ? MOVE_LABEL[a.dest] + (a.faceUp ? '(表向き)' : '')
       : a.type === 'trash' ? '破棄'
       : a.type === 'lock' ? '🔒' + a.locks.map(k => LOCK_LABELS[k]).join('・')
@@ -17067,6 +17080,9 @@
       selected: alive(opts.initialSelected),
       // 条件に合うものが1つもないときは、最初から条件外も選べる状態にする(showExtraを明示したときはそれに従う)
       showExtra: opts.showExtra !== undefined ? !!opts.showExtra : (candidates.length === 0 && extra.length > 0),
+      // 条件をきちんと読めている場面(strict)では、合うものがいなくても条件外は「条件外も選ぶ」を押すまで選べない
+      sub: opts.strict && candidates.length === 0 && extra.length > 0
+        ? [opts.sub, '条件に合うものがいません(必要なら「条件外も選ぶ」で選べます)'].filter(Boolean).join(' / ') : opts.sub,
       stateRef: practiceState,
       attackRef: opts.attackStep ? attackState : undefined,
     });
