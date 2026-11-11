@@ -871,6 +871,8 @@
     line-height: 1;
   }
   .deck-list-item .dli-stepper button:hover { border-color: var(--accent-dim); }
+  /* 選ぶ画面の「📥登場」などの文字ボタンは、デッキ構築の±ボタン用の小さい四角にしない */
+  .deck-list-item .dli-stepper button.btn { width: auto; height: auto; white-space: nowrap; }
   .deck-list-item .dli-stepper .dli-count { font-family: 'JetBrains Mono', monospace; width: 14px; text-align: center; }
   /* 「公開したカード」の振り分け: 押しやすいよう大きいボタンにする(入りきらないときはボタンを次の段に回す) */
   .deck-list-item.reveal-row { flex-wrap: wrap; row-gap: 6px; padding: 8px 10px; }
@@ -3469,6 +3471,70 @@
     body.ls-mode .detail-modal .deck-list-item .dli-stepper button {
       width: auto; height: auto; min-width: 46px; min-height: 44px; font-size: 14px !important; padding: 8px 12px !important; white-space: nowrap; border-radius: 8px;
     }
+    /* ---- 横画面: カード一覧(公開したカード・トラッシュ・選ぶ画面)は、紺地に金のふちの共通シートにする ----
+       右上に「👁 盤面」「✕」。カードは2列。ボタンが3つ以上の行は2段に積む。
+       ボタンの色: 金=決める / 紺=ふつう / 枠だけ=断る / 赤い枠=やめる */
+    body.ls-mode .detail-modal .modal:is(:has(.deck-list-item), :has(.rg-row)):not(:has(.detail-img-col)):not(:has(.cmp-wrap)) {
+      --sh-bg: rgba(30,36,56,.98); --gold-rgb: 251,191,36; --sh-line: rgba(255,255,255,.16);
+      width: auto; height: auto; flex: 1; margin: 8px 8px 8px calc(var(--ls-l) + 6px); padding: 0;
+      background: var(--sh-bg); border: 1px solid rgba(var(--gold-rgb),.65); border-radius: 12px;
+      box-shadow: 0 0 22px rgba(var(--gold-rgb),.16), 0 10px 40px rgba(0,0,0,.65);
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    body.ls-mode .detail-modal .modal:is(:has(.deck-list-item), :has(.rg-row)):not(:has(.detail-img-col)):not(:has(.cmp-wrap)) .detail-body { flex: 1; min-height: 0; overflow-y: auto; display: block; padding: 0 12px 10px; }
+    body.ls-mode .detail-modal .modal:is(:has(.deck-list-item), :has(.rg-row)):not(:has(.detail-img-col)):not(:has(.cmp-wrap)) .detail-info { width: 100%; }
+    body.ls-mode .detail-modal .modal:is(:has(.deck-list-item), :has(.rg-row)):not(:has(.detail-img-col)):not(:has(.cmp-wrap)) .d-title {
+      position: sticky; top: 0; z-index: 2; background: var(--sh-bg); margin: 0 -12px 8px; padding: 10px 150px 8px 14px;
+      border-bottom: 1px solid var(--sh-line); font-size: 14px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    body.ls-mode .detail-modal .modal:is(:has(.deck-list-item), :has(.rg-row)):not(:has(.detail-img-col)):not(:has(.cmp-wrap)) #detailPeekBtn { top: 7px; right: 50px; height: 28px; padding: 0 10px; border-radius: 7px; font-size: 11.5px; font-weight: 700; color: var(--text); background: rgba(255,255,255,.06); border-color: var(--sh-line); }
+    body.ls-mode .detail-modal .modal:is(:has(.deck-list-item), :has(.rg-row)):not(:has(.detail-img-col)):not(:has(.cmp-wrap)) > .modal-actions { position: absolute; top: 7px; right: 10px; margin: 0; z-index: 6; }
+    body.ls-mode .detail-modal .modal:is(:has(.deck-list-item), :has(.rg-row)):not(:has(.detail-img-col)):not(:has(.cmp-wrap)) > .modal-actions #addToDeckFromDetail { display: none; }
+    body.ls-mode .detail-modal .modal:is(:has(.deck-list-item), :has(.rg-row)):not(:has(.detail-img-col)):not(:has(.cmp-wrap)) > .modal-actions #closeDetail { width: 32px; height: 28px; min-height: 0; padding: 0; font-size: 0; border-radius: 7px; background: rgba(255,255,255,.06); border: 1px solid var(--sh-line); }
+    body.ls-mode .detail-modal .modal:is(:has(.deck-list-item), :has(.rg-row)):not(:has(.detail-img-col)):not(:has(.cmp-wrap)) > .modal-actions #closeDetail::after { content: '✕'; font-size: 14px; font-weight: 800; color: var(--text); }
+    body.ls-mode .detail-modal .modal:is(:has(.deck-list-item), :has(.rg-row)):not(:has(.detail-img-col)):not(:has(.cmp-wrap)) .deck-list, body.ls-mode .detail-modal .modal:is(:has(.deck-list-item), :has(.rg-row)):not(:has(.detail-img-col)):not(:has(.cmp-wrap)) .rg-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; max-height: none !important; overflow: visible !important; }
+    body.ls-mode .detail-modal .modal:is(:has(.deck-list-item), :has(.rg-row)):not(:has(.detail-img-col)):not(:has(.cmp-wrap)) .deck-list > .deck-list-item, body.ls-mode .detail-modal .modal:is(:has(.deck-list-item), :has(.rg-row)):not(:has(.detail-img-col)):not(:has(.cmp-wrap)) .rg-row {
+      display: grid !important; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; column-gap: 8px; row-gap: 4px;
+      margin: 0 !important; padding: 5px 7px !important; border-radius: 8px; background: rgba(255,255,255,.03); border: 1px solid var(--sh-line);
+    }
+    body.ls-mode .detail-modal .modal:is(:has(.deck-list-item), :has(.rg-row)):not(:has(.detail-img-col)):not(:has(.cmp-wrap)) .deck-list > .deck-list-item > img, body.ls-mode .detail-modal .modal:is(:has(.deck-list-item), :has(.rg-row)):not(:has(.detail-img-col)):not(:has(.cmp-wrap)) .rg-row > img { width: 34px !important; }
+    body.ls-mode .detail-modal .modal:is(:has(.deck-list-item), :has(.rg-row)):not(:has(.detail-img-col)):not(:has(.cmp-wrap)) .deck-list > .deck-list-item > :first-child, body.ls-mode .detail-modal .modal:is(:has(.deck-list-item), :has(.rg-row)):not(:has(.detail-img-col)):not(:has(.cmp-wrap)) .rg-row > :first-child { grid-row: 1 / span 2; }
+    body.ls-mode .detail-modal .modal:is(:has(.deck-list-item), :has(.rg-row)):not(:has(.detail-img-col)):not(:has(.cmp-wrap)) .deck-list > .deck-list-item > .dli-name, body.ls-mode .detail-modal .modal:is(:has(.deck-list-item), :has(.rg-row)):not(:has(.detail-img-col)):not(:has(.cmp-wrap)) .rg-row > div.rg-view { grid-row: 1 / span 2; min-width: 0; font-size: 12.5px; font-weight: 700; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    body.ls-mode .detail-modal .modal:is(:has(.deck-list-item), :has(.rg-row)):not(:has(.detail-img-col)):not(:has(.cmp-wrap)) .rg-row > div.rg-view { display: block; }
+    body.ls-mode .detail-modal .modal:is(:has(.deck-list-item), :has(.rg-row)):not(:has(.detail-img-col)):not(:has(.cmp-wrap)) .rg-row > div.rg-view > div:first-child { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    body.ls-mode .detail-modal .modal:is(:has(.deck-list-item), :has(.rg-row)):not(:has(.detail-img-col)):not(:has(.cmp-wrap)) .dli-stepper, body.ls-mode .detail-modal .modal:is(:has(.deck-list-item), :has(.rg-row)):not(:has(.detail-img-col)):not(:has(.cmp-wrap)) .rg-row > div:last-child { grid-row: 1 / span 2; display: flex !important; flex-wrap: nowrap !important; gap: 4px !important; justify-content: flex-end; margin: 0 !important; }
+    body.ls-mode .detail-modal .modal:is(:has(.deck-list-item), :has(.rg-row)):not(:has(.detail-img-col)):not(:has(.cmp-wrap)) .dli-stepper:has(> :nth-child(3)), body.ls-mode .detail-modal .modal:is(:has(.deck-list-item), :has(.rg-row)):not(:has(.detail-img-col)):not(:has(.cmp-wrap)) .rg-row > div:last-child:has(> :nth-child(3)) { display: grid !important; grid-template-columns: repeat(2, auto); }
+    body.ls-mode .detail-modal .modal:is(:has(.deck-list-item), :has(.rg-row)):not(:has(.detail-img-col)):not(:has(.cmp-wrap)) .dli-stepper:has(> :nth-child(5)), body.ls-mode .detail-modal .modal:is(:has(.deck-list-item), :has(.rg-row)):not(:has(.detail-img-col)):not(:has(.cmp-wrap)) .rg-row > div:last-child:has(> :nth-child(5)) { display: grid !important; grid-template-columns: repeat(3, auto); }
+    /* トラッシュの行はボタンが行に直接並ぶので、3つ以上なら名前の右で2つずつ折り返す */
+    body.ls-mode .detail-modal .modal:is(:has(.deck-list-item), :has(.rg-row)):not(:has(.detail-img-col)):not(:has(.cmp-wrap)) .deck-list > .deck-list-item:not(:has(.dli-stepper)) { grid-template-columns: 34px minmax(0, 1fr) auto auto; }
+    body.ls-mode .detail-modal .modal:is(:has(.deck-list-item), :has(.rg-row)):not(:has(.detail-img-col)):not(:has(.cmp-wrap)) .deck-list > .deck-list-item:not(:has(.dli-stepper)) > button:nth-of-type(odd) { grid-column: 3; }
+    body.ls-mode .detail-modal .modal:is(:has(.deck-list-item), :has(.rg-row)):not(:has(.detail-img-col)):not(:has(.cmp-wrap)) .deck-list > .deck-list-item:not(:has(.dli-stepper)) > button:nth-of-type(even) { grid-column: 4; }
+    body.ls-mode .detail-modal .modal:is(:has(.deck-list-item), :has(.rg-row)):not(:has(.detail-img-col)):not(:has(.cmp-wrap)) .deck-list > .deck-list-item:not(:has(.dli-stepper)):not(:has(> button:nth-of-type(3))) > :is(:first-child, .dli-name) { grid-row: 1; }
+    body.ls-mode .detail-modal .modal:is(:has(.deck-list-item), :has(.rg-row)):not(:has(.detail-img-col)):not(:has(.cmp-wrap)) .deck-list > .deck-list-item:has(> button:nth-of-type(5)) > :is(:first-child, .dli-name) { grid-row: 1 / span 3; }
+    /* 進化元の一覧は重なり順が大事なので1列のまま */
+    body.ls-mode .detail-modal .modal:is(:has(.deck-list-item), :has(.rg-row)):not(:has(.detail-img-col)):not(:has(.cmp-wrap)) .deck-list:has(.stack-row-wrap) { grid-template-columns: minmax(0, 1fr); }
+    body.ls-mode .detail-modal .modal:is(:has(.deck-list-item), :has(.rg-row)):not(:has(.detail-img-col)):not(:has(.cmp-wrap)) .deck-list > .deck-list-item button, body.ls-mode .detail-modal .modal:is(:has(.deck-list-item), :has(.rg-row)):not(:has(.detail-img-col)):not(:has(.cmp-wrap)) .rg-row button {
+      width: auto !important; height: auto !important; min-width: 0 !important; min-height: 30px !important;
+      font-size: 11.5px !important; padding: 4px 9px !important; border-radius: 7px !important; white-space: nowrap; line-height: 1.2;
+    }
+    body.ls-mode .detail-modal .modal:is(:has(.deck-list-item), :has(.rg-row)):not(:has(.detail-img-col)):not(:has(.cmp-wrap)) .btn { background: #2a3352; border: 1px solid var(--sh-line); color: #e8ecf6; font-weight: 700; }
+    body.ls-mode .detail-modal .modal:is(:has(.deck-list-item), :has(.rg-row)):not(:has(.detail-img-col)):not(:has(.cmp-wrap)) .btn.primary { background: linear-gradient(180deg, #ffe08a, rgb(var(--gold-rgb))); color: #1a1204; border-color: transparent; font-weight: 800; }
+    body.ls-mode .detail-modal .modal:is(:has(.deck-list-item), :has(.rg-row)):not(:has(.detail-img-col)):not(:has(.cmp-wrap)) .btn:disabled { background: transparent; color: var(--text-dim); }
+    body.ls-mode .detail-modal .modal:is(:has(.deck-list-item), :has(.rg-row)):not(:has(.detail-img-col)):not(:has(.cmp-wrap)) .rg-manual, body.ls-mode .detail-modal .modal:is(:has(.deck-list-item), :has(.rg-row)):not(:has(.detail-img-col)):not(:has(.cmp-wrap)) .reveal-guided, body.ls-mode .detail-modal .modal:is(:has(.deck-list-item), :has(.rg-row)):not(:has(.detail-img-col)):not(:has(.cmp-wrap)) .trash-multi { background: transparent; color: var(--text-dim); }
+    body.ls-mode .detail-modal .modal:is(:has(.deck-list-item), :has(.rg-row)):not(:has(.detail-img-col)):not(:has(.cmp-wrap)) .eep-cancel { background: transparent; color: #ffb3b3; border-color: rgba(255,110,110,.6); margin-top: 8px; }
+    body.ls-mode .detail-modal .modal:is(:has(.deck-list-item), :has(.rg-row)):not(:has(.detail-img-col)):not(:has(.cmp-wrap)) .rg-foot { position: sticky; bottom: -10px; z-index: 2; background: var(--sh-bg); margin: 8px -12px -10px !important; padding: 7px 12px 8px; border-top: 1px solid var(--sh-line); justify-content: flex-end; }
+    body.ls-mode .detail-modal .modal:is(:has(.deck-list-item), :has(.rg-row)):not(:has(.detail-img-col)):not(:has(.cmp-wrap)) .rg-foot .btn { font-size: 12px !important; padding: 6px 12px !important; }
+    body.ls-mode .detail-modal .modal:is(:has(.deck-list-item), :has(.rg-row)):not(:has(.detail-img-col)):not(:has(.cmp-wrap)) .rg-foot .rg-manual { order: -1; margin-right: auto; }
+    /* 通知は画面上の中央に小さく出して、盤面やボタンにかぶらないようにする */
+    body.ls-mode .toast { top: 6px; bottom: auto !important; max-width: min(460px, 60vw); padding: 5px 14px; border-radius: 999px; font-size: 11.5px; line-height: 1.35; background: rgba(16,22,38,.94); border-color: rgba(255,255,255,.2); transform: translateX(-50%) translateY(-8px); }
+    body.ls-mode .toast.show { transform: translateX(-50%) translateY(0); }
+    body.ls-mode:has(.evolve-mode-banner.active) .toast { top: 40px; }
+    /* 右の列(効果・確認)のボタン: 決める=金、断る=枠だけ */
+    body.ls-mode #practiceBoardPanel .ls-dock .ep-btn.done { background: linear-gradient(180deg, #ffe08a, rgb(var(--gold-rgb))) !important; color: #1a1204 !important; border-color: transparent !important; font-weight: 800; }
+    body.ls-mode #practiceBoardPanel .ls-dock .ep-btn.ghost { background: transparent; color: var(--text-dim); }
+    body.ls-mode #practiceBoardPanel .ls-dock .ab-btn.primary:not(.wait) { background: linear-gradient(180deg, #ffe08a, rgb(var(--gold-rgb))); color: #1a1204; border-color: transparent; font-weight: 800; }
+    body.ls-mode #practiceBoardPanel .field-pick-banner .fpb-btns button.primary { background: linear-gradient(180deg, #ffe08a, rgb(var(--gold-rgb))); color: #1a1204; }
+    body.ls-mode #practiceBoardPanel .field-pick-banner .fpb-btns button.cancel { background: transparent; color: #ffb3b3; border-color: rgba(255,110,110,.6); }
     /* 画面の狭いスマホ(iPhone SE等)では場のカードを一回り小さくする */
     body.ls-mode.ls-narrow { --ls-l: 76px; --ls-r: 196px; }
     body.ls-mode.ls-narrow #practiceBoardPanel .mat-block { --ls-z: 0.64; --ls-zp: 0.48; }
@@ -3765,7 +3831,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.96.12</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.96.13</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -5765,7 +5831,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.96.12`);
+    log(`DigiCA Tool build v0.96.13`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -19764,11 +19830,13 @@
       const num = (i) => CIRC[i] || `(${i + 1})`;
       const left = (i) => steps[i].count === Infinity ? Infinity : steps[i].count - spec.taken[i];
       const restPerCard = spec.rest === 'bottom' || spec.rest === 'top' || spec.rest === 'topOrBottom';
-      const restBtns = (i) => !restPerCard ? '' : (spec.rest === 'topOrBottom' ? ['top', 'bottom'] : [spec.rest]).map(d =>
+      // 「残りはデッキの上か下に戻す」: 残りはまとめて同じ側に戻すので、1枚でもどちらかに置いたら、残りもその側だけにする
+      const restSides = () => spec.rest === 'topOrBottom' ? (spec.restSide ? [spec.restSide] : ['top', 'bottom']) : [spec.rest];
+      const restBtns = (i) => !restPerCard ? '' : restSides().map(d =>
         `<button type="button" class="btn rg-rest" data-idx="${i}" data-dest="${d}" style="font-size:10.5px;padding:4px 7px;white-space:nowrap;">${num(steps.length)}山札${d === 'top' ? '上' : '下'}</button>`).join('');
       const REST_TEXT = { bottom: 'デッキの下に戻す', top: 'デッキの上に戻す', topOrBottom: 'デッキの上か下に戻す', trash: '破棄する', hand: '手札に加える' };
       const instr = steps.map((st, i) => `<div>${num(i)} <b>${escapeHtml(st.cond || 'カード')}</b> ${st.costSum ? `登場コスト合計${st.costSum}まで` : st.count === Infinity ? '全て' : `${st.count}枚${st.upTo ? 'まで' : ''}`}${st.act === 'evolve' ? 'に' : 'を'} <b>${st.costRule ? EVOLVE_COST_RULE_LABEL(st.costRule).replace(/進化/, '') : ''}${st.destCond ? `${escapeHtml(st.destCond)}自分の${st.act === 'tamerUnder' ? '' : 'デジモンの'}` : ''}${REVEAL_ACT_TEXT[st.act].replace(/置く$/, st.faceDown ? '裏向きで置く' : '置く')}${st.alt ? `か、${REVEAL_ACT_TEXT[st.alt]}` : ''}</b> <span style="color:#7fe0a0;">(${spec.taken[i]}/${st.count === Infinity ? '全' : st.count})</span></div>`).join('')
-        + (spec.rest ? `<div>${restPerCard ? num(steps.length) + ' ' : ''}残り: <b>${REST_TEXT[spec.rest]}</b></div>` : '');
+        + (spec.rest ? `<div>${restPerCard ? num(steps.length) + ' ' : ''}残り: <b>${spec.rest === 'topOrBottom' && spec.restSide ? `デッキの${spec.restSide === 'top' ? '上' : '下'}に戻す(上か下のうち、${spec.restSide === 'top' ? '上' : '下'}に決まりました)` : REST_TEXT[spec.rest]}</b></div>` : '');
       const rows = revealed.map((number, i) => {
         const card = cardIndexByNumber.get(number);
         const okSteps = steps.map((st, si) => left(si) > 0 && revealCondMatches(card, st.cond));
@@ -19789,7 +19857,7 @@
       const bulk = spec.rest === 'trash' || spec.rest === 'hand'
         ? `<button type="button" class="btn primary rg-bulk" data-dest="${spec.rest}" style="font-size:11.5px;padding:6px 10px;">残り${revealed.length}枚を${spec.rest === 'trash' ? '破棄' : '手札に加える'}</button>`
         : restPerCard
-          ? (spec.rest === 'topOrBottom' ? ['top', 'bottom'] : [spec.rest]).map(d =>
+          ? restSides().map(d =>
             `<button type="button" class="btn rg-bulk" data-dest="${d}" style="font-size:11.5px;padding:6px 10px;">残り${revealed.length}枚をデッキの${d === 'top' ? '上' : '下'}へ(順番お任せ)</button>`).join('')
           : '';
       detailBody.innerHTML = `
@@ -19798,8 +19866,8 @@
           <div style="margin:8px 0 10px;padding:8px 10px;border:1px solid rgba(255,200,80,.45);border-radius:8px;background:rgba(255,200,80,.07);font-size:11.5px;line-height:1.6;">
             <div style="font-weight:800;color:#ffd27a;margin-bottom:3px;">📖 ${escapeHtml(spec.effectName || '効果')}の指示</div>${instr}
           </div>
-          <div>${rows}</div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;align-items:center;">
+          <div class="rg-list">${rows}</div>
+          <div class="rg-foot" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;align-items:center;">
             ${bulk}
             <button type="button" class="btn rg-manual" style="font-size:10.5px;padding:5px 8px;">✋ 手動で振り分ける(条件を無視)</button>
           </div>
@@ -19813,6 +19881,7 @@
       }));
       detailBody.querySelectorAll('.rg-rest').forEach(btn => btn.addEventListener('click', () => {
         const [number] = revealed.splice(parseInt(btn.dataset.idx, 10), 1);
+        if (spec.rest === 'topOrBottom') spec.restSide = btn.dataset.dest;
         if (btn.dataset.dest === 'top') self.library.unshift(number); else self.library.push(number);
         renderPracticeBoard();
         render();
