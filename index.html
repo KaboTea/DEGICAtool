@@ -3855,7 +3855,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.97.7</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.97.8</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -6005,7 +6005,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.97.7`);
+    log(`DigiCA Tool build v0.97.8`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -7579,6 +7579,7 @@
       }
       out.push({
         zones: zonesOfWord(m[1]),
+        toRaising: /育成エリアに/.test(mid),
         cond: cond.replace(/と(?=「|特|名)/g, '/'), verb: m[5], costRule,
         colorIgnored: /色条件を無視/.test(t.slice(Math.max(0, m.index - 40), m.index + m[0].length + 10)),
       });
@@ -7608,7 +7609,7 @@
       if (zone === 'sources' && eachSrc) return;
       const zoneLabel = ZONE_JA[zone];
       out.push({
-        label: `${ZONE_ICON[zone]} ${zoneLabel}から${pz.verb}(${PLAY_RULE_LABEL(pz.costRule)})`,
+        label: `${ZONE_ICON[zone]} ${zoneLabel}から${pz.toRaising ? '育成エリアに' : ''}${pz.verb}(${PLAY_RULE_LABEL(pz.costRule)})`,
         run: () => {
           if (e.ownerIndex !== practiceState.viewingIndex) { showToast('この自動処理は、その効果を持つプレイヤーの視点に切り替えてから実行してください', true); return; }
           const p = practiceState.players[e.ownerIndex];
@@ -7628,6 +7629,24 @@
             list.push(Object.assign(x, { idx: x.pos, card: c, ok: revealCondMatches(c, pz.cond) && !dup, tag: dup ? `${x.tag || ''}(同じ名称が場にいる)` : x.tag }));
           });
           if (!list.length) { showToast(`${zoneLabel}に${pz.verb}できるカードがありません`, true); return; }
+          // 「空いている自分の育成エリアにコストを支払わずに登場できる」: 育成エリアに置く(登場なので【登場時】は通常どおり)
+          if (pz.toRaising) {
+            if (p.raising) { showToast('育成エリアが空いていないため登場できません', true); return; }
+            openEffectEvolvePicker(`${ZONE_ICON[zone]}「${e.cardName}」の効果: ${zoneLabel}から育成エリアに登場(${PLAY_RULE_LABEL(rule)})`, `条件: ${pz.cond}`, list.filter(x => x.card.category === 'digimon'),
+              (pick) => {
+                if (p.raising) { showToast('育成エリアが空いていません', true); return; }
+                const cost = !rule || rule.type === 'free' ? 0 : rule.type === 'fixed' ? rule.n : Math.max(0, (pick.card.play_cost || 0) - (rule.type === 'minus' ? rule.n : 0));
+                if (cost && !canPayMemoryCost(e.ownerIndex, cost)) { showToast('メモリーが上限(10)に達するため、このコストでは登場できません', true); return; }
+                snapshotPracticeState();
+                const [num] = takeZoneCards([pick]);
+                p.raising = { cards: [num], rested: false, enteredTurn: practiceState.turn.count, pendingEntry: { fromZone: zone, byEffect: true } };
+                if (cost) payMemory(e.ownerIndex, cost);
+                cardDetailModal.classList.remove('open');
+                renderPracticeBoard();
+                showToast(`🥚「${pick.card.name}」を育成エリアに登場させました${cost ? `(コスト${cost})` : ''}`);
+              }, '📥登場');
+            return;
+          }
           openEffectEvolvePicker(`${ZONE_ICON[zone]}「${e.cardName}」の効果: ${zoneLabel}から${pz.verb}(${PLAY_RULE_LABEL(pz.costRule)})`, `条件: ${pz.cond}`, list,
             (pick) => appearFromHand(pick.pos, pick.num, centerPoint(), false, { costRule: rule, source: pick.zone === 'hand' ? 'hand' : pick.zone === 'trash' ? 'trash' : 'ref', ref: pick, colorIgnored: pz.colorIgnored, effectName: e.cardName, effectText: e.text }),
             pz.verb === '使用' ? '⚡使用' : '📥登場');
@@ -13066,15 +13085,24 @@
     const spawnedUids = Object.keys(nowTops).filter(uid => !(uid in startTops) || startTops[uid] !== nowTops[uid])
       .filter(uid => { const f = findStackByUid(uid); return f && isDigimonLikeStack(f.stack); });
     clauses.forEach(cl => {
+      let dueTurn = computeExpireAtTurnCount(cl.duration, ownerIndex);
+      // ターン終了時の処理中に予約したもの: その「ターン終了時」はもう来ているので、次に来るその時点で処理する
+      // (公式Q&A: 登場したあとの一度目の「ターン終了時になったとき」に処理 / 18-1-1)
+      let moved = false;
+      const nowT = practiceState.turn.count;
+      if (practiceState.turn.phase === 'end' && dueTurn === nowT && cl.phrase !== 'このターン終了時') {
+        dueTurn = cl.phrase === 'ターン終了時' ? nowT + 1 : nowT + 2;
+        moved = true;
+      }
       const base = {
         id: 'df' + ((practiceState.deferredSeq = (practiceState.deferredSeq || 0) + 1)),
         ownerIndex, cardNumber: cur.cardNumber, cardName: cur.cardName,
-        phrase: cl.phrase, act: cl.act, dueTurn: computeExpireAtTurnCount(cl.duration, ownerIndex), targetUid: null,
+        phrase: cl.phrase, act: cl.act, dueTurn, targetUid: null, moved,
       };
       const add = (uid) => {
         const d = Object.assign({}, base, { targetUid: uid || null });
         practiceState.deferred.push(d);
-        showToast(`⏰ 保留処理を予約しました: ${deferredLabel(d)}`);
+        showToast(`⏰ 保留処理を予約しました: ${deferredLabel(d)}${d.moved ? '(今のターン終了時はもう始まっているので、次の' + d.phrase + 'に処理します)' : ''}`);
         renderPracticeBoard();
       };
       if (cl.target === 'none') { add(null); return; }
@@ -15719,6 +15747,31 @@
       : `📋 下の効果から${n}つ${m[3] ? 'まで' : ''}選んで発揮`;
     return [{ isInfo: true, label, run: () => showToast(total == null ? `「${per}」を数えられませんでした。自分で数えて選んでください` : total <= 0 ? `${per}が0なので、発揮できる効果はありません` : `下の効果から${total}つを選んで、そのボタンを押してください(同じ効果は1回まで)`) }];
   }
+
+  // 🛡「【消滅時】(〜なら、)このデジモンをセキュリティの下に表向きで置く」「このカードを手札に戻す」など:
+  // 場を離れてトラッシュにあるこのカードを動かす(条件は効果パネルの判定・自分の確認で)
+  function leftSelfMoveHandlersFor(e) {
+    if (!practiceState || !e.lki || e.event === 'セキュリティチェック' || securityPendingOf(e) || /^【セキュリティ】/.test((e.text || '').trim())) return [];
+    const t = engineStripNotes(e.text || '');
+    const m = /この(?:デジモン|カード)を、?(セキュリティの(上|下)に(表向きで|裏向きで)?置く|手札に(?:戻す|加える)|デッキの(上|下)に戻す)/.exec(t);
+    if (!m || /ことで/.test(t.slice(m.index + m[0].length, m.index + m[0].length + 4))) return [];
+    const P = practiceState.players[e.ownerIndex];
+    const dest = m[2] ? (m[2] === '上' ? 'secTop' : 'secBottom') : m[4] ? (m[4] === '上' ? 'deckTop' : 'deckBottom') : 'hand';
+    const faceUp = m[3] === '表向きで';
+    const DEST_JA = { secTop: 'セキュリティの上', secBottom: 'セキュリティの下', deckTop: 'デッキの上', deckBottom: 'デッキの下', hand: '手札' };
+    return [{ label: `${dest === 'hand' ? '✋' : '🛡'} このカードを${DEST_JA[dest]}へ${faceUp ? '(表向き)' : ''}`, run: () => {
+      const i = P.trash.lastIndexOf(e.cardNumber);
+      if (i < 0) { showToast('このカードがトラッシュに見つかりません(すでに動いているかもしれません)', true); return; }
+      snapshotPracticeState();
+      P.trash.splice(i, 1);
+      const entry = faceUp ? { n: e.cardNumber, u: 1 } : e.cardNumber;
+      if (dest === 'secTop') P.security.unshift(entry); else if (dest === 'secBottom') P.security.push(entry);
+      else if (dest === 'deckTop') P.library.unshift(e.cardNumber); else if (dest === 'deckBottom') P.library.push(e.cardNumber);
+      else P.hand.push(e.cardNumber);
+      renderPracticeBoard();
+      showToast(`「${e.cardName}」を${DEST_JA[dest]}に${faceUp ? '表向きで' : ''}置きました`);
+    } }];
+  }
   // 🔗「自分の手札かこのデジモンの進化元から、(条件の)カードN枚をこのデジモン/自分のデジモン1体に(コストを支払わずに|支払うコスト-Nで)リンクできる」
   //   「このカードを(エリアの)自分のデジモン1体にコストを支払わずにリンクできる」
   // (代償の「〜リンクさせることで」は costHandlersFor が扱う)
@@ -15888,7 +15941,7 @@
     }
     const f = findStackByUid(e.stackUid);
     // 進化元効果・リンク効果・消滅時(場を離れた後)・手札の効果などでも、ドローだけは使えるようにする
-    if (!f || e.field !== 'effect') return [...securityCardHandlersFor(e), ...securitySelfHandlersFor(e), ...keywordGrantHandlersFor(e, f && f.stack), ...effectGrantHandlersFor(e, f && f.stack), ...effectRefHandlersFor(e), ...targetHandlersFor(e, f && f.stack), ...retargetHandlersFor(e, f && f.stack), ...(f ? resistGrantHandlersFor(e, f.stack) : []), ...memoryHandlersFor(e), ...drawHandlersFor(e)];
+    if (!f || e.field !== 'effect') return [...securityCardHandlersFor(e), ...securitySelfHandlersFor(e), ...leftSelfMoveHandlersFor(e), ...keywordGrantHandlersFor(e, f && f.stack), ...effectGrantHandlersFor(e, f && f.stack), ...effectRefHandlersFor(e), ...targetHandlersFor(e, f && f.stack), ...retargetHandlersFor(e, f && f.stack), ...(f ? resistGrantHandlersFor(e, f.stack) : []), ...memoryHandlersFor(e), ...drawHandlersFor(e)];
     const stack = f.stack;
     const line = e.text;
     const list = [];
