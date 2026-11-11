@@ -1,0 +1,22 @@
+// v0.96.7: ≪デジバースト≫(代償: 進化元を選んでN枚破棄)・「・」で始まる続きの行を効果に含める・≪マインドリンク≫
+import { page, ev, errs, browser } from '../head.mjs';
+await page.waitForTimeout(1200);
+const o = {};
+const pi = await ev('practiceState.turn.playerIndex');
+const r = await ev(`(() => { const P=practiceState.players[${pi}]; const nume=[...cardIndexByNumber.values()].find(c=>c.category==='digimon'&&c.name.includes('ヌメモン')).number;
+ P.battle=[{cards:['BT1-010','BT1-019','BT1-025','BT4-012']},{cards:['BT1-010','BT14-086']},{cards:['BT1-019', nume]},{cards:['BT1-085', nume]}]; renderPracticeBoard();
+ const ent = collectStackTriggers(P.battle[0], ${pi}, 'battle', ['メイン'])[0];
+ const hs = getEffectHandlers(ent);
+ const res = { subLine: /・DP4000以下/.test(ent.text), burstCost: hs.some(h=>h.isCost && /進化元を選んで2枚破棄/.test(h.label)), effectBtn: hs.some(h=>/DP4000以下の相手のデジモン1体を消滅/.test(h.label)) };
+ const ent2 = collectStackTriggers(P.battle[1], ${pi}, 'battle', ['メイン'])[0];
+ const mh = getEffectHandlers(ent2).find(h=>/マインドリンク/.test(h.label));
+ res.mindBtn = !!mh; mh.run();
+ res.cands = fieldPickMode ? fieldPickMode.candidates.map(st=>P.battle.indexOf(st)).join(',') : '';
+ fieldPickMode.selected=[P.battle[2]]; finishFieldPick();
+ res.placed = P.battle.length === 3 && cardEntryNum(P.battle[1].cards[0]) === 'BT14-086' && P.trash.map(cardEntryNum).includes('BT1-010');
+ return res; })()`);
+Object.assign(o, r);
+o.cands = o.cands === '2';
+const ng = Object.entries(o).filter(([k, x]) => x !== true).map(([k]) => k);
+console.log(JSON.stringify(o));
+await browser.close(); console.log(ng.length ? ng : errs);

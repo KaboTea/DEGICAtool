@@ -3762,7 +3762,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.96.6</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.96.7</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -5762,7 +5762,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.96.6`);
+    log(`DigiCA Tool build v0.96.7`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -10422,6 +10422,17 @@
     return out;
   }
   // スタック1つについて、指定タイミングのいずれかを持つ効果行を発揮待ち候補にする
+  // 「【メイン】≪デジバースト2≫(…)」の次の行の「・DP4000以下の相手のデジモン1体を消滅させる。」のような、
+  // 「・」で始まる続きの行を、その効果の文に含める(ボタンの読み取り・効果パネルの表示とも)
+  function withSubLines(text, block, lineIndex) {
+    const ls = String(block || '').split('\n');
+    const subs = [];
+    for (let i = lineIndex + 1; i < ls.length; i++) {
+      if (!/^\s*・/.test(ls[i])) break;
+      subs.push(ls[i].trim());
+    }
+    return subs.length ? `${text}\n${subs.join('\n')}` : text;
+  }
   function collectStackTriggers(stack, pi, zone, timings, opts) {
     const o = opts || {};
     const res = [];
@@ -10435,7 +10446,7 @@
         if (!timing) return;
         res.push({
           ownerIndex: pi, stackUid: ensureStackUid(stack), cardNumber: src.cardNumber, cardName: src.card.name,
-          field: src.field, sourceLabel: src.sourceLabel, lineIndex, text: parsed.text, timing,
+          field: src.field, sourceLabel: src.sourceLabel, lineIndex, text: withSubLines(parsed.text, src.text, lineIndex), timing,
           event: o.event || timing,
         });
       });
@@ -10628,7 +10639,7 @@
         if (!hit) return;
         const entry = {
           ownerIndex: pi, cardNumber: src.cardNumber, cardName: src.card.name,
-          field: src.field, sourceLabel: src.sourceLabel, lineIndex, text: parsed.text,
+          field: src.field, sourceLabel: src.sourceLabel, lineIndex, text: withSubLines(parsed.text, src.text, lineIndex),
           timing: parsed.labels[0], event: ENGINE_EVENT_LABEL[hit.kind] || hit.kind, eventLabel: ENGINE_EVENT_LABEL[hit.kind] || '',
         };
         if (o.lki) { entry.lki = true; entry.lkiUid = holderUid; entry.stackUid = null; }
@@ -10778,7 +10789,7 @@
     card.effect.split('\n').forEach((line, lineIndex) => {
       const parsed = parseEffectLine(line);
       if (!/手札/.test(parsed.prefix) || !parsed.labels.includes('メイン')) return;
-      const e = { ownerIndex: pi, stackUid: null, zone: 'hand', cardNumber: card.number, cardName: card.name, field: 'effect', sourceLabel: '手札', lineIndex, text: parsed.text, timing: 'メイン', event: '起動', eventLabel: '起動' };
+      const e = { ownerIndex: pi, stackUid: null, zone: 'hand', cardNumber: card.number, cardName: card.name, field: 'effect', sourceLabel: '手札', lineIndex, text: withSubLines(parsed.text, card.effect, lineIndex), timing: 'メイン', event: '起動', eventLabel: '起動' };
       if (!isOnceUsed(e)) res.push(e);
     });
     return res;
@@ -11109,7 +11120,7 @@
           if (!lineMatches(parsed, isSelf)) return;
           const e = {
             ownerIndex: pi, stackUid: ensureStackUid(holder), cardNumber: src.cardNumber, cardName: src.card.name,
-            field: src.field, sourceLabel: src.sourceLabel, lineIndex, text: parsed.text,
+            field: src.field, sourceLabel: src.sourceLabel, lineIndex, text: withSubLines(parsed.text, src.text, lineIndex),
             timing: parsed.labels[0] || '即時', event: '離れるとき', eventLabel: '離れるとき',
           };
           if (isOnceUsed(e)) return;
@@ -11131,7 +11142,7 @@
         if (!lineMatches(parsed, false)) return;
         const e = {
           ownerIndex: pi, stackUid: null, lki: true, lkiUid: 'secstatic-' + c.number, secStatic: c.number,
-          cardNumber: c.number, cardName: c.name, field: 'effect', sourceLabel: 'セキュリティ(表向き)', lineIndex, text: parsed.text,
+          cardNumber: c.number, cardName: c.name, field: 'effect', sourceLabel: 'セキュリティ(表向き)', lineIndex, text: withSubLines(parsed.text, c.effect, lineIndex),
           timing: parsed.labels[0] || '即時', event: '離れるとき', eventLabel: '離れるとき',
         };
         if (isOnceUsed(e)) return;
@@ -12756,6 +12767,9 @@
     const t = engineStripNotes(text || '');
     const out = [];
     let base = 0;
+    // ≪デジバーストN≫(16-14): このデジモンの進化元をN枚選んで破棄することで、続く「・」の効果を発揮する
+    const db = /≪デジバースト(\d+)(枚まで)?≫/.exec(t);
+    if (db) out.push({ cost: `このデジモンの進化元を選んで${db[1]}枚${db[2] ? "まで" : ""}破棄する`, from: 0, to: db.index + db[0].length, digiburst: true });
     t.split('。').forEach(sent => {
       const re = /ことで、/g;
       let m;
@@ -15081,11 +15095,55 @@
       } };
     });
   }
+  // ---------- ≪マインドリンク≫(16-28): このテイマーを、進化元にテイマーカードが無い自分のデジモンの進化元の下に置く ----------
+  function mindLinkHandlersFor(e, holderStack) {
+    if (!practiceState) return [];
+    const t = engineStripNotes(e.text || '');
+    const m = /(?:このテイマーを)?([^。]*?)自分のデジモン1体に≪マインドリンク≫(でき)?/.exec(t);
+    if (!m) return [];
+    const filter = m[1].replace(/^.*?(?:【[^】]+】|［[^］]*］|\[[^\]]*\]|その後、|とき、|なら、)/g, '').replace(/^このテイマーを/, '').replace(/^「([^」]+)」の記述がある$/, '「$1」の記述がある').trim();
+    const subj = { filters: parseSubjectFilters(filter), colors: parseSubjectColors(filter + 'の自分') };
+    return [{ label: `🧠 ≪マインドリンク≫: このテイマーを${filter ? filter + '' : ''}自分のデジモンの進化元の下へ`, run: () => {
+      if (e.ownerIndex !== practiceState.viewingIndex) { showToast('この自動処理は、その効果を持つプレイヤーの視点に切り替えてから実行してください', true); return; }
+      const f = holderStack && findStackOwnerAndZone(holderStack);
+      const tamer = f && getStackTopCard(holderStack);
+      if (!f || !tamer || tamer.category !== 'tamer') { showToast('このテイマーが場にいません', true); return; }
+      const P = practiceState.players[e.ownerIndex];
+      const hasTamerSrc = (st) => st.cards.slice(0, -1).some(en => !cardEntryFaceDown(en) && (cardIndexByNumber.get(cardEntryNum(en)) || {}).category === 'tamer');
+      const own = P.battle.filter(st => isDigimonLikeStack(st));
+      const cands = own.filter(st => !hasTamerSrc(st) && (!filter || cardMatchesSubject(getStackTopCard(st), subj)));
+      const extra = own.filter(st => !cands.includes(st));
+      if (!own.length) { showToast('自分のデジモンがいません', true); return; }
+      startFieldPick({ title: `🧠 ≪マインドリンク≫: 「${tamer.name}」を進化元の下に置くデジモンをタップ${filter ? `(${filter}・進化元にテイマーなし)` : '(進化元にテイマーなし)'}`,
+        candidates: cands, extra, onDone: (sel) => {
+          const st = sel[0];
+          if (!st) return;
+          const go = () => {
+            snapshotPracticeState();
+            const i = P.battle.indexOf(holderStack);
+            if (i >= 0) P.battle.splice(i, 1);
+            // テイマーの下に重ねられていたカードは破棄(4-6-8)
+            holderStack.cards.slice(0, -1).forEach(en => P.trash.push(cardEntryNum(en)));
+            st.cards.unshift(cardEntryNum(holderStack.cards[holderStack.cards.length - 1]));
+            renderPracticeBoard();
+            showToast(`🧠 ≪マインドリンク≫: 「${tamer.name}」を「${stackLabel(st)}」の進化元の下に置きました`);
+          };
+          if (hasTamerSrc(st)) {
+            openDecisionUi('🧠 このデジモンの進化元にはテイマーカードがあります(≪マインドリンク≫は進化元にテイマーカードが無いデジモンに置きます)', [
+              { label: 'やめる', primary: true, onClick: () => renderPracticeBoard() },
+              { label: 'それでも置く', onClick: go },
+            ]);
+            return;
+          }
+          go();
+        } });
+    } }];
+  }
   function getEffectHandlers(e) {
     if (e.deferred) return deferredHandlersFor(e);
     const extra = () => {
       const f = e.stackUid ? findStackByUid(e.stackUid) : null;
-      const list = [...tokenHandlersFor(e), ...totalRemovalHandlersFor(e, holderOf(e, f)), ...appFusionHandlersFor(e), ...handOpenToSecurityHandlersFor(e, holderOf(e, f)), ...securityEvolveHandlersFor(e, holderOf(e, f)), ...securitySearchPlayHandlersFor(e), ...totalCostPlayHandlersFor(e, holderOf(e, f)), ...sourcePlayHandlersFor(e, holderOf(e, f)), ...selfCardPlayHandlersFor(e), ...reductionCostHandlersFor(e), ...costHandlersFor(e, holderOf(e, f)), ...restrictHandlersFor(e), ...evolveFromZoneHandlersFor(e, f && f.stack), ...materialFromZoneHandlersFor(e, f && f.stack), ...playFromHandHandlersFor(e, holderOf(e, f)), ...toHandFromZoneHandlersFor(e, holderOf(e, f)), ...sourceMoveHandlersFor(e, holderOf(e, f)), ...simpleActionHandlersFor(e, holderOf(e, f)), ...effectMovementHandlersFor(e, holderOf(e, f))];
+      const list = [...tokenHandlersFor(e), ...mindLinkHandlersFor(e, holderOf(e, f)), ...totalRemovalHandlersFor(e, holderOf(e, f)), ...appFusionHandlersFor(e), ...handOpenToSecurityHandlersFor(e, holderOf(e, f)), ...securityEvolveHandlersFor(e, holderOf(e, f)), ...securitySearchPlayHandlersFor(e), ...totalCostPlayHandlersFor(e, holderOf(e, f)), ...sourcePlayHandlersFor(e, holderOf(e, f)), ...selfCardPlayHandlersFor(e), ...reductionCostHandlersFor(e), ...costHandlersFor(e, holderOf(e, f)), ...restrictHandlersFor(e), ...evolveFromZoneHandlersFor(e, f && f.stack), ...materialFromZoneHandlersFor(e, f && f.stack), ...playFromHandHandlersFor(e, holderOf(e, f)), ...toHandFromZoneHandlersFor(e, holderOf(e, f)), ...sourceMoveHandlersFor(e, holderOf(e, f)), ...simpleActionHandlersFor(e, holderOf(e, f)), ...effectMovementHandlersFor(e, holderOf(e, f))];
       // 進化元効果・セキュリティ効果・消滅時などの「デッキの上からN枚オープン」(【効果】欄のものは基本の処理で出している)
       const rm = /(?<!相手の)デッキの上から(\d+)枚オープン/.exec(e.text || '');
       if (rm && e.timing !== 'ディレイ' && (!f || e.field !== 'effect')) {
@@ -15272,7 +15330,7 @@
           onClick: () => {
             enqueueEffects([{
               ownerIndex: pi, stackUid: ensureStackUid(stack), cardNumber: src.cardNumber, cardName: src.card.name,
-              field: src.field, sourceLabel: src.sourceLabel, lineIndex, text: parsed.text,
+              field: src.field, sourceLabel: src.sourceLabel, lineIndex, text: withSubLines(parsed.text, src.text, lineIndex),
               timing: parsed.labels[0], event: '手動', manual: true,
             }]);
             renderEffectPanel();
