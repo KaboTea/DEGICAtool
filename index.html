@@ -3216,6 +3216,8 @@
       writing-mode: vertical-rl; letter-spacing: 0.15em; padding: 8px 0; min-height: 0;
     }
     body.ls-mode .ls-dock-toggle.has-items { color: #1a1204; background: linear-gradient(180deg, #ffe08a, var(--gold)); border-color: transparent; }
+    /* 効果パネルがOFFのとき: 右端の帯に赤の点線で「⚡ 効果パネル OFF」(タップでONにするか聞く) */
+    body.ls-mode .ls-dock-toggle.fx-off { color: #ffb3b3; background: rgba(255,92,92,0.12); border: 1px dashed rgba(255,110,110,0.75); }
     /* 開いているときも、右端の帯(たたむボタン)はそのままの場所に残す。右の列はその左に出す */
     /* 開いているときは、たたむボタンを列の左端に「引き出しの取っ手」として付ける。列は画面の右端まで使う */
     body.ls-mode.ls-dock-open .ls-dock-toggle {
@@ -3763,7 +3765,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.96.10</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.96.11</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -5763,7 +5765,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.96.10`);
+    log(`DigiCA Tool build v0.96.11`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -10399,6 +10401,7 @@
       q.pending = [];
     }
     renderEffectPanel();
+    if (typeof lsUpdateDock === 'function') lsUpdateDock();
   });
 
   function getEffectQueue() {
@@ -15848,7 +15851,8 @@
     t.classList.toggle('has-items', !!sig);
     // 閉じているときの帯: 処理待ちの件数(処理中+発揮待ち)を出す
     const nFx = (ep && !ep.hidden && q) ? (q.current ? 1 : 0) + q.pending.length : 0;
-    t.innerHTML = sig ? `${nFx ? `<b>${nFx}</b> ` : ''}${nFx ? '効果の処理' : '操作あり'}` : '効果パネル';
+    t.innerHTML = sig ? `${nFx ? `<b>${nFx}</b> ` : ''}${nFx ? '効果の処理' : '操作あり'}${effectPanelEnabled ? '' : ' ・ ⚡効果OFF'}` : (effectPanelEnabled ? '効果パネル' : '⚡ 効果パネル OFF');
+    t.classList.toggle('fx-off', !effectPanelEnabled && !sig);
     t.title = '効果パネルを開く(フィールド外の操作「孵化(効果)」等もここ)';
     const bt = document.getElementById('lsDockBarTitle');
     if (bt) bt.textContent = nFx ? `⚡ 効果の処理${nFx > 1 ? `  ${nFx}件` : ''}` : (attackBarState ? '❔ 確認' : '操作');
@@ -15895,6 +15899,14 @@
   document.getElementById('lsVer').textContent = (document.getElementById('appVersion') || {}).textContent || '';
   document.getElementById('lsDockToggle').addEventListener('click', (e) => {
     e.stopPropagation();
+    // 効果パネルがOFFのとき(処理待ちがない帯)は、ONにするか聞く
+    if (!effectPanelEnabled && !lsDockSig && !lsDockOpen) {
+      openDecisionUi('⚡ 効果パネルがOFFです。OFFの間は、効果の自動処理(誘発・ボタン)と自動のターン終了が動きません。', [
+        { label: 'ONにする', primary: true, onClick: () => { document.getElementById('effectPanelToggle').click(); lsUpdateDock(); showToast('⚡ 効果パネルをONにしました'); } },
+        { label: 'OFFのまま', onClick: () => lsUpdateDock() },
+      ]);
+      return;
+    }
     lsDockOpen = !lsDockOpen;
     lsDockPinned = lsDockOpen && !lsDockSig;
     lsUpdateDock();
