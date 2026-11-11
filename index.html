@@ -3855,7 +3855,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.97.4</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.97.5</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -6005,7 +6005,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.97.4`);
+    log(`DigiCA Tool build v0.97.5`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -7564,7 +7564,14 @@
       else if ((x = /コスト[-－](\d+)/.exec(mid))) costRule = { type: 'minus', n: parseInt(x[1], 10) };
       else if ((x = /コスト(\d+)で/.exec(mid))) costRule = { type: 'fixed', n: parseInt(x[1], 10) };
       else if (/コストを支払って/.test(mid)) costRule = { type: 'normal' };
+      // コストの書いていない「〜を登場できる」は、ふつうにコストを支払って登場する
+      else if (!mid.trim() && m[5] === '登場') costRule = { type: 'normal' };
       if (!costRule) continue;
+      // 「自分の表向きのセキュリティ1枚ごとに、この効果で支払う登場コスト-1」: 数に応じて減らす
+      if (costRule.type === 'normal') {
+        const pm = /(?:^|[。、])([^、。]{1,40}?)ごとに、この効果で支払う(?:登場|使用)?コスト[-－](\d+)/.exec(t.slice(m.index));
+        if (pm) costRule = { type: 'minus', n: parseInt(pm[2], 10), per: pm[1] };
+      }
       // 「…コストを支払って登場できる。この効果で登場するとき、支払う登場コスト-N」
       if (costRule.type === 'normal') {
         const am = /この効果で(?:登場|使用)するとき、支払う(?:登場|使用)?コスト[-－](\d+)/.exec(t.slice(m.index));
@@ -7591,7 +7598,7 @@
     }
     return out;
   }
-  const PLAY_RULE_LABEL = (r) => !r ? '' : r.type === 'free' ? 'コストなし' : r.type === 'minus' ? `コスト-${r.n}` : r.type === 'fixed' ? `コスト${r.n}` : 'コストを支払って';
+  const PLAY_RULE_LABEL = (r) => !r ? '' : r.type === 'free' ? 'コストなし' : r.type === 'minus' && r.per ? `${r.per}ごとにコスト-${r.n}` : r.type === 'minus' ? `コスト-${r.n}` : r.type === 'fixed' ? `コスト${r.n}` : 'コストを支払って';
   function playFromHandHandlersFor(e, holderStack) {
     if (!practiceState) return [];
     const out = [];
@@ -7605,6 +7612,12 @@
         run: () => {
           if (e.ownerIndex !== practiceState.viewingIndex) { showToast('この自動処理は、その効果を持つプレイヤーの視点に切り替えてから実行してください', true); return; }
           const p = practiceState.players[e.ownerIndex];
+          let rule = pz.costRule;
+          if (rule && rule.per) {
+            const k = countPerUnit(rule.per, e.ownerIndex, holderStack, null);
+            rule = k == null ? { type: 'normal' } : k > 0 ? { type: 'minus', n: rule.n * k } : { type: 'normal' };
+            showToast(k == null ? `「${pz.costRule.per}」を数えられませんでした。コストは手で調整してください` : `${pz.costRule.per}が${k}なので、登場コスト-${pz.costRule.n * k}`);
+          }
           const list = [];
           listZoneCards(zone, p, holderStack).forEach(x => {
             const c = cardIndexByNumber.get(x.num);
@@ -7616,7 +7629,7 @@
           });
           if (!list.length) { showToast(`${zoneLabel}に${pz.verb}できるカードがありません`, true); return; }
           openEffectEvolvePicker(`${ZONE_ICON[zone]}「${e.cardName}」の効果: ${zoneLabel}から${pz.verb}(${PLAY_RULE_LABEL(pz.costRule)})`, `条件: ${pz.cond}`, list,
-            (pick) => appearFromHand(pick.pos, pick.num, centerPoint(), false, { costRule: pz.costRule, source: pick.zone === 'hand' ? 'hand' : pick.zone === 'trash' ? 'trash' : 'ref', ref: pick, colorIgnored: pz.colorIgnored, effectName: e.cardName, effectText: e.text }),
+            (pick) => appearFromHand(pick.pos, pick.num, centerPoint(), false, { costRule: rule, source: pick.zone === 'hand' ? 'hand' : pick.zone === 'trash' ? 'trash' : 'ref', ref: pick, colorIgnored: pz.colorIgnored, effectName: e.cardName, effectText: e.text }),
             pz.verb === '使用' ? '⚡使用' : '📥登場');
         },
       });
@@ -12136,6 +12149,10 @@
       phrase: `${m[2] ? m[2] + 'の' : ''}${m[3]}${m[4] ? m[4] + '体' + (m[5] ? 'まで' : '') + (m[6] ? 'ずつ' : '') : '全て'}`,
     };
   }
+  // 「【登場時】【進化時】［ターンに1回］その後、自分の表向きのセキュリティ1枚」→「自分の表向きのセキュリティ1枚」
+  function cleanPerPhrase(x) {
+    return String(x || '').replace(/【[^】]*】|［[^］]*］|\[[^\]]*\]/g, '').replace(/^(?:その後|さらに)、?/, '').trim();
+  }
   function parseTargetActions(text) {
     const t = engineStripNotes(text || '').replace(/[＋]/g, '+').replace(/[－]/g, '-')
       .replace(/(1体)を選ぶ。その(?:デジモン|テイマー)は((?:次の)?(?:相手|自分)の)ターン終了時まで/g, '$1は、$2ターン終了まで、'); // ST2-14
@@ -12185,7 +12202,8 @@
           if ((em && /登場時/.test(em[1])) || /【登場時】効果[^、]*は発揮(しな|せず)/.test(chain)) locks.push('noPlayEffect');
           if ((em && /進化時/.test(em[1])) || /【進化時】効果[^、]*は発揮(しな|せず)/.test(chain)) locks.push('noEvolveEffect');
           if ((em && /アタック時/.test(em[1])) || /【アタック時】効果[^、]*は発揮(しな|せず)/.test(chain)) locks.push('noAttackEffect');
-          const common = { duration, prefix: spec.prefix, exclude: null, side: spec.side, kinds: spec.kinds, count: spec.count, upTo: spec.upTo, phrase: spec.phrase, eachBy: spec.eachBy, eachN: spec.eachN };
+          const lcp = /([^、。]{1,40}?)ごとに、?$/.exec(sent.slice(0, m.index));
+          const common = { duration, prefix: spec.prefix, exclude: null, side: spec.side, kinds: spec.kinds, count: spec.count, upTo: spec.upTo, phrase: spec.phrase, eachBy: spec.eachBy, eachN: spec.eachN, countPer: lcp && Number.isFinite(spec.count) ? cleanPerPhrase(lcp[1]) : null };
           // 「〜の【進化時】効果は発揮せず、DP-3000」: DP増減にロックを添える
           const dm = em && em[2] === 'せず' ? /^、?DP([+\-]\d+)/.exec(head.slice(em.index + em[0].length)) : null;
           if (dm) out.push(Object.assign({ action: { type: 'dp', amount: parseInt(dm[1], 10), locks } }, common));
@@ -12231,8 +12249,21 @@
           exclude = lastChoose;
           prefix = prefix.replace(/(?:このデジモンと)?選んだ(?:(?:相手|自分|お互い)の)?(?:デジモン|テイマー|カード)?以外の?/, (x) => (/^このデジモンと/.test(x) ? 'このデジモン以外の' : ''));
         }
+        // 「選んだデジモンと同じLv.の相手のデジモン全てを〜」: 先に選んだもののLv.で絞る
+        let sameLv = false;
+        if (/選んだ(?:デジモン|テイマー|カード)と同じLv\.の?/.test(prefix) && lastChoose) {
+          exclude = lastChoose; sameLv = true;
+          prefix = prefix.replace(/選んだ(?:デジモン|テイマー|カード)と同じLv\.の?/, '');
+        }
+        // 「自分の表向きのセキュリティ1枚ごとに、相手のデジモン1体をレストさせる」: 対象の数が数に応じて増える
+        const cpm = /([^、。]{1,40}?)ごとに、?$/.exec(sent.slice(0, m.index));
+        const countPer = cpm && Number.isFinite(spec.count) ? cleanPerPhrase(cpm[1]) : null;
+        // 「〜1枚ごとに、この効果の登場コスト上限+2」「〜1体ごとに、この効果で選べるLv.+1」: 条件の数字を増やす
+        const rm = /([^、。]{1,40}?)ごとに、この効果(?:の|で選べる)(登場コスト|Lv\.)(?:の)?(?:上限)?\+(\d+)/.exec(t);
+        if (rm) rm[1] = cleanPerPhrase(rm[1]);
+        const raise = rm && new RegExp((rm[2] === 'Lv.' ? 'Lv\\.' : '登場コスト') + '\\d+以下').test(prefix) ? { per: rm[1], what: rm[2], n: parseInt(rm[3], 10) } : null;
         out.push({
-          action, duration, prefix, exclude,
+          action, duration, prefix, exclude, sameLv, countPer, raise,
           side: spec.side, kinds: spec.kinds, count: spec.count, upTo: spec.upTo, phrase: spec.phrase, eachBy: spec.eachBy, eachN: spec.eachN,
         });
         pendingAnd.splice(0).forEach(pa => out.push({ action, duration, prefix: pa.prefix, exclude: null, side: pa.side, kinds: pa.kinds, count: pa.count, upTo: pa.upTo, phrase: pa.phrase }));
@@ -12322,6 +12353,15 @@
     }
     if ((m = /^このデジモンのDP(\d+)$/.exec(per))) return holder ? Math.max(0, Math.floor(getEffectiveDP(holder) / parseInt(m[1], 10))) : null;
     if ((m = /^(自分|相手)のセキュリティ1枚$/.exec(per))) return practiceState.players[m[1] === '自分' ? ownerIndex : 1 - ownerIndex].security.length;
+    if ((m = /^お互いのトラッシュ合計(\d+)枚$/.exec(per))) return Math.floor((practiceState.players[0].trash.length + practiceState.players[1].trash.length) / parseInt(m[1], 10));
+    if ((m = /^(自分|相手)のトラッシュ(\d+)枚$/.exec(per))) return Math.floor(practiceState.players[m[1] === '自分' ? ownerIndex : 1 - ownerIndex].trash.length / parseInt(m[2], 10));
+    if ((m = /^自分の(テイマー|デジモンとテイマー|デジモン)の色(\d+)色$/.exec(per))) {
+      const kinds = m[1] === 'テイマー' ? ['tamer'] : m[1] === 'デジモン' ? ['digimon'] : ['digimon', 'tamer'];
+      const cols = new Set();
+      me.battle.forEach(st => { const top = getStackTopCard(st); if (!top) return; const isD = isDigimonLikeStack(st), isT = top.category === 'tamer' && !actsAsDigimon(st);
+        if ((kinds.includes('digimon') && isD) || (kinds.includes('tamer') && isT)) (top.color || []).forEach(c => cols.add(c)); });
+      return Math.floor(cols.size / parseInt(m[2], 10));
+    }
     if ((m = /^(自分|相手)の表向きのセキュリティ1枚$/.exec(per))) return practiceState.players[m[1] === '自分' ? ownerIndex : 1 - ownerIndex].security.filter(cardEntryFaceUp).length;
     if (/^相手側のメモリー1$/.test(per)) {
       const toward = ownerIndex === 0 ? practiceState.memory : -practiceState.memory;
@@ -12477,21 +12517,41 @@
   }
   function openTargetPicker(ta, e, holderStack) {
     ta = Object.assign({}, ta, { holder: holderStack || null });
+    // 「〜ごとに、相手のデジモン1体を〜」: 数えて対象の数を決める(0なら何もしない)
+    if (ta.countPer && !ta.countResolved) {
+      const k = countPerUnit(ta.countPer, e.ownerIndex, holderStack, null);
+      if (k == null) showToast(`「${ta.countPer}」を数えられませんでした。${ta.count}体として選びます`, true);
+      else if (k <= 0) { showToast(`${ta.countPer}が0なので、対象はいません`); return; }
+      else { showToast(`${ta.countPer}が${k}なので、${ta.count * k}体まで選べます`); ta = Object.assign({}, ta, { count: ta.count * k, upTo: true }); }
+      ta.countResolved = true;
+    }
+    // 「〜ごとに、この効果の登場コスト上限+2」: 条件の数字を増やす
+    if (ta.raise && !ta.raiseResolved) {
+      const k = countPerUnit(ta.raise.per, e.ownerIndex, holderStack, null);
+      if (k == null) showToast(`「${ta.raise.per}」を数えられませんでした。上限は増やさずに選びます`, true);
+      else if (k > 0) {
+        const re = ta.raise.what === 'Lv.' ? /Lv\.(\d+)以下/ : /登場コスト(\d+)以下/;
+        const prefix = ta.prefix.replace(re, (x, n) => x.replace(n, String(parseInt(n, 10) + ta.raise.n * k)));
+        showToast(`${ta.raise.per}が${k}なので、${ta.raise.what}の上限+${ta.raise.n * k}(${(re.exec(prefix) || [''])[0]})`);
+        ta = Object.assign({}, ta, { prefix });
+      }
+      ta.raiseResolved = true;
+    }
     // 「〜1体を選び、選んだデジモン以外の〜」: まず残す側を選ぶ(候補が1体だけならそれに決める)
     if (ta.exclude && !ta.excluded) {
       const ex = ta.exclude;
       const exCands = targetCandidates(ex, e.ownerIndex, holderStack);
       const exExtra = targetPoolAll(ex, e.ownerIndex).filter(st => !exCands.includes(st));
-      const next = (sel) => openTargetPicker(Object.assign({}, ta, { excluded: sel }), e, holderStack);
+      const next = (sel) => openTargetPicker(Object.assign({}, ta, ta.sameLv ? { excluded: [], sameLvOf: sel, exclude: null } : { excluded: sel }), e, holderStack);
       if (!exCands.length && !exExtra.length) { next([]); return; }
       const auto = (exCands.length === 1 && ex.count === 1) ? exCands : eachAutoPick(ex, exCands);
       if (auto) {
-        showToast(`${auto.map(st => `「${stackLabel(st)}」`).join('')}を選びました(選んだもの以外が対象)`);
+        showToast(`${auto.map(st => `「${stackLabel(st)}」`).join('')}を選びました(${ta.sameLv ? '選んだものと同じLv.が対象' : '選んだもの以外が対象'})`);
         next(auto);
         return;
       }
       startFieldPick({
-        title: `${(ex.prefix || '').replace(/【[^】]*】/g, '').trim()}${ex.phrase}を選ぶ: タップ(選んだもの以外が対象になります)`,
+        title: `${(ex.prefix || '').replace(/【[^】]*】/g, '').trim()}${ex.phrase}を選ぶ: タップ(${ta.sameLv ? '選んだものと同じLv.が対象になります' : '選んだもの以外が対象になります'})`,
         sub: ex.eachBy ? '片方にいない場合は、いる方だけ選べば進みます' : '',
         candidates: exCands, extra: exExtra,
         max: Number.isFinite(ex.count) ? ex.count : 1, upTo: ex.upTo,
@@ -12503,6 +12563,10 @@
     }
     const keep = ta.excluded || [];
     let cands = targetCandidates(ta, e.ownerIndex, holderStack).filter(st => !keep.includes(st));
+    if (ta.sameLvOf) {
+      const lvs = ta.sameLvOf.map(st => (getStackTopCard(st) || {}).level).filter(v => v != null);
+      cands = lvs.length ? cands.filter(st => lvs.includes((getStackTopCard(st) || {}).level)) : [];
+    }
     // 進化元を破棄する効果は、進化元を持つデジモンだけを候補にする
     if (ta.action.type === 'matTrash') cands = cands.filter(st => st.cards.length > 1);
     // ⛨耐性でこの効果を受けないものは候補から外す(「条件外も選ぶ」からは選べる)
@@ -12557,9 +12621,11 @@
     if (a.type === 'matTrash') return `${(ta.prefix || '').replace(/【[^】]*】/g, '').replace(/[［\[][^］\]]*[］\]]/g, '').replace(/^[・\s]+/, '').trim()}${ta.phrase}の${what}`;
     const pre = (ta.prefix || '').replace(/【[^】]*】/g, '').replace(/[［\[][^］\]]*[］\]]/g, '').replace(/^[・\s]+/, '').trim();
     const dur = a.type === 'dp' && DURATION_LABELS[ta.duration] ? `(${DURATION_LABELS[ta.duration]})` : '';
-    const ex = ta.exclude ? `(選んだ${ta.exclude.phrase.replace(/^(相手|自分|お互い)の/, '')}以外)` : '';
+    const ex = ta.exclude ? (ta.sameLv ? `(選んだ${ta.exclude.phrase.replace(/^(相手|自分|お互い)の/, '').replace(/\d+体$/, '')}と同じLv.)` : `(選んだ${ta.exclude.phrase.replace(/^(相手|自分|お互い)の/, '')}以外)`) : '';
+    const per = ta.countPer ? `${ta.countPer}ごとに、` : '';
+    const rz = ta.raise ? `(${ta.raise.per}ごとに${ta.raise.what}上限+${ta.raise.n})` : '';
     const lk = a.type !== 'lock' && (a.locks || []).length ? '・🔒' + a.locks.map(k => LOCK_LABELS[k].replace('を発揮しない', 'なし')).join('・') : '';
-    return `${pre ? pre : ''}${ta.phrase}${a.type === 'lock' ? 'に' : 'を'}${what}${lk}${ex}${dur}`;
+    return `${per}${pre ? pre : ''}${ta.phrase}${a.type === 'lock' ? 'に' : 'を'}${what}${lk}${ex}${rz}${dur}`;
   }
   function targetHandlersFor(e, holderStack) {
     return parseTargetActions(e.text).map(ta => ({
@@ -14751,9 +14817,18 @@
     const sre = /相手のセキュリティを上から(\d+)枚破棄(する|できる|し)/g;
     while ((m = sre.exec(t))) {
       if (!notCost(m.index, m[0].length - m[2].length)) continue;
-      const n = parseInt(m[1], 10);
-      out.push({ label: `🛡 相手のセキュリティを上から${n}枚破棄`, run: () => {
+      const n0 = parseInt(m[1], 10);
+      const pm = /([^、。]{1,40}?)ごとに、?$/.exec(t.slice(0, m.index));
+      const secPer = pm ? cleanPerPhrase(pm[1]) : null;
+      out.push({ label: `🛡 ${secPer ? secPer + 'ごとに、' : ''}相手のセキュリティを上から${n0}枚破棄`, run: () => {
         if (!guard()) return;
+        let n = n0;
+        if (secPer) {
+          const k = countPerUnit(secPer, pi, holderStack, null);
+          if (k == null) showToast(`「${secPer}」を数えられませんでした。${n0}枚として処理します`, true);
+          else if (k <= 0) { showToast(`${secPer}が0なので、破棄しません`); return; }
+          else { n = n0 * k; showToast(`${secPer}が${k}なので、${n}枚破棄します`); }
+        }
         const op = practiceState.players[1 - pi];
         if (!op.security.length) { showToast('相手のセキュリティがありません', true); return; }
         snapshotPracticeState();
@@ -15552,6 +15627,39 @@
     }
     return out;
   }
+
+  // 💪「相手のターン終了まで、このデジモンをDP+2000」「このターンの間、このデジモンのDPを+1000する」: 効果を持つデジモン自身のDP増減
+  // (常在の【自分のターン】〜DP+や、キーワードといっしょの「≪X≫を得て、DP+」、進化時の自動処理は別の仕組みが扱う)
+  function selfDPHandlersFor(e, holderStack) {
+    if (!practiceState || !holderStack) return [];
+    const raw = e.text || '';
+    if (/^【(?:自分のターン|相手のターン|お互いのターン)】/.test(raw.trim()) && !/とき、/.test(raw)) return [];
+    if (/^【[^】]+】このターンの間、このデジモンのDPを[+\-＋－]\d+する。?$/.test(raw.trim())) return []; // checkAutoSelfEvolveDPTrigger
+    const t = engineStripNotes(raw).replace(/[＋]/g, '+').replace(/[－]/g, '-');
+    const DUR = '((?:次の)?(?:相手の|自分の)?ターン終了(?:時)?まで|このターンの間|このターン中)';
+    const re = new RegExp(`(?:${DUR}、?)?このデジモン(?:は|を|の)、?(?:${DUR}、?)?DP(?:を)?([+\\-]\\d+)`, 'g');
+    const out = [];
+    let m;
+    while ((m = re.exec(t))) {
+      const head = t.slice(Math.max(0, m.index - 30), m.index);
+      if (/≪[^≫]*≫を(?:得|与え)て?、?$/.test(head) || /ごとに、?$/.test(head)) continue;
+      if (/(?:ことで|場合|なら)、?$/.test(t.slice(m.index + m[0].length, m.index + m[0].length + 6))) continue;
+      const amount = parseInt(m[3], 10);
+      const durText = m[1] || m[2] || '';
+      const duration = durText ? durationFromText(durText + '、') : 'permanent';
+      const durLabel = DURATION_LABELS[duration] ? `(${DURATION_LABELS[duration]})` : '';
+      out.push({ label: `💪 このデジモンをDP${amount > 0 ? '+' : ''}${amount}${durLabel}`, run: () => {
+        const holder = findStackOwnerAndZone(holderStack) ? holderStack : null;
+        if (!holder) { showToast('このデジモンが場にいません', true); return; }
+        snapshotPracticeState();
+        applyEffectDP(holder, amount, duration, e.ownerIndex);
+        renderPracticeBoard();
+        showToast(`💪「${stackLabel(holder)}」をDP${amount > 0 ? '+' : ''}${amount}${durLabel}`);
+        if (getEffectiveDP(holder) <= 0) checkAllBattleAreaRuleViolations();
+      } });
+    }
+    return out;
+  }
   // 🔗「自分の手札かこのデジモンの進化元から、(条件の)カードN枚をこのデジモン/自分のデジモン1体に(コストを支払わずに|支払うコスト-Nで)リンクできる」
   //   「このカードを(エリアの)自分のデジモン1体にコストを支払わずにリンクできる」
   // (代償の「〜リンクさせることで」は costHandlersFor が扱う)
@@ -15678,7 +15786,7 @@
     if (e.deferred) return deferredHandlersFor(e);
     const extra = () => {
       const f = e.stackUid ? findStackByUid(e.stackUid) : null;
-      const list = [...tokenHandlersFor(e), ...tamerAsDigimonHandlersFor(e, holderOf(e, f)), ...mindLinkHandlersFor(e, holderOf(e, f)), ...linkEffectHandlersFor(e, holderOf(e, f)), ...totalRemovalHandlersFor(e, holderOf(e, f)), ...appFusionHandlersFor(e), ...handOpenToSecurityHandlersFor(e, holderOf(e, f)), ...securityEvolveHandlersFor(e, holderOf(e, f)), ...securitySearchPlayHandlersFor(e), ...totalCostPlayHandlersFor(e, holderOf(e, f)), ...sourcePlayHandlersFor(e, holderOf(e, f)), ...selfCardPlayHandlersFor(e), ...reductionCostHandlersFor(e), ...costHandlersFor(e, holderOf(e, f)), ...restrictHandlersFor(e), ...evolveFromZoneHandlersFor(e, f && f.stack), ...materialFromZoneHandlersFor(e, f && f.stack), ...playFromHandHandlersFor(e, holderOf(e, f)), ...toHandFromZoneHandlersFor(e, holderOf(e, f)), ...sourceMoveHandlersFor(e, holderOf(e, f)), ...simpleActionHandlersFor(e, holderOf(e, f)), ...effectMovementHandlersFor(e, holderOf(e, f))];
+      const list = [...tokenHandlersFor(e), ...tamerAsDigimonHandlersFor(e, holderOf(e, f)), ...mindLinkHandlersFor(e, holderOf(e, f)), ...linkEffectHandlersFor(e, holderOf(e, f)), ...selfDPHandlersFor(e, holderOf(e, f)), ...totalRemovalHandlersFor(e, holderOf(e, f)), ...appFusionHandlersFor(e), ...handOpenToSecurityHandlersFor(e, holderOf(e, f)), ...securityEvolveHandlersFor(e, holderOf(e, f)), ...securitySearchPlayHandlersFor(e), ...totalCostPlayHandlersFor(e, holderOf(e, f)), ...sourcePlayHandlersFor(e, holderOf(e, f)), ...selfCardPlayHandlersFor(e), ...reductionCostHandlersFor(e), ...costHandlersFor(e, holderOf(e, f)), ...restrictHandlersFor(e), ...evolveFromZoneHandlersFor(e, f && f.stack), ...materialFromZoneHandlersFor(e, f && f.stack), ...playFromHandHandlersFor(e, holderOf(e, f)), ...toHandFromZoneHandlersFor(e, holderOf(e, f)), ...sourceMoveHandlersFor(e, holderOf(e, f)), ...simpleActionHandlersFor(e, holderOf(e, f)), ...effectMovementHandlersFor(e, holderOf(e, f))];
       // 進化元効果・セキュリティ効果・消滅時などの「デッキの上からN枚オープン」(【効果】欄のものは基本の処理で出している)
       const rm = /(?<!相手の)デッキの上から(\d+)枚オープン/.exec(e.text || '');
       if (rm && e.timing !== 'ディレイ' && (!f || e.field !== 'effect')) {
