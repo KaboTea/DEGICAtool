@@ -1,4 +1,4 @@
-// v0.96.14: 公開したカードの置き先の読み取り(「自分のデジモン1体の」が重複しない・「このテイマーの下」はそのテイマーだけ・「自分の「X」1体の進化元の1番下」)
+// v0.96.14/15: 公開したカードの置き先の読み取り(「自分のデジモン1体の」が重複しない・「このテイマーの下」はそのテイマーだけ・「自分の「X」1体の進化元の1番下」)
 import { page, ev, errs, browser } from '../head.mjs';
 await page.waitForTimeout(1500);
 const o = {};
@@ -17,6 +17,21 @@ const r = await ev(`(() => { const P=practiceState.players[practiceState.viewing
 await page.waitForTimeout(300);
 o.clicked = r === 'ok';
 o.onlyThis = await ev(`(() => { const P=practiceState.players[practiceState.viewingIndex]; const c=fieldPickMode && fieldPickMode.candidates; return !!c && c.length===1 && c[0]===P.battle[1]; })()`);
+
+// EX11-066「そのデジモンの進化元の下」: 登場したデジモンだけが置き先になる
+await ev(`(() => { fieldPickMode && cancelFieldPick && cancelFieldPick(); cardDetailModal.classList.remove('open'); })()`).catch(()=>{});
+const r2 = await ev(`(() => { const pi=practiceState.viewingIndex, P=practiceState.players[pi];
+  const bem=[...cardIndexByNumber.values()].find(c=>c.category==='digimon' && c.name==='ベムモン').number;
+  P.battle=[{cards:['EX11-066']},{cards:['BT1-010']},{cards:[bem]}]; P.library=[bem,...P.library]; renderPracticeBoard();
+  const ents=collectWhenTriggersFor(P.battle[0], pi, 'battle', [engineStackEvent('play', P.battle[2], pi)]);
+  const e=ents.find(x=>/オープン/.test(x.text)); if(!e) return 'noentry';
+  if (e.eventUid !== P.battle[2].uid) return 'nouid';
+  const h=getEffectHandlers(e).find(h=>/オープン/.test(h.label)); if(!h) return 'nohandler'; h.run();
+  const b=[...document.querySelectorAll('.rg-step')].find(b=>/進化元/.test(b.textContent)&&!b.disabled); if(!b) return 'nobtn'; b.click(); return 'ok'; })()`);
+await page.waitForTimeout(300);
+o.bemClicked = r2 === 'ok' || r2;
+o.onlyThat = await ev(`(() => { const P=practiceState.players[practiceState.viewingIndex]; const c=fieldPickMode && fieldPickMode.candidates; return !!c && c.length===1 && c[0]===P.battle[2]; })()`);
+o.thatPhrase = (await ph('【お互いのターン】自分のデジモンが登場/進化したとき、そのデジモンに「ベムモン」の記述があるなら、このテイマーをレストさせることで、自分のデッキの上から2枚オープンする。その中の「ベムモン」全てをそのデジモンの進化元の下に置く。残りは破棄する。')).startsWith('そのデジモン');
 const ng = Object.entries(o).filter(([k, x]) => x !== true).map(([k]) => k);
 console.log(JSON.stringify(o));
 await browser.close(); console.log(ng.length ? ng : errs);

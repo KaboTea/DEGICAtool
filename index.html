@@ -3831,7 +3831,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.96.14</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.96.15</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -5831,7 +5831,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.96.14`);
+    log(`DigiCA Tool build v0.96.15`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -10823,6 +10823,7 @@
           ownerIndex: pi, cardNumber: src.cardNumber, cardName: src.card.name,
           field: src.field, sourceLabel: src.sourceLabel, lineIndex, text: withSubLines(parsed.text, src.text, lineIndex),
           timing: parsed.labels[0], event: ENGINE_EVENT_LABEL[hit.kind] || hit.kind, eventLabel: ENGINE_EVENT_LABEL[hit.kind] || '',
+          eventUid: hit.uid || null, // 「〜が登場したとき、そのデジモン〜」の「その」が指すもの
         };
         if (o.lki) { entry.lki = true; entry.lkiUid = holderUid; entry.stackUid = null; }
         else entry.stackUid = holderUid;
@@ -15361,7 +15362,7 @@
         const n = parseInt(rm[1], 10);
         list.push({ label: `📖 デッキの上から${n}枚オープン`, run: () => {
           if (e.ownerIndex !== practiceState.viewingIndex) { showToast('この自動処理は、その効果を持つプレイヤーの視点に切り替えてから実行してください', true); return; }
-          revealTopAndSort(n, e.text, e.cardName, e.stackUid);
+          revealTopAndSort(n, e.text, e.cardName, e.stackUid, e.eventUid);
         } });
       }
       return list;
@@ -15387,7 +15388,7 @@
     if (e.timing === 'ディレイ') {
       const list = [...memoryHandlersFor(e)];
       const rm = /自分のデッキの上から(\d+)枚オープン/.exec(e.text);
-      if (rm) list.push({ label: `📖 デッキの上から${rm[1]}枚オープン`, run: () => revealTopAndSort(parseInt(rm[1], 10), e.text, e.cardName, e.stackUid) });
+      if (rm) list.push({ label: `📖 デッキの上から${rm[1]}枚オープン`, run: () => revealTopAndSort(parseInt(rm[1], 10), e.text, e.cardName, e.stackUid, e.eventUid) });
       list.push(...targetHandlersFor(e, null), ...drawHandlersFor(e));
       return list;
     }
@@ -15408,7 +15409,7 @@
     const rm = /自分のデッキの上から(\d+)枚オープン/.exec(line);
     if (rm) {
       const n = parseInt(rm[1], 10);
-      list.push({ label: `📖 デッキの上から${n}枚オープン`, run: () => { if (viewOk()) revealTopAndSort(n, line, e.cardName, e.stackUid); } });
+      list.push({ label: `📖 デッキの上から${n}枚オープン`, run: () => { if (viewOk()) revealTopAndSort(n, line, e.cardName, e.stackUid, e.eventUid); } });
     }
     // 「〜とき、≪ディレイ≫」等: このオプションをディレイして、ディレイの効果に割り込みで切り替える
     if (line.includes('≪ディレイ≫') && e.timing !== 'ディレイ') {
@@ -19048,14 +19049,14 @@
     ]);
   }
   // effectText/effectName: 効果から開いたとき、「その中の〜を手札に加える」等の指示を読んで振り分け画面に反映する
-  function revealTopAndSort(x, effectText, effectName, sourceUid) {
+  function revealTopAndSort(x, effectText, effectName, sourceUid, eventUid) {
     const self = practiceState.players[practiceState.viewingIndex];
     if (self.library.length === 0) { showToast('デッキがありません', true); return; }
     if (isNaN(x) || x <= 0) { showToast('枚数の入力が不正です', true); return; }
     snapshotPracticeState();
     const revealed = self.library.splice(0, Math.min(x, self.library.length));
     const spec = effectText ? parseRevealInstructions(effectText) : null;
-    if (spec) { spec.effectName = effectName || ''; spec.effectText = effectText; spec.sourceUid = sourceUid || null; }
+    if (spec) { spec.effectName = effectName || ''; spec.effectText = effectText; spec.sourceUid = sourceUid || null; spec.eventUid = eventUid || null; }
     openRevealResolveView(revealed, self, spec);
   }
   // ---------- 「デッキの上からN枚オープンする。その中の〜」の指示を読む ----------
@@ -19065,7 +19066,7 @@
   // 公開したカードを置く先の言い方(「自分のデジモン1体の進化元の下に置く」「このテイマーの下に置く」など)
   function revealDestPhrase(st) {
     const kind = st.act === 'tamerUnder' ? 'テイマー' : 'デジモン';
-    const who = st.destSelf ? `この${kind}` : st.destCond ? (/持つ$/.test(st.destCond) ? `${st.destCond}自分の${kind}` : `自分の${st.destCond}`) : `自分の${kind}1体`;
+    const who = st.destSelf ? `この${kind}` : st.destThat ? `その${kind}(効果のきっかけになった${kind})` : st.destCond ? (/持つ$/.test(st.destCond) ? `${st.destCond}自分の${kind}` : `自分の${st.destCond}`) : `自分の${kind}1体`;
     return `${who}の${st.act === 'tamerUnder' ? '' : '進化元の'}下に${st.faceDown ? '裏向きで' : ''}置く`;
   }
   function parseRevealInstructions(text) {
@@ -19092,8 +19093,10 @@
       // 「自分のデジモン1体の」「このテイマーの」「そのデジモンの」「自分の「X」1体の進化元の1番(下に置く)」などから、置き先の条件だけを取り出す
       const m0 = (mid || '').replace(/^、/, '').replace(/の進化元の1番$/, 'の');
       const destSelf = /この(?:(?:デジモン|テイマー)の?)?$/.test(m0);
+      // 「そのデジモンの」: 効果のきっかけになった(登場/進化した等の)デジモン
+      const destThat = /その(?:(?:デジモン|テイマー)の?)?$/.test(m0);
       const d = m0.replace(/(?:この|その)(?:(?:デジモン|テイマー)の?)?$/, '').replace(/自分の$/, '').replace(/(?:(?:デジモン|テイマー)(?:\d+体)?|\d+体)の$/, '').replace(/^自分の/, '').replace(/自分の$/, '').trim();
-      return { destCond: d, destSelf, faceDown: /裏向き/.test(v) };
+      return { destCond: d, destSelf, destThat, faceDown: /裏向き/.test(v) };
     };
     const push = (cond, count, upTo, v, ud, mid, extra) => steps.push(Object.assign({ cond: (cond || '').trim(), count, upTo: !!upTo, act: actOf(v, ud), costRule: ruleOf(mid || ''), restedPlay: /レスト状態で/.test(mid || ''), ignoreCond: /進化条件を無視/.test(mid || '') }, destOf(v, mid), extra || {}));
     // 「〜を手札に加える」の前まで(「残り」「オープンしたカードは」より前)
@@ -19951,7 +19954,8 @@
           // 置き先はバトルエリアのテイマー/デジモンだけ(育成エリアは選べない: 3-4-7-5)。条件外(特徴違い)は「条件外も選ぶ」で選べる
           const kindOk = (sx) => { const c = getStackTopCard(sx); return !!c && !sx.dualAsOption && (isTamer ? c.category === 'tamer' : isDigimonLikeStack(sx)); };
           const own = self.battle.filter(kindOk);
-          const selfStack = st.destSelf && spec.sourceUid ? own.find(sx => sx.uid === spec.sourceUid) : null;
+          const selfStack = st.destSelf && spec.sourceUid ? own.find(sx => sx.uid === spec.sourceUid)
+            : st.destThat && spec.eventUid ? own.find(sx => sx.uid === spec.eventUid) : null;
           const cands = selfStack ? [selfStack] : own.filter(sx => !st.destCond || revealCondMatches(getStackTopCard(sx), st.destCond));
           if (!own.length) { showToast(`置き先になる自分の${isTamer ? 'テイマー' : 'デジモン'}がいません`, true); return; }
           revealed.splice(idx, 1);
