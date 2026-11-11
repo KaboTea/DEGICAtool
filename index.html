@@ -3762,7 +3762,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.95.1</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.96.0</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -5660,6 +5660,7 @@
   loadStatus = async function () {
     await originalLoadStatus();
     cardIndexByNumber = new Map((currentDb && Array.isArray(currentDb.cards) ? currentDb.cards : []).map(c => [c.number, withCardRules(c)]));
+    restoreTokenCards();
     renderGrid();
     renderDeckSearchGrid();
     renderDeckLists();
@@ -5761,7 +5762,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.95.1`);
+    log(`DigiCA Tool build v0.96.0`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -14512,11 +14513,166 @@
     });
     return { handlers, conds };
   }
+  // ---------- v0.96: トークン(4-20) ----------
+  // 効果でゲーム外から登場するカード。カードとして登録済みのもの(BT22-TOKEN 等)はそれを使い、
+  // それ以外は効果文の「「X」(デジモン・黄・DP6000・≪ブロッカー≫)」から作って判定用の一覧に足す(番号は TK-名前)。
+  // 作ったトークンは端末に覚えておき、読み込み直しても盤面のトークンが分かるようにする。
+  // トークンはエリアを離れるとゲームから取り除かれる(4-20-5)。重ねられない・リンクできない(4-20-3/4)。
+  const TOKEN_STORE_KEY = 'digica_token_cards';
+  function isTokenCard(card) { return !!card && (/TOKEN/.test(card.number || '') || /^TK-/.test(card.number || '')); }
+  function isTokenNumber(num) { return isTokenCard(cardIndexByNumber.get(num)) || /^TK-/.test(num || '') || /TOKEN/.test(num || ''); }
+  function restoreTokenCards() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(TOKEN_STORE_KEY) || '{}');
+      Object.keys(saved).forEach(n => { if (!cardIndexByNumber.has(n)) cardIndexByNumber.set(n, saved[n]); });
+    } catch (e) { /* 覚えていなくても動く */ }
+  }
+  function rememberTokenCard(card) {
+    try {
+      const saved = JSON.parse(localStorage.getItem(TOKEN_STORE_KEY) || '{}');
+      saved[card.number] = card;
+      localStorage.setItem(TOKEN_STORE_KEY, JSON.stringify(saved));
+    } catch (e) { /* 保存できなくても動く */ }
+  }
+  const JA_COLOR_TO_EN_TK = { 赤: 'red', 青: 'blue', 黄: 'yellow', 緑: 'green', 黒: 'black', 紫: 'purple', 白: 'white' };
+  // 「デジモン・14コスト・Lv.6・白・究極体・不明・種族不明・DP3000」「デジモン・黒・DP1000・≪ブロッカー≫≪デコイ《黒》≫【自分のターン】…」を読む
+  function tokenCardFromSpec(name, spec) {
+    const card = { number: 'TK-' + name, name, category: 'digimon', color: [], dp: null, level: null, play_cost: null, form: '', attribute: '', type: '', effect: '', inherited: '', isToken: true };
+    const kwLines = [], fxLines = [], words = [];
+    let rest = (spec || '').replace(/[《]([^《》]+)[》](?=・|$)/g, '≪$1≫'); // 《速攻》 → ≪速攻≫(数値の《黒》等は残す)
+    rest.split('・').forEach(part0 => {
+      let part = part0.trim();
+      if (!part) return;
+      let m;
+      if (part === 'デジモン') return;
+      if ((m = /^(\d+)コスト$/.exec(part))) { card.play_cost = +m[1]; return; }
+      if ((m = /^Lv\.(\d+)$/.exec(part))) { card.level = +m[1]; return; }
+      if ((m = /^DP(\d+)$/.exec(part))) { card.dp = +m[1]; return; }
+      if (/^[赤青黄緑黒紫白](?:\/[赤青黄緑黒紫白])*$/.test(part)) { part.split('/').forEach(x => card.color.push(JA_COLOR_TO_EN_TK[x])); return; }
+      if (/^[≪【]/.test(part)) {
+        const kws = part.match(/≪[^≫《]*(?:《[^》]*》[^≫《]*)*≫/g) || [];
+        kws.forEach(k => kwLines.push(k));
+        const fx = part.replace(/≪[^≫《]*(?:《[^》]*》[^≫《]*)*≫/g, '').trim();
+        if (fx) fx.split(/(?=【)/).forEach(x => { if (x.trim()) fxLines.push(x.trim()); });
+        return;
+      }
+      words.push(part);
+    });
+    card.form = words[0] || '';
+    card.attribute = words[1] || '';
+    card.type = words[2] || '';
+    card.effect = [...kwLines, ...fxLines, '■トークンは進化できない。'].join('\n');
+    card.img = tokenImageDataUrl(card);
+    return card;
+  }
+  // 画像のないトークン用の絵(色・名前・DP)
+  function tokenImageDataUrl(card) {
+    const COL = { red: '#c0392b', blue: '#2471a3', yellow: '#d4ac0d', green: '#229954', black: '#2c3e50', purple: '#7d3c98', white: '#bfc9ca' };
+    const cols = (card.color && card.color.length ? card.color : ['white']).map(c => COL[c] || '#888');
+    const esc = (x) => String(x).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+    const name = card.name || '';
+    const fs = name.length > 8 ? 26 : name.length > 5 ? 32 : 40;
+    const stops = cols.map((c, i) => `<stop offset="${cols.length === 1 ? 0 : i / (cols.length - 1)}" stop-color="${c}"/>`).join('');
+    const kw = (card.effect || '').split('\n').filter(l => /^≪/.test(l)).map(l => l.replace(/[≪≫]/g, '')).join(' ');
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="430" height="600" viewBox="0 0 430 600"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">${stops}</linearGradient></defs>` +
+      `<rect x="6" y="6" width="418" height="588" rx="24" fill="url(#g)" stroke="#111" stroke-width="8"/>` +
+      `<rect x="30" y="200" width="370" height="200" rx="14" fill="rgba(0,0,0,0.55)"/>` +
+      `<text x="215" y="120" font-size="44" font-weight="bold" text-anchor="middle" fill="#fff" stroke="#000" stroke-width="2" font-family="sans-serif">TOKEN</text>` +
+      `<text x="215" y="300" font-size="${fs}" font-weight="bold" text-anchor="middle" fill="#fff" font-family="sans-serif">${esc(name)}</text>` +
+      `<text x="215" y="360" font-size="22" text-anchor="middle" fill="#ddd" font-family="sans-serif">${esc(kw)}</text>` +
+      `<text x="215" y="520" font-size="48" font-weight="bold" text-anchor="middle" fill="#fff" stroke="#000" stroke-width="2" font-family="sans-serif">${card.dp != null ? 'DP ' + card.dp : ''}</text></svg>`;
+    return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  }
+  // 名前(と書かれていれば能力)からトークンのカードを用意して番号を返す
+  function ensureTokenCard(name, spec) {
+    const known = [...cardIndexByNumber.values()].find(c => /TOKEN/.test(c.number || '') && c.name === name);
+    if (known) return known.number;
+    const num = 'TK-' + name;
+    const have = cardIndexByNumber.get(num);
+    if (have && (!spec || have.spec === spec)) return num;
+    if (!spec && have) return num;
+    const card = tokenCardFromSpec(name, spec);
+    card.spec = spec || '';
+    cardIndexByNumber.set(num, card);
+    rememberTokenCard(card);
+    return num;
+  }
+  // 効果文の「「A」(…)と「B」(…)のトークン1体ずつを登場させる」「相手は「石化」(…)トークン2体を登場させる」を読む
+  function parseTokenPlays(text) {
+    const t = (text || '').replace(/（/g, '(').replace(/）/g, ')');
+    const out = [];
+    // 「名前」(能力) の並び → トークン N体(ずつ)
+    const re = /((?:「[^」]+」(?:\((?:[^()]|\([^()]*\))*\))?(?:と|、)?)+)(?:の)?トークン(\d+)体(ずつ)?(?:か[^。]*?)?(?:を、[^。]*?)?を?(?:コストを支払わずに)?(?:(?:自分|相手)のバトルエリアに)?(レスト状態で)?登場(させる|できる|させ|でき)/g;
+    let m;
+    while ((m = re.exec(t))) {
+      const items = [];
+      const ire = /「([^」]+)」(?:\(((?:[^()]|\([^()]*\))*)\))?/g;
+      let im;
+      while ((im = ire.exec(m[1]))) items.push({ name: im[1], spec: im[2] || '' });
+      const before = t.slice(Math.max(0, m.index - 12), m.index);
+      const forOpp = /相手は$|相手は、?$/.test(before.trim()) || /相手は「/.test(t.slice(Math.max(0, m.index - 4), m.index + 2));
+      const common = { items, count: +m[2], each: !!m[3] || items.length === 1, optional: /^でき/.test(m[5]), rested: !!m[4],
+        noSameName: /自分のデジモンと同じ名称のトークンは登場できない/.test(t) };
+      // 「〜なら自分のバトルエリアに…、〜なら相手のバトルエリアに…登場させる」(EX5-058): 両方のボタンを出す
+      const tail = t.slice(m.index, m.index + m[0].length + 80);
+      if (/自分のバトルエリアに/.test(tail) && /相手のバトルエリアに/.test(tail)) {
+        out.push(Object.assign({}, common, { forOpp: false, rested: /自分のバトルエリアにレスト状態/.test(tail) || common.rested, where: '自分の場に' }));
+        out.push(Object.assign({}, common, { forOpp: true, rested: /相手のバトルエリアにレスト状態/.test(tail) || common.rested }));
+      } else out.push(Object.assign({}, common, { forOpp }));
+    }
+    return out;
+  }
+  function tokenHandlersFor(e) {
+    if (!practiceState) return [];
+    return parseTokenPlays(e.text).map(tp => {
+      const pi = tp.forOpp ? 1 - e.ownerIndex : e.ownerIndex;
+      const names = tp.items.map(x => `「${x.name}」`).join('と');
+      const label = `🪙 ${tp.forOpp ? '相手の場に' : (tp.where || '')}${names}トークン${tp.count}体${tp.items.length > 1 ? 'ずつ' : ''}を${tp.rested ? 'レスト状態で' : ''}登場${tp.optional ? '' : 'させる'}`;
+      return { label, run: () => {
+        if (!tp.forOpp && pi !== practiceState.viewingIndex) { showToast('この自動処理は、その効果を持つプレイヤーの視点に切り替えてから実行してください', true); return; }
+        const P = practiceState.players[pi];
+        const nums = [];
+        const skipped = [];
+        tp.items.forEach(it => {
+          const num = ensureTokenCard(it.name, it.spec);
+          if (tp.noSameName && P.battle.some(st => (getStackTopCard(st) || {}).name === it.name)) { skipped.push(it.name); return; }
+          for (let i = 0; i < tp.count; i++) nums.push(num);
+        });
+        if (!nums.length) { showToast(`同じ名称のデジモンがいるため、登場できるトークンがありません(${skipped.join('・')})`, true); return; }
+        snapshotPracticeState();
+        nums.forEach(num => P.battle.push({ cards: [num], rested: !!tp.rested, enteredTurn: practiceState.turn.count, isToken: true, pendingEntry: { byEffect: true } }));
+        renderPracticeBoard();
+        showToast(`🪙 ${tp.forOpp ? '相手の場に' : ''}トークンを登場させました: ${nums.map(n => cardIndexByNumber.get(n).name).join('、')}${skipped.length ? `(同じ名称がいるため「${skipped.join('・')}」は出していません)` : ''}`);
+      } };
+    });
+  }
+  // エリアを離れたトークンをゲームから取り除く(4-20-5)。誘発の検出が終わった後で片付ける
+  let tokenSweepPending = false;
+  function scheduleTokenSweep() {
+    if (tokenSweepPending || !practiceState) return;
+    const has = practiceState.players.some(P => [P.hand, P.trash, P.library, P.security, P.eggLibrary].some(z => Array.isArray(z) && z.some(e => isTokenNumber(cardEntryNum(e)))));
+    if (!has) return;
+    tokenSweepPending = true;
+    setTimeout(() => {
+      tokenSweepPending = false;
+      if (!practiceState) return;
+      const removed = [];
+      practiceState.players.forEach(P => ['hand', 'trash', 'library', 'security', 'eggLibrary'].forEach(k => {
+        if (!Array.isArray(P[k])) return;
+        const keep = P[k].filter(e => { const n = cardEntryNum(e); if (isTokenNumber(n)) { removed.push(miniCardName(n)); return false; } return true; });
+        if (keep.length !== P[k].length) P[k] = keep;
+      }));
+      if (removed.length) {
+        renderPracticeBoard();
+        showToast(`🪙 トークンはエリアを離れたため、ゲームから取り除きました(${removed.join('、')})`);
+      }
+    }, 0);
+  }
   function getEffectHandlers(e) {
     if (e.deferred) return deferredHandlersFor(e);
     const extra = () => {
       const f = e.stackUid ? findStackByUid(e.stackUid) : null;
-      const list = [...reductionCostHandlersFor(e), ...costHandlersFor(e, holderOf(e, f)), ...restrictHandlersFor(e), ...evolveFromZoneHandlersFor(e, f && f.stack), ...materialFromZoneHandlersFor(e, f && f.stack), ...playFromHandHandlersFor(e, holderOf(e, f)), ...toHandFromZoneHandlersFor(e, holderOf(e, f)), ...sourceMoveHandlersFor(e, holderOf(e, f)), ...simpleActionHandlersFor(e, holderOf(e, f)), ...effectMovementHandlersFor(e, holderOf(e, f))];
+      const list = [...tokenHandlersFor(e), ...reductionCostHandlersFor(e), ...costHandlersFor(e, holderOf(e, f)), ...restrictHandlersFor(e), ...evolveFromZoneHandlersFor(e, f && f.stack), ...materialFromZoneHandlersFor(e, f && f.stack), ...playFromHandHandlersFor(e, holderOf(e, f)), ...toHandFromZoneHandlersFor(e, holderOf(e, f)), ...sourceMoveHandlersFor(e, holderOf(e, f)), ...simpleActionHandlersFor(e, holderOf(e, f)), ...effectMovementHandlersFor(e, holderOf(e, f))];
       // 進化元効果・セキュリティ効果・消滅時などの「デッキの上からN枚オープン」(【効果】欄のものは基本の処理で出している)
       const rm = /(?<!相手の)デッキの上から(\d+)枚オープン/.exec(e.text || '');
       if (rm && e.timing !== 'ディレイ' && (!f || e.field !== 'effect')) {
@@ -14875,6 +15031,7 @@
 
   function renderPracticeBoard() {
     if (!practiceState) return;
+    scheduleTokenSweep();
     // 1手戻す等で盤面が丸ごと差し替わったら、古い盤面を参照している選択モードは破棄する
     if (fieldPickMode && (fieldPickMode.stateRef !== practiceState || (fieldPickMode.attackStep && attackState !== fieldPickMode.attackRef))) fieldPickMode = null;
     lsUpdate();
@@ -16245,6 +16402,8 @@
       showToast('自分自身にはリンクできません', true);
       return;
     }
+    // 4-20-4: トークンはリンクできない(リンクする側・される側とも)
+    if (isTokenCard(card) || isTokenCard(getStackTopCard(targetStack))) { showToast('🪙 トークンはリンクできません(4-20-4)', true); return; }
     // 進化元の1枚をリンクにする場合は、抜き出した先の進化元スタック(=元々入っていたスタック)
     // 自身にリンクすることも可能(進化元から抜けて横に差し込む扱いになるため)。
     let routes = buildLinkRoutes(card);
