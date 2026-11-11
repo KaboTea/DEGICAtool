@@ -3762,7 +3762,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.96.0</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.96.1</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -5762,7 +5762,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.96.0`);
+    log(`DigiCA Tool build v0.96.1`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -14668,11 +14668,110 @@
       }
     }, 0);
   }
+  // ---------- v0.96.1: 進化元から登場(ほかのデジモン・育成エリア・「進化元の〜を」の書き方)と、このカード自身の登場 ----------
+  // 「青の自分のデジモン1体の進化元から、Lv.3のデジモンカード1枚をコストを支払わずに登場できる」
+  // 「このデジモンの進化元のLv.4以下のデジモンカード1枚を、コストを支払わずに別のデジモンとして登場させる」
+  // 「このデジモンの進化元から、赤のLv.4以下のデジモンカード1枚を手札に戻すか、コストを支払わずに登場できる」
+  // 「育成エリアの自分のデジモンの進化元の特徴に「ロイヤルナイツ」を持つカード1枚をコストを支払わずに登場させる」
+  function parseSourcePlays(text) {
+    const t = engineStripNotes(text || '');
+    const out = [];
+    const re = /(このデジモン|育成エリアの自分のデジモン|([^、。]{0,30}?)自分のデジモン1体)の進化元(から、?|の)((?:[^。](?!コストを支払))*?[^。]?)(\d+)枚(まで)?(ずつ)?を(?:選び、そのカードを)?、?(手札に戻すか、)?(コストを支払わずに?|支払う(?:登場)?コスト[-－](\d+)で)(?:テイマーまたは)?(?:別のデジモンとして)?登場(?:でき|させ|する)/g;
+    let m;
+    while ((m = re.exec(t))) {
+      const who = m[1] === 'このデジモン' ? 'self' : /^育成エリア/.test(m[1]) ? 'raising' : 'pick';
+      // 「このデジモンの進化元から、〜を…登場」は今までの読み取り(parsePlayFromZone)で出しているので重ねない
+      if (who === 'self' && /^から/.test(m[3]) && !m[8] && parsePlayFromZone(text).some(z => z.zones.includes('sources'))) continue;
+      if (/相手の?$/.test(t.slice(Math.max(0, m.index - 4), m.index))) continue;
+      let cond = m[4].replace(/^、/, '').replace(/、$/, '').replace(/の$/, '').trim();
+      const parts = cond.split(/(?:\d+枚)?と(?=「|特徴|名称|Lv\.)/).map(x => x.trim()).filter(Boolean);
+      const count = m[7] ? Math.max(parts.length, 1) : (/\d+枚と/.test(cond) ? parts.length : parseInt(m[5], 10));
+      out.push({
+        who, holderFilter: who === 'pick' ? (m[2] || '').replace(/^.*[】］\]]/, '').replace(/の$/, '').trim() : '',
+        cond, parts, count, upTo: !!m[6] || /できる?$|でき$/.test(m[0]) || /登場でき/.test(m[0]),
+        costRule: /支払わず/.test(m[9]) ? { type: 'free' } : { type: 'minus', n: parseInt(m[10], 10) },
+      });
+    }
+    return out;
+  }
+  function sourcePlayHandlersFor(e, holderStack) {
+    if (!practiceState) return [];
+    return parseSourcePlays(e.text).map(sp => {
+      const whoLabel = sp.who === 'self' ? 'このデジモンの' : sp.who === 'raising' ? '育成エリアの' : `${sp.holderFilter ? sp.holderFilter + 'の' : ''}自分のデジモン1体の`;
+      return { label: `🧩 ${whoLabel}進化元から登場(${PLAY_RULE_LABEL(sp.costRule)}${sp.count > 1 ? `・${sp.count}枚${sp.upTo ? 'まで' : ''}` : ''})`, run: () => {
+        if (e.ownerIndex !== practiceState.viewingIndex) { showToast('この自動処理は、その効果を持つプレイヤーの視点に切り替えてから実行してください', true); return; }
+        const P = practiceState.players[e.ownerIndex];
+        let left = sp.count;
+        const pickFrom = (host) => {
+          const list = [];
+          const fromTrash = !findStackOwnerAndZone(host);
+          (fromTrash ? [] : host.cards.slice(0, -1)).forEach((en, i) => {
+            if (cardEntryFaceDown(en)) return;
+            const c = cardIndexByNumber.get(cardEntryNum(en));
+            if (!c || (c.category !== 'digimon' && c.category !== 'tamer')) return;
+            const ok = sp.parts.length ? sp.parts.some(p => revealCondMatches(c, p) !== false) : true;
+            list.push({ zone: 'sources', num: c.number, arr: host.cards, pos: i, card: c, ok, tag: `(${stackLabel(host)}の進化元)` });
+          });
+          if (!list.length) { showToast('登場できる進化元のカードがありません', true); return; }
+          openEffectEvolvePicker(`🧩「${e.cardName}」の効果: 進化元から登場(${PLAY_RULE_LABEL(sp.costRule)})${left > 1 ? ` 残り${left}枚` : ''}`, `条件: ${sp.cond || 'なし'}`, list, (pick) => {
+            left--;
+            appearFromHand(pick.pos, pick.num, centerPoint(), false, { costRule: sp.costRule, source: 'ref', ref: pick, effectName: e.cardName });
+            if (left > 0) setTimeout(() => { if (practiceState) openDecisionUi(`🧩 続けて進化元から登場しますか?(あと${left}枚${sp.upTo ? 'まで' : ''})`, [
+              { label: '続けて選ぶ', primary: true, onClick: () => pickFrom(host) },
+              { label: 'ここまでにする', onClick: () => renderPracticeBoard() },
+            ]); }, 300);
+          }, '📥登場');
+        };
+        if (sp.who === 'self') {
+          if (!holderStack || !findStackOwnerAndZone(holderStack)) { showToast('このデジモンが場にいません(場を離れた後は、トラッシュから登場させてください)', true); return; }
+          pickFrom(holderStack); return;
+        }
+        if (sp.who === 'raising') {
+          if (!P.raising) { showToast('育成エリアにデジモンがいません', true); return; }
+          pickFrom(P.raising); return;
+        }
+        const hf = { filters: parseSubjectFilters(sp.holderFilter), colors: parseSubjectColors(sp.holderFilter + 'の自分') };
+        const hosts = P.battle.filter(st => isDigimonLikeStack(st) && st.cards.length > 1 && (!sp.holderFilter || cardMatchesSubject(getStackTopCard(st), hf)));
+        if (!hosts.length) { showToast(`進化元を持つ${sp.holderFilter ? sp.holderFilter + 'の' : ''}自分のデジモンがいません`, true); return; }
+        if (hosts.length === 1) { pickFrom(hosts[0]); return; }
+        startFieldPick({ title: `🧩 進化元から登場させるデジモンをタップ${sp.holderFilter ? `(${sp.holderFilter})` : ''}`, candidates: hosts, onDone: (sel) => { if (sel[0]) pickFrom(sel[0]); } });
+      } };
+    });
+  }
+  // 「［手札］【メイン】〜なら、このカードを支払う登場コスト-5で登場できる」「{トラッシュ}【メイン】このカードを支払うコスト-4で登場させる」
+  // 「【消滅時】自分のトラッシュから、このカードをコストを支払わずに登場できる」「［セキュリティ］【相手のターン終了時】このカードを〜登場させる」
+  function selfCardPlayHandlersFor(e) {
+    if (!practiceState) return [];
+    const raw = (e.text || '').trim();
+    if (/^【セキュリティ】/.test(raw)) return []; // セキュリティチェックの帯で処理する
+    const t = engineStripNotes(raw);
+    const m = /(?:自分の(トラッシュ|手札)から、)?このカード(?:デジモン)?(?:カード)?を、?(?:育成エリアに)?(コストを支払わずに?|支払う(?:登場)?コスト[-－](\d+)で|[^。]{0,20}支払う登場コストをマイナスして)(?:育成エリアに)?登場(?:でき|させ|する)/.exec(t);
+    if (!m) return [];
+    if (/戻したテイマーの登場コスト分/.test(t)) return []; // コストの額が代償で決まるもの(LM-006)は手入力で
+    const prefix = parseEffectLine(raw).prefix;
+    let zone = m[1] === 'トラッシュ' ? 'trash' : m[1] === '手札' ? 'hand' : null;
+    if (!zone) zone = /トラッシュ/.test(prefix) ? 'trash' : /手札/.test(prefix) ? 'hand' : /セキュリティ/.test(prefix) ? 'security' : (e.zone === 'hand' ? 'hand' : e.zone === 'trash' ? 'trash' : 'trash');
+    const costRule = /支払わず/.test(m[2]) ? { type: 'free' } : m[3] ? { type: 'minus', n: parseInt(m[3], 10) } : null;
+    if (!costRule) return [];
+    const toRaising = /育成エリアに/.test(m[0]);
+    if (toRaising) return []; // 育成エリアへの登場(BT18-033)は代償ボタンの後に手で置く
+    return [{ label: `${ZONE_ICON[zone] || '📥'} このカードを${ZONE_JA[zone]}から登場(${PLAY_RULE_LABEL(costRule)})`, run: () => {
+      if (e.ownerIndex !== practiceState.viewingIndex) { showToast('この自動処理は、その効果を持つプレイヤーの視点に切り替えてから実行してください', true); return; }
+      const P = practiceState.players[e.ownerIndex];
+      const arr = zone === 'hand' ? P.hand : zone === 'trash' ? P.trash : P.security;
+      const pos = arr.findIndex(x => cardEntryNum(x) === e.cardNumber);
+      if (pos < 0) { showToast(`${ZONE_JA[zone]}に「${e.cardName}」がありません`, true); return; }
+      const opts = zone === 'security'
+        ? { costRule, source: 'ref', ref: { zone: 'security', num: e.cardNumber, arr, pos }, effectName: e.cardName }
+        : { costRule, source: zone, effectName: e.cardName };
+      appearFromHand(pos, e.cardNumber, centerPoint(), false, opts);
+    } }];
+  }
   function getEffectHandlers(e) {
     if (e.deferred) return deferredHandlersFor(e);
     const extra = () => {
       const f = e.stackUid ? findStackByUid(e.stackUid) : null;
-      const list = [...tokenHandlersFor(e), ...reductionCostHandlersFor(e), ...costHandlersFor(e, holderOf(e, f)), ...restrictHandlersFor(e), ...evolveFromZoneHandlersFor(e, f && f.stack), ...materialFromZoneHandlersFor(e, f && f.stack), ...playFromHandHandlersFor(e, holderOf(e, f)), ...toHandFromZoneHandlersFor(e, holderOf(e, f)), ...sourceMoveHandlersFor(e, holderOf(e, f)), ...simpleActionHandlersFor(e, holderOf(e, f)), ...effectMovementHandlersFor(e, holderOf(e, f))];
+      const list = [...tokenHandlersFor(e), ...sourcePlayHandlersFor(e, holderOf(e, f)), ...selfCardPlayHandlersFor(e), ...reductionCostHandlersFor(e), ...costHandlersFor(e, holderOf(e, f)), ...restrictHandlersFor(e), ...evolveFromZoneHandlersFor(e, f && f.stack), ...materialFromZoneHandlersFor(e, f && f.stack), ...playFromHandHandlersFor(e, holderOf(e, f)), ...toHandFromZoneHandlersFor(e, holderOf(e, f)), ...sourceMoveHandlersFor(e, holderOf(e, f)), ...simpleActionHandlersFor(e, holderOf(e, f)), ...effectMovementHandlersFor(e, holderOf(e, f))];
       // 進化元効果・セキュリティ効果・消滅時などの「デッキの上からN枚オープン」(【効果】欄のものは基本の処理で出している)
       const rm = /(?<!相手の)デッキの上から(\d+)枚オープン/.exec(e.text || '');
       if (rm && e.timing !== 'ディレイ' && (!f || e.field !== 'effect')) {
@@ -20949,8 +21048,11 @@
       else defOwner.trash.push(top);
       renderPracticeBoard();
       showToast('セキュリティチェックが完了しました');
+      // 【セキュリティ】「バトルを行わずに、このカードを〜登場させる」: 登場を選んだならバトルしない
+      const noBattle = destination === 'battle' && /【セキュリティ】[^\n]*バトルを行わずに/.test(`${card.effect || ''}\n${card.security_effect || ''}`);
+      if (noBattle) showToast('🛡 【セキュリティ】バトルを行わずに登場させました');
       // 13-1-5: チェックしているデジモンがバトルエリアにいなければバトルしない
-      if (isDigimon && findStackOwnerAndZone(attackState.attackerStack)) {
+      if (isDigimon && !noBattle && findStackOwnerAndZone(attackState.attackerStack)) {
         const atkNow = getEffectiveDP(attackState.attackerStack) + renkeiBonus;
         const secNow = getSecurityDigimonDP(card, defPi);
         if (atkNow <= secNow) {
