@@ -26,7 +26,7 @@ o.st214 = await ev(`${H('ST2-14','【メイン】進化元を持たない相手�
 o.noTiming = await ev(`(() => { const P=practiceState.players[${pi}], O=practiceState.players[1-${pi}]; P.battle=[{cards:['BT1-010','EX8-029']}]; O.battle=[{cards:['BT1-010']}]; practiceState.memory = 0; return [parseStaticProhibitions(cardIndexByNumber.get('EX8-029').effect).filter(r=>r.key==='noTiming').map(r=>r.timings.join()+'/'+r.cond), prohibitionsOn(O.battle[0],'noTiming').length, prohibitionsOn(P.battle[0],'noTiming').length]; })()`);
 o.bt10042 = await ev(`parseStaticProhibitions(cardIndexByNumber.get('BT10-042').effect).map(r=>r.key+':'+(r.timings||[]).join())`);
 const chk = {
-  secPicker: /ダルクモン/.test(o.secPicker) && !/ギルモン|アグモンLv\.3 \(上から4/.test(o.secPicker.replace('アグモンLv.3 (上から1枚目)','')),
+  secPicker: /ダルクモンLv\.4 \(上から2枚目\)/.test(o.secPicker) && /アグモンLv\.3 \(上から4枚目\)/.test(o.secPicker),
   secAfter: o.secAfter[0].includes('BT1-053') && o.secAfter[1] === 3,
   continueAsk: o.continueAsk === true, totalAfter: o.totalAfter[0] === 3 && !o.totalAfter[1].includes('BT1-010') && !o.totalAfter[1].includes('BT16-029'),
   budgets: o.budgets.length === 2, st214: o.st214.some(x => /アタックできない・ブロックできない/.test(x)),
