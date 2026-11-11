@@ -3762,7 +3762,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.96.7</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.96.8</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -5762,7 +5762,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.96.7`);
+    log(`DigiCA Tool build v0.96.8`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -15139,11 +15139,39 @@
         } });
     } }];
   }
+  // 🦖「自分の「大門大」1体はデジモン・DP3000としても扱い」: カード詳細の「デジモンにする」と同じ処理を、効果のボタンから行う
+  function tamerAsDigimonHandlersFor(e, holderStack) {
+    if (!practiceState) return [];
+    const t = engineStripNotes(e.text || '');
+    const m = /(自分の「([^」]+)」(1体|全て)|このテイマー|この効果で登場したテイマー)はデジモン・DP(\d+)としても扱/.exec(t);
+    if (!m) return [];
+    const name = m[2] || null, dp = parseInt(m[4], 10), all = m[3] === '全て';
+    const who = name ? `「${name}」${all ? '全て' : ''}` : m[1] === 'このテイマー' ? 'このテイマー' : '登場したテイマー';
+    return [{ label: `🦖 ${who}をデジモンにする(DP${dp})`, run: () => {
+      if (e.ownerIndex !== practiceState.viewingIndex) { showToast('この自動処理は、その効果を持つプレイヤーの視点に切り替えてから実行してください', true); return; }
+      const P = practiceState.players[e.ownerIndex];
+      const tamers = P.battle.filter(st => { const c = getStackTopCard(st); return c && c.category === 'tamer' && !st.actingAsDigimon; });
+      const cands = m[1] === 'このテイマー' ? tamers.filter(st => st === holderStack) : name ? tamers.filter(st => cardHasName(getStackTopCard(st), name)) : tamers;
+      const go = (st) => {
+        snapshotPracticeState();
+        st.actingAsDigimon = true;
+        st.assignedDP = dp;
+        // カード詳細の「デジモンにする」と同じく≪速攻≫を得る
+        if (!hasQuickKeyword(st)) { st.quickOverride = true; st.quickByTamerDigimon = true; }
+        renderPracticeBoard();
+        showToast(`🦖「${stackLabel(st)}」をデジモンとして扱います(DP${dp}・≪速攻≫)。戻すときはカード詳細の「人間に戻る」`);
+      };
+      if (!tamers.length) { showToast('デジモンにできる自分のテイマーがいません', true); return; }
+      if (all) { if (!cands.length) { showToast(`自分の「${name}」がいません`, true); return; } cands.forEach(go); return; }
+      if (cands.length === 1) { go(cands[0]); return; }
+      startFieldPick({ title: `🦖 デジモンにするテイマーをタップ${name ? `(「${name}」)` : ''}`, candidates: cands, extra: tamers.filter(st => !cands.includes(st)), onDone: (sel) => { if (sel[0]) go(sel[0]); } });
+    } }];
+  }
   function getEffectHandlers(e) {
     if (e.deferred) return deferredHandlersFor(e);
     const extra = () => {
       const f = e.stackUid ? findStackByUid(e.stackUid) : null;
-      const list = [...tokenHandlersFor(e), ...mindLinkHandlersFor(e, holderOf(e, f)), ...totalRemovalHandlersFor(e, holderOf(e, f)), ...appFusionHandlersFor(e), ...handOpenToSecurityHandlersFor(e, holderOf(e, f)), ...securityEvolveHandlersFor(e, holderOf(e, f)), ...securitySearchPlayHandlersFor(e), ...totalCostPlayHandlersFor(e, holderOf(e, f)), ...sourcePlayHandlersFor(e, holderOf(e, f)), ...selfCardPlayHandlersFor(e), ...reductionCostHandlersFor(e), ...costHandlersFor(e, holderOf(e, f)), ...restrictHandlersFor(e), ...evolveFromZoneHandlersFor(e, f && f.stack), ...materialFromZoneHandlersFor(e, f && f.stack), ...playFromHandHandlersFor(e, holderOf(e, f)), ...toHandFromZoneHandlersFor(e, holderOf(e, f)), ...sourceMoveHandlersFor(e, holderOf(e, f)), ...simpleActionHandlersFor(e, holderOf(e, f)), ...effectMovementHandlersFor(e, holderOf(e, f))];
+      const list = [...tokenHandlersFor(e), ...tamerAsDigimonHandlersFor(e, holderOf(e, f)), ...mindLinkHandlersFor(e, holderOf(e, f)), ...totalRemovalHandlersFor(e, holderOf(e, f)), ...appFusionHandlersFor(e), ...handOpenToSecurityHandlersFor(e, holderOf(e, f)), ...securityEvolveHandlersFor(e, holderOf(e, f)), ...securitySearchPlayHandlersFor(e), ...totalCostPlayHandlersFor(e, holderOf(e, f)), ...sourcePlayHandlersFor(e, holderOf(e, f)), ...selfCardPlayHandlersFor(e), ...reductionCostHandlersFor(e), ...costHandlersFor(e, holderOf(e, f)), ...restrictHandlersFor(e), ...evolveFromZoneHandlersFor(e, f && f.stack), ...materialFromZoneHandlersFor(e, f && f.stack), ...playFromHandHandlersFor(e, holderOf(e, f)), ...toHandFromZoneHandlersFor(e, holderOf(e, f)), ...sourceMoveHandlersFor(e, holderOf(e, f)), ...simpleActionHandlersFor(e, holderOf(e, f)), ...effectMovementHandlersFor(e, holderOf(e, f))];
       // 進化元効果・セキュリティ効果・消滅時などの「デッキの上からN枚オープン」(【効果】欄のものは基本の処理で出している)
       const rm = /(?<!相手の)デッキの上から(\d+)枚オープン/.exec(e.text || '');
       if (rm && e.timing !== 'ディレイ' && (!f || e.field !== 'effect')) {
