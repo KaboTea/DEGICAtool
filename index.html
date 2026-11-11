@@ -2421,6 +2421,8 @@
   #practiceBoardPanel .ab-btn.primary { background: linear-gradient(180deg, #ffe08a, var(--gold)); color: #1a1204; border-color: transparent; padding: 8px 16px; }
   #practiceBoardPanel .ab-btn.primary.wait { background: rgba(var(--gold-rgb),0.15); color: #e9d999; border: 1px dashed rgba(var(--gold-rgb),0.65); }
   #practiceBoardPanel .ab-btn:disabled { opacity: 0.45; cursor: default; }
+  #practiceBoardPanel .ab-btn.ab-sub-toggle { flex: none !important; background: transparent; color: var(--text-dim); font-size: 11px; padding: 4px 10px; min-height: 0 !important; }
+  #practiceBoardPanel .ab-btn.ab-sub-item { font-size: 11.5px; }
   #practiceBoardPanel .ab-btn.has-note { white-space: normal; text-align: left; flex: 1 1 100%; }
   #practiceBoardPanel .ab-btn .ab-note { display: block; margin-top: 3px; font-size: 10.5px; font-weight: 500; line-height: 1.45; color: rgba(255,255,255,0.62); }
   #practiceBoardPanel .ab-wait { font-size: 11px; color: #ffcf6b; }
@@ -3853,7 +3855,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.97.2</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.97.3</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -6003,7 +6005,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.97.2`);
+    log(`DigiCA Tool build v0.97.3`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -21203,6 +21205,7 @@
         const showWait = !st.popupLike && isNext && pending && (/^次へ/.test(act.label) || !!act.primary);
         b.className = 'ab-btn' + (isNext ? ' primary' + (showWait ? ' wait' : '') : '');
         b.textContent = isNext && /^次へ/.test(act.label) ? `${act.label} ▶` : act.label;
+        if (act.cls) b.classList.add(...act.cls.split(' '));
         if (act.note) {
           // 効果文を添えて、条件(「相手の効果で」等)を見ながら選べるようにする
           b.classList.add('has-note');
@@ -22055,7 +22058,13 @@
       : '';
     const hasSecEffect = referencedEntriesFrom(card, { labels: ['セキュリティ'], self: true }, { ownerIndex: defPi }).length > 0;
     const secBlocked = hasSecEffect && pend.secBlocked && !pend.secForced;
-    openStepUi(`🛡 セキュリティチェック(残り${remaining}枚): めくったカードの行き先を選んでください`, [
+    // 効果パネルONのときは、行き先は効果のボタンで決まるので「トラッシュへ」だけ。手で送るときは「手で送る▾」から
+    const manualOpen = !effectPanelEnabled || !!pend.manualOpen;
+    const toggleManual = () => { pend.manualOpen = !pend.manualOpen; doSecurityCheckForAttack(); };
+    const battleBtn = card.category === 'option'
+      ? { label: '📥 バトルエリアに置く(【メイン】は発揮しない)', onClick: () => resolve('place') }
+      : { label: '📥 バトルエリアへ登場(コストなし)', onClick: () => resolve('battle') };
+    openStepUi(effectPanelEnabled ? `🛡 セキュリティチェック(残り${remaining}枚)` : `🛡 セキュリティチェック(残り${remaining}枚): めくったカードの行き先を選んでください`, [
       {
         custom: true,
         render: (c) => {
@@ -22067,8 +22076,8 @@
         },
       },
       { label: isDigimon ? 'バトルしてトラッシュへ' : 'トラッシュへ', primary: true, onClick: () => resolve('trash') },
-      { label: '手札へ', onClick: () => resolve('hand') },
-      card.category === 'option' ? { label: 'バトルエリアに置く(【メイン】は発揮しない)', onClick: () => resolve('place') } : { label: 'バトルエリアへ登場(コストなし)', onClick: () => resolve('battle') },
+      ...(effectPanelEnabled ? [{ label: manualOpen ? '手で送る ▴' : '手で送る ▾', cls: 'ab-sub-toggle', onClick: toggleManual }] : []),
+      ...(manualOpen ? [{ label: '✋ 手札へ', cls: effectPanelEnabled ? 'ab-sub-item' : '', onClick: () => resolve('hand') }, Object.assign(battleBtn, { cls: effectPanelEnabled ? 'ab-sub-item' : '' })] : []),
       ...(secBlocked && effectPanelEnabled ? [{ label: '🚫 それでも【セキュリティ】効果を出す', onClick: () => { pend.secForced = true; enqueueSec(); doSecurityCheckForAttack(); } }] : []),
     ]);
   }
