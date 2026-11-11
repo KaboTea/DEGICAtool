@@ -3762,7 +3762,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.96.4</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.96.5</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -5762,7 +5762,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.96.4`);
+    log(`DigiCA Tool build v0.96.5`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -14961,12 +14961,15 @@
         const c = cardIndexByNumber.get(cardEntryNum(x));
         if (!c || c.category !== 'digimon') return;
         const hasRule = /〔アプ合体〕/.test(c.effect || '');
-        list.push({ zone, idx, num: c.number, card: c, ok: hasRule && (!cond || revealCondMatches(c, cond) !== false), tag: hasRule ? '' : '(〔アプ合体〕なし)' });
+        const combos = hasRule ? linked.filter(st => appFusionComboOk(c, st)) : [];
+        list.push({ zone, idx, num: c.number, card: c, combos, ok: hasRule && combos.length > 0 && (!cond || revealCondMatches(c, cond) !== false),
+          tag: !hasRule ? '(〔アプ合体〕なし)' : combos.length ? `(合う組み合わせ: ${combos.map(st => stackLabel(st)).join('、')})` : '(組み合わせの合うリンク状態のデジモンがいない)' });
       });
       if (!list.length) { showToast(`${m[1]}にデジモンカードがありません`, true); return; }
       openEffectEvolvePicker(`📲「${e.cardName}」の効果: ${m[1]}のカードにアプ合体`, `${cond ? `条件: ${cond} / ` : ''}次の画面で「📲 アプ合体にする」を押してください`, list, (pick) => {
-        enterEvolveMode(pick.idx, pick.num, false, { source: zone, allowedTargets: linked, effectName: e.cardName });
-        if (linked.length === 1) performEvolve(linked[0]);
+        const targets = pick.combos && pick.combos.length ? pick.combos : linked;
+        enterEvolveMode(pick.idx, pick.num, false, { source: zone, allowedTargets: targets, effectName: e.cardName });
+        if (targets.length === 1) performEvolve(targets[0]);
         else showToast('📲 アプ合体させるリンク状態のデジモンをタップしてください');
       }, '📲選ぶ');
     } }];
@@ -17869,9 +17872,38 @@
       return;
     }
     const cost = parseInt(evolveManualCost.value, 10) || 0;
+    // 8-4-1: 〔アプ合体〕に書かれたカード2種の組み合わせによるリンク状態か
+    const combo = appFusionComboCheck(evolveMode.card, evolveRouteTarget);
+    if (combo.ok === false) {
+      evolveRouteModal.classList.remove('open');
+      openDecisionUi(`📲 組み合わせが〔アプ合体〕の条件に合っていません — ${combo.msg}`, [
+        { label: 'やめる', primary: true, onClick: () => { evolveRouteModal.classList.add('open'); } },
+        { label: 'それでもアプ合体する', onClick: () => finalizeAppFusion(cost) },
+      ]);
+      return;
+    }
     evolveRouteModal.classList.remove('open');
     finalizeAppFusion(cost);
   });
+  // 〔アプ合体〕「A」&「B」&「C」: 一番上のカードとリンクカードが、書かれた名前のうち別々の2種に当たっているか(8-4-1/8-4-2-1)
+  function appFusionComboOk(card, stack) { return appFusionComboCheck(card, stack).ok !== false; }
+  function appFusionComboCheck(card, stack) {
+    const lines = ((card && card.effect) || '').split('\n').filter(l => /^〔アプ合体〕/.test(l.trim()));
+    if (!lines.length) return { ok: null, msg: '〔アプ合体〕の記述がありません' };
+    const top = getStackTopCard(stack);
+    const links = (stack.links || []).map(n => cardIndexByNumber.get(n)).filter(Boolean);
+    const sets = lines.map(l => (l.split(/[:：]/)[0].match(/「([^」]+)」/g) || []).map(x => x.slice(1, -1)));
+    for (const names of sets) {
+      for (let a = 0; a < names.length; a++) {
+        if (!top || !cardHasName(top, names[a])) continue;
+        for (let b = 0; b < names.length; b++) {
+          if (a !== b && links.some(lc => cardHasName(lc, names[b]))) return { ok: true, msg: '' };
+        }
+      }
+    }
+    const have = `今: 「${top ? top.name : '?'}」+リンク${links.map(c => `「${c.name}」`).join('') || 'なし'}`;
+    return { ok: false, msg: `必要: ${sets.map(ns => ns.map(n => `「${n}」`).join('&')).join(' / ')} のうち2種(${have})` };
+  }
   document.getElementById('evolveRouteCancel').addEventListener('click', () => {
     evolveRouteModal.classList.remove('open');
     evolveRouteTarget = null;
