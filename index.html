@@ -3855,7 +3855,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.97.6</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.97.7</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -6005,7 +6005,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.97.6`);
+    log(`DigiCA Tool build v0.97.7`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -13319,7 +13319,9 @@
   }
   function costFallbackHandlers(e, cost, desc) {
     if (e.__costFallbackBusy) return [];
-    const sub = Object.assign({}, e, { text: '【メイン】' + cost.replace(/^このテイマーの下にある/, 'このテイマーの下から、') + '。', costPaid: false, __costFallbackBusy: true });
+    // 「自分のデジモン1体ごとに、この効果で選べるLv.+1」のような上限の増え方は、代償の対象選びにも持っていく
+    const raiseS = (/[^。]*ごとに、この効果(?:の|で選べる)(?:登場コスト|Lv\.)[^。]*。/.exec(engineStripNotes(e.text || '')) || [''])[0];
+    const sub = Object.assign({}, e, { text: '【メイン】' + cost.replace(/^このテイマーの下にある/, 'このテイマーの下から、') + '。' + raiseS, costPaid: false, __costFallbackBusy: true });
     delete sub.costSteps; delete sub.costPending;
     let hs = [];
     try { hs = getEffectHandlers(sub); } catch (er) { hs = []; }
@@ -14173,11 +14175,20 @@
         const n = +m[3], act = m[4];
         const ext = /^最もDPの(低い|高い)/.exec(pre);
         const filter = pre.replace(/^最もDPの(低い|高い)/, '').replace(/の$/, '');
-        out.push({ isCost: true, label: `💸 代償: ${m[1]}相手の${m[2]}${n}体を${act}`, run: () => {
+        // 「自分のデジモン1体ごとに、この効果で選べるLv.+1」: 代償の対象選びでも上限を増やす
+        const rzm = /([^、。]{1,40}?)ごとに、この効果(?:の|で選べる)(登場コスト|Lv\.)(?:の)?(?:上限)?\+(\d+)/.exec(engineStripNotes(e.text || ''));
+        const rzRe = rzm ? (rzm[2] === 'Lv.' ? /Lv\.(\d+)以下/ : /登場コスト(\d+)以下/) : null;
+        const rz = rzm && rzRe.test(filter) ? { per: cleanPerPhrase(rzm[1]), what: rzm[2], n: +rzm[3] } : null;
+        out.push({ isCost: true, label: `💸 代償: ${m[1]}相手の${m[2]}${n}体を${act}${rz ? `(${rz.per}ごとに${rz.what}上限+${rz.n})` : ''}`, run: () => {
           if (!guard()) return;
           let all = battleStacksOf(1 - pi).filter(st => !st.dualAsOption && kinds.includes((getStackTopCard(st) || {}).category));
           if (!all.length) { showToast('対象になる相手のカードがいません', true); return; }
-          let ok = all.filter(st => { try { return !filter || stackMatchesFilterText(st, filter, null); } catch (er) { return true; } });
+          let flt = filter;
+          if (rz) {
+            const k = countPerUnit(rz.per, pi, holderStack, null);
+            if (k > 0) { flt = filter.replace(rzRe, (x, v) => x.replace(v, String(+v + rz.n * k))); showToast(`${rz.per}が${k}なので、${rz.what}の上限+${rz.n * k}(${(rzRe.exec(flt) || [''])[0]})`); }
+          }
+          let ok = all.filter(st => { try { return !flt || stackMatchesFilterText(st, flt, null); } catch (er) { return true; } });
           if (ext && ok.length) { const dps = ok.map(st => getEffectiveDP(st)); const v = ext[1] === '低い' ? Math.min(...dps) : Math.max(...dps); ok = ok.filter(st => getEffectiveDP(st) === v); }
           const done = () => { renderPracticeBoard(); renderEffectPanel(); };
           const apply = (sel) => {
@@ -15692,6 +15703,22 @@
     }
     return out;
   }
+
+  // 📋「(〜ごとに、)以下の効果から1つを発揮する」: いくつ選べるかを数えて見せる(選択肢は下の「・」の行のボタン)
+  function chooseCountHandlersFor(e, holderStack) {
+    if (!practiceState) return [];
+    const t = engineStripNotes(e.text || '');
+    const m = /(?:([^、。]{1,40}?)ごとに、)?以下の効果から(\d+)つ(まで)?を?(?:選んで)?発揮/.exec(t);
+    if (!m) return [];
+    const per = m[1] ? cleanPerPhrase(m[1]) : null, n = parseInt(m[2], 10);
+    let k = null;
+    if (per) { try { k = countPerUnit(per, e.ownerIndex, holderStack, null); } catch (er) { k = null; } }
+    const total = per ? (k == null ? null : n * k) : n;
+    const label = per
+      ? `📋 下の効果から選んで発揮: ${per}ごとに${n}つ → ${total == null ? '数えられません(自分で数えてください)' : `今は${total}つ`}`
+      : `📋 下の効果から${n}つ${m[3] ? 'まで' : ''}選んで発揮`;
+    return [{ isInfo: true, label, run: () => showToast(total == null ? `「${per}」を数えられませんでした。自分で数えて選んでください` : total <= 0 ? `${per}が0なので、発揮できる効果はありません` : `下の効果から${total}つを選んで、そのボタンを押してください(同じ効果は1回まで)`) }];
+  }
   // 🔗「自分の手札かこのデジモンの進化元から、(条件の)カードN枚をこのデジモン/自分のデジモン1体に(コストを支払わずに|支払うコスト-Nで)リンクできる」
   //   「このカードを(エリアの)自分のデジモン1体にコストを支払わずにリンクできる」
   // (代償の「〜リンクさせることで」は costHandlersFor が扱う)
@@ -15818,7 +15845,7 @@
     if (e.deferred) return deferredHandlersFor(e);
     const extra = () => {
       const f = e.stackUid ? findStackByUid(e.stackUid) : null;
-      const list = [...tokenHandlersFor(e), ...tamerAsDigimonHandlersFor(e, holderOf(e, f)), ...mindLinkHandlersFor(e, holderOf(e, f)), ...linkEffectHandlersFor(e, holderOf(e, f)), ...selfDPHandlersFor(e, holderOf(e, f)), ...battleEffectHandlersFor(e, holderOf(e, f)), ...totalRemovalHandlersFor(e, holderOf(e, f)), ...appFusionHandlersFor(e), ...handOpenToSecurityHandlersFor(e, holderOf(e, f)), ...securityEvolveHandlersFor(e, holderOf(e, f)), ...securitySearchPlayHandlersFor(e), ...totalCostPlayHandlersFor(e, holderOf(e, f)), ...sourcePlayHandlersFor(e, holderOf(e, f)), ...selfCardPlayHandlersFor(e), ...reductionCostHandlersFor(e), ...costHandlersFor(e, holderOf(e, f)), ...restrictHandlersFor(e), ...evolveFromZoneHandlersFor(e, f && f.stack), ...materialFromZoneHandlersFor(e, f && f.stack), ...playFromHandHandlersFor(e, holderOf(e, f)), ...toHandFromZoneHandlersFor(e, holderOf(e, f)), ...sourceMoveHandlersFor(e, holderOf(e, f)), ...simpleActionHandlersFor(e, holderOf(e, f)), ...effectMovementHandlersFor(e, holderOf(e, f))];
+      const list = [...chooseCountHandlersFor(e, holderOf(e, f)), ...tokenHandlersFor(e), ...tamerAsDigimonHandlersFor(e, holderOf(e, f)), ...mindLinkHandlersFor(e, holderOf(e, f)), ...linkEffectHandlersFor(e, holderOf(e, f)), ...selfDPHandlersFor(e, holderOf(e, f)), ...battleEffectHandlersFor(e, holderOf(e, f)), ...totalRemovalHandlersFor(e, holderOf(e, f)), ...appFusionHandlersFor(e), ...handOpenToSecurityHandlersFor(e, holderOf(e, f)), ...securityEvolveHandlersFor(e, holderOf(e, f)), ...securitySearchPlayHandlersFor(e), ...totalCostPlayHandlersFor(e, holderOf(e, f)), ...sourcePlayHandlersFor(e, holderOf(e, f)), ...selfCardPlayHandlersFor(e), ...reductionCostHandlersFor(e), ...costHandlersFor(e, holderOf(e, f)), ...restrictHandlersFor(e), ...evolveFromZoneHandlersFor(e, f && f.stack), ...materialFromZoneHandlersFor(e, f && f.stack), ...playFromHandHandlersFor(e, holderOf(e, f)), ...toHandFromZoneHandlersFor(e, holderOf(e, f)), ...sourceMoveHandlersFor(e, holderOf(e, f)), ...simpleActionHandlersFor(e, holderOf(e, f)), ...effectMovementHandlersFor(e, holderOf(e, f))];
       // 進化元効果・セキュリティ効果・消滅時などの「デッキの上からN枚オープン」(【効果】欄のものは基本の処理で出している)
       const rm = /(?<!相手の)デッキの上から(\d+)枚オープン/.exec(e.text || '');
       if (rm && e.timing !== 'ディレイ' && (!f || e.field !== 'effect')) {
