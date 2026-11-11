@@ -3762,7 +3762,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.96.1</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.96.2</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -5762,7 +5762,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.96.1`);
+    log(`DigiCA Tool build v0.96.2`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -7255,11 +7255,12 @@
             if (!c || c.category === 'digi-egg') return;
             const canVerb = pz.verb === '使用' ? (c.category === 'option' || !!c.dual) : (c.category === 'digimon' || c.category === 'tamer');
             if (!canVerb) return;
-            list.push(Object.assign(x, { idx: x.pos, card: c, ok: revealCondMatches(c, pz.cond) }));
+            const dup = sameNameOnField(e.ownerIndex, c, effectNoSameNameKinds(e.text));
+            list.push(Object.assign(x, { idx: x.pos, card: c, ok: revealCondMatches(c, pz.cond) && !dup, tag: dup ? `${x.tag || ''}(同じ名称が場にいる)` : x.tag }));
           });
           if (!list.length) { showToast(`${zoneLabel}に${pz.verb}できるカードがありません`, true); return; }
           openEffectEvolvePicker(`${ZONE_ICON[zone]}「${e.cardName}」の効果: ${zoneLabel}から${pz.verb}(${PLAY_RULE_LABEL(pz.costRule)})`, `条件: ${pz.cond}`, list,
-            (pick) => appearFromHand(pick.pos, pick.num, centerPoint(), false, { costRule: pz.costRule, source: pick.zone === 'hand' ? 'hand' : pick.zone === 'trash' ? 'trash' : 'ref', ref: pick, colorIgnored: pz.colorIgnored, effectName: e.cardName }),
+            (pick) => appearFromHand(pick.pos, pick.num, centerPoint(), false, { costRule: pz.costRule, source: pick.zone === 'hand' ? 'hand' : pick.zone === 'trash' ? 'trash' : 'ref', ref: pick, colorIgnored: pz.colorIgnored, effectName: e.cardName, effectText: e.text }),
             pz.verb === '使用' ? '⚡使用' : '📥登場');
         },
       });
@@ -14709,13 +14710,14 @@
             if (cardEntryFaceDown(en)) return;
             const c = cardIndexByNumber.get(cardEntryNum(en));
             if (!c || (c.category !== 'digimon' && c.category !== 'tamer')) return;
-            const ok = sp.parts.length ? sp.parts.some(p => revealCondMatches(c, p) !== false) : true;
-            list.push({ zone: 'sources', num: c.number, arr: host.cards, pos: i, card: c, ok, tag: `(${stackLabel(host)}の進化元)` });
+            const dup = sameNameOnField(e.ownerIndex, c, effectNoSameNameKinds(e.text));
+            const ok = (sp.parts.length ? sp.parts.some(p => revealCondMatches(c, p) !== false) : true) && !dup;
+            list.push({ zone: 'sources', num: c.number, arr: host.cards, pos: i, card: c, ok, tag: `(${stackLabel(host)}の進化元)${dup ? '(同じ名称が場にいる)' : ''}` });
           });
           if (!list.length) { showToast('登場できる進化元のカードがありません', true); return; }
           openEffectEvolvePicker(`🧩「${e.cardName}」の効果: 進化元から登場(${PLAY_RULE_LABEL(sp.costRule)})${left > 1 ? ` 残り${left}枚` : ''}`, `条件: ${sp.cond || 'なし'}`, list, (pick) => {
             left--;
-            appearFromHand(pick.pos, pick.num, centerPoint(), false, { costRule: sp.costRule, source: 'ref', ref: pick, effectName: e.cardName });
+            appearFromHand(pick.pos, pick.num, centerPoint(), false, { costRule: sp.costRule, source: 'ref', ref: pick, effectName: e.cardName, effectText: e.text });
             if (left > 0) setTimeout(() => { if (practiceState) openDecisionUi(`🧩 続けて進化元から登場しますか?(あと${left}枚${sp.upTo ? 'まで' : ''})`, [
               { label: '続けて選ぶ', primary: true, onClick: () => pickFrom(host) },
               { label: 'ここまでにする', onClick: () => renderPracticeBoard() },
@@ -14762,10 +14764,60 @@
       const pos = arr.findIndex(x => cardEntryNum(x) === e.cardNumber);
       if (pos < 0) { showToast(`${ZONE_JA[zone]}に「${e.cardName}」がありません`, true); return; }
       const opts = zone === 'security'
-        ? { costRule, source: 'ref', ref: { zone: 'security', num: e.cardNumber, arr, pos }, effectName: e.cardName }
-        : { costRule, source: zone, effectName: e.cardName };
+        ? { costRule, source: 'ref', ref: { zone: 'security', num: e.cardNumber, arr, pos }, effectName: e.cardName, effectText: e.text }
+        : { costRule, source: zone, effectName: e.cardName, effectText: e.text };
       appearFromHand(pos, e.cardNumber, centerPoint(), false, opts);
     } }];
+  }
+  // ---------- 効果で登場させた後の条件 ----------
+  // 「レスト状態で登場」「この効果で登場したデジモンの【登場時】効果は発揮しない」「この効果で登場したデジモンは進化できず」
+  // 「この効果で登場したデジモンは≪速攻≫を得る」を、登場ボタンで出した時点でそのデジモンに付ける。
+  // 「ターン終了時、この効果で登場したデジモンを消滅させる」は、効果を処理完了にしたときの⏰保留処理の予約で扱う。
+  function parseEffectPlayPostRules(text) {
+    const t = engineStripNotes(text || '').replace(/[＋]/g, '+').replace(/[－]/g, '-');
+    const r = { rested: false, locks: [], permLocks: [], grants: [] };
+    if (/レスト状態で(?:コストを支払わずに)?登場/.test(t)) r.rested = true;
+    t.split('。').forEach(sent => {
+      if (!/この効果で登場した|そのデジモン/.test(sent) && !/^(?:、)?(?:デジモン|テイマー)?は?【登場時】効果は発揮し/.test(sent)) return;
+      if (!/この効果で登場した/.test(sent)) return;
+      if (/【登場時】効果は発揮(しない|せず)/.test(sent)) r.locks.push('noPlayEffect');
+      if (/(?<!Lv\.\d+に)進化でき(ない|ず)/.test(sent)) r.permLocks.push('noEvolve');
+      if (/≪[^≫]+≫[^。]*?を得/.test(sent)) {
+        try { parseKeywordGrants(sent).forEach(g => { if (g.kws && g.kws.length) r.grants.push(g); }); } catch (e) { /* 読めなければ付けない */ }
+      }
+    });
+    return r;
+  }
+  // 「この効果では、自分のデジモン(テイマー)と同じ名称のカードは登場できない」
+  function effectNoSameNameKinds(text) {
+    const m = /自分の(デジモン|テイマー)(?:か(デジモン|テイマー))?と同じ名称の(?:カード|デジモン|テイマー|トークン)は登場でき/.exec(engineStripNotes(text || ''));
+    if (!m) return null;
+    return [m[1], m[2]].filter(Boolean).map(x => x === 'デジモン' ? 'digimon' : 'tamer');
+  }
+  function sameNameOnField(pi, card, kinds) {
+    if (!kinds || !card) return false;
+    return practiceState.players[pi].battle.some(st => {
+      const c = getStackTopCard(st);
+      if (!c) return false;
+      const isDigi = isDigimonLikeStack(st);
+      if (!(kinds.includes('digimon') && isDigi) && !(kinds.includes('tamer') && c.category === 'tamer')) return false;
+      return c.name === card.name;
+    });
+  }
+  function applyEffectPlayPostRules(stack, text, ownerIndex) {
+    if (!stack || !text) return [];
+    const r = parseEffectPlayPostRules(text);
+    const notes = [];
+    if (r.rested && !stack.rested) { stack.rested = true; notes.push('レスト状態'); }
+    if (r.locks.length || r.permLocks.length) {
+      if (!stack.locks) stack.locks = {};
+      [...r.locks, ...r.permLocks].forEach(k => { stack.locks[k] = true; });
+      // 「進化できず」は場にいる間ずっと(ターン終了のロック解除でも外さない)
+      if (r.permLocks.length) stack.permLocks = Object.assign({}, stack.permLocks || {}, Object.fromEntries(r.permLocks.map(k => [k, true])));
+      notes.push(...[...r.locks, ...r.permLocks].map(k => '🔒' + LOCK_LABELS[k]));
+    }
+    r.grants.forEach(g => { grantKeywordsTo(stack, g, ownerIndex); notes.push('✨' + g.kws.map(k => k.label).join('・')); });
+    return notes;
   }
   function getEffectHandlers(e) {
     if (e.deferred) return deferredHandlersFor(e);
@@ -17774,9 +17826,11 @@
       // オプション扱い(デジモンとして数えない・下段グループ表示)にする。
       self.battle.push({ cards: [handNumber], rested: false, enteredTurn: practiceState.turn.count, dualAsOption: isDualUse || undefined,
         pendingEntry: { fromZone: opts && opts.source === 'ref' && opts.ref ? opts.ref.zone : (opts && opts.source) || 'hand', byEffect: opts && opts.effectName ? true : undefined } });
+      // 効果で登場: その効果の「レスト状態で」「【登場時】効果は発揮しない」「進化できず」「≪速攻≫を得る」を付ける(効果のルートで出したときだけ)
+      const postNotes = opts && opts.effectText ? applyEffectPlayPostRules(self.battle[self.battle.length - 1], opts.effectText, practiceState.viewingIndex) : [];
       payMemory(practiceState.turn.playerIndex, cost);
       renderPracticeBoard();
-      showToast(`「${displayName}」を${verb}しました(コスト${cost})`);
+      showToast(`「${displayName}」を${verb}しました(コスト${cost})${postNotes.length ? ` — ${postNotes.join('・')}` : ''}`);
       checkStackRuleViolation(self.battle[self.battle.length - 1]);
       resumeAttackStepIfAny();
     };
@@ -18422,7 +18476,7 @@
     snapshotPracticeState();
     const revealed = self.library.splice(0, Math.min(x, self.library.length));
     const spec = effectText ? parseRevealInstructions(effectText) : null;
-    if (spec) spec.effectName = effectName || '';
+    if (spec) { spec.effectName = effectName || ''; spec.effectText = effectText; }
     openRevealResolveView(revealed, self, spec);
   }
   // ---------- 「デッキの上からN枚オープンする。その中の〜」の指示を読む ----------
@@ -19281,11 +19335,12 @@
           const cost = st.costRule ? applyEvolveCostRule(st.costRule, base) : base;
           if (!canPayMemoryCost(practiceState.turn.playerIndex, cost)) { showToast('メモリーが上限(10)に達するため、このコストでは登場できません', true); return; }
           revealed.splice(idx, 1);
-          self.battle.push({ cards: [number], rested: !!st.restedPlay });
+          self.battle.push({ cards: [number], rested: !!st.restedPlay, enteredTurn: practiceState.turn.count, pendingEntry: { fromZone: 'reveal', byEffect: true } });
+          const postNotes = spec && spec.effectText ? applyEffectPlayPostRules(self.battle[self.battle.length - 1], spec.effectText, practiceState.viewingIndex) : [];
           if (cost) payMemory(practiceState.turn.playerIndex, cost);
           done();
           renderPracticeBoard();
-          showToast(`「${card ? card.name : '?'}」を登場させました(コスト${cost})`);
+          showToast(`「${card ? card.name : '?'}」を登場させました(コスト${cost})${postNotes.length ? ` — ${postNotes.join('・')}` : ''}`);
           render();
           return;
         }
@@ -21817,7 +21872,7 @@
       // 次にこのプレイヤーのターンが終わるまで持ち越される)。
       const endingPlayer = turnPlayer;
       [endingPlayer.raising, ...endingPlayer.battle].forEach(s => {
-        if (s && s.locks) s.locks = {};
+        if (s && s.locks) s.locks = s.permLocks ? Object.assign({}, s.permLocks) : {};
       });
       // 耐性の期限切れ解除(今終わったのは turnPlayer のターン)
       clearExpiredResists(practiceState.players.indexOf(endingPlayer));
