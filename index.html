@@ -3855,7 +3855,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.97.5</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.97.6</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -6005,7 +6005,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.97.5`);
+    log(`DigiCA Tool build v0.97.6`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -15660,6 +15660,38 @@
     }
     return out;
   }
+
+  // 🥊「このデジモンと相手のデジモン1体でバトルできる」「(条件の)自分のデジモン1体と相手のデジモン1体でバトルできる」
+  //   「自分のデジモン1体をDP+3000し、そのデジモンと相手のデジモン1体でバトルできる」: 既存の「バトルする(効果)」と同じ処理
+  function battleEffectHandlersFor(e, holderStack) {
+    if (!practiceState) return [];
+    const t = engineStripNotes(e.text || '');
+    const out = [];
+    const re = /(このデジモン|そのデジモン|([^、。]*?)自分のデジモン1体)と、?((?:[^、。]*?)の)?(相手のデジモン1体|そのデジモン)でバトル(?:でき|する|させ)/g;
+    let m;
+    while ((m = re.exec(t))) {
+      const selfKind = m[1] === 'このデジモン' ? 'this' : 'pick';
+      const selfCond = selfKind === 'pick' ? (m[2] || '').replace(/^.*(?:とき|なら|場合)、/, '').replace(/の$/, '').trim() : '';
+      const oppCond = m[4] === '相手のデジモン1体' ? (m[3] || '').replace(/の$/, '').trim() : '';
+      out.push({ label: `🥊 ${selfKind === 'this' ? 'このデジモン' : `${selfCond ? selfCond + 'の' : ''}自分のデジモン1体`}と${oppCond ? oppCond + 'の' : ''}相手のデジモン1体でバトル`, run: () => {
+        if (e.ownerIndex !== practiceState.viewingIndex) { showToast('この自動処理は、その効果を持つプレイヤーの視点に切り替えてから実行してください', true); return; }
+        const P = practiceState.players[e.ownerIndex];
+        const oppFilter = oppCond ? (st) => revealCondMatches(getStackTopCard(st), oppCond) : null;
+        const go = (st) => startEffectBattle(st, { filter: oppFilter });
+        if (selfKind === 'this') {
+          if (!holderStack || !findStackOwnerAndZone(holderStack)) { showToast('このデジモンが場にいません', true); return; }
+          go(holderStack); return;
+        }
+        const own = P.battle.filter(st => isDigimonLikeStack(st));
+        const ok = selfCond ? own.filter(st => revealCondMatches(getStackTopCard(st), selfCond)) : own;
+        if (!own.length) { showToast('自分のデジモンがいません', true); return; }
+        if (ok.length === 1 && own.length === 1) { go(ok[0]); return; }
+        startFieldPick({ title: `🥊 バトルする自分のデジモンをタップ${selfCond ? `(${selfCond})` : ''}`, candidates: ok, extra: own.filter(st => !ok.includes(st)), showExtra: false, strict: true, max: 1,
+          onDone: (sel) => { if (sel[0]) go(sel[0]); } });
+      } });
+    }
+    return out;
+  }
   // 🔗「自分の手札かこのデジモンの進化元から、(条件の)カードN枚をこのデジモン/自分のデジモン1体に(コストを支払わずに|支払うコスト-Nで)リンクできる」
   //   「このカードを(エリアの)自分のデジモン1体にコストを支払わずにリンクできる」
   // (代償の「〜リンクさせることで」は costHandlersFor が扱う)
@@ -15786,7 +15818,7 @@
     if (e.deferred) return deferredHandlersFor(e);
     const extra = () => {
       const f = e.stackUid ? findStackByUid(e.stackUid) : null;
-      const list = [...tokenHandlersFor(e), ...tamerAsDigimonHandlersFor(e, holderOf(e, f)), ...mindLinkHandlersFor(e, holderOf(e, f)), ...linkEffectHandlersFor(e, holderOf(e, f)), ...selfDPHandlersFor(e, holderOf(e, f)), ...totalRemovalHandlersFor(e, holderOf(e, f)), ...appFusionHandlersFor(e), ...handOpenToSecurityHandlersFor(e, holderOf(e, f)), ...securityEvolveHandlersFor(e, holderOf(e, f)), ...securitySearchPlayHandlersFor(e), ...totalCostPlayHandlersFor(e, holderOf(e, f)), ...sourcePlayHandlersFor(e, holderOf(e, f)), ...selfCardPlayHandlersFor(e), ...reductionCostHandlersFor(e), ...costHandlersFor(e, holderOf(e, f)), ...restrictHandlersFor(e), ...evolveFromZoneHandlersFor(e, f && f.stack), ...materialFromZoneHandlersFor(e, f && f.stack), ...playFromHandHandlersFor(e, holderOf(e, f)), ...toHandFromZoneHandlersFor(e, holderOf(e, f)), ...sourceMoveHandlersFor(e, holderOf(e, f)), ...simpleActionHandlersFor(e, holderOf(e, f)), ...effectMovementHandlersFor(e, holderOf(e, f))];
+      const list = [...tokenHandlersFor(e), ...tamerAsDigimonHandlersFor(e, holderOf(e, f)), ...mindLinkHandlersFor(e, holderOf(e, f)), ...linkEffectHandlersFor(e, holderOf(e, f)), ...selfDPHandlersFor(e, holderOf(e, f)), ...battleEffectHandlersFor(e, holderOf(e, f)), ...totalRemovalHandlersFor(e, holderOf(e, f)), ...appFusionHandlersFor(e), ...handOpenToSecurityHandlersFor(e, holderOf(e, f)), ...securityEvolveHandlersFor(e, holderOf(e, f)), ...securitySearchPlayHandlersFor(e), ...totalCostPlayHandlersFor(e, holderOf(e, f)), ...sourcePlayHandlersFor(e, holderOf(e, f)), ...selfCardPlayHandlersFor(e), ...reductionCostHandlersFor(e), ...costHandlersFor(e, holderOf(e, f)), ...restrictHandlersFor(e), ...evolveFromZoneHandlersFor(e, f && f.stack), ...materialFromZoneHandlersFor(e, f && f.stack), ...playFromHandHandlersFor(e, holderOf(e, f)), ...toHandFromZoneHandlersFor(e, holderOf(e, f)), ...sourceMoveHandlersFor(e, holderOf(e, f)), ...simpleActionHandlersFor(e, holderOf(e, f)), ...effectMovementHandlersFor(e, holderOf(e, f))];
       // 進化元効果・セキュリティ効果・消滅時などの「デッキの上からN枚オープン」(【効果】欄のものは基本の処理で出している)
       const rm = /(?<!相手の)デッキの上から(\d+)枚オープン/.exec(e.text || '');
       if (rm && e.timing !== 'ディレイ' && (!f || e.field !== 'effect')) {
@@ -20917,12 +20949,15 @@
   // (destination==='trash'のときは呼ばない)。
   // 「相手のデジモン1体とバトルする」効果用の、対象選択→resolveBattle直行のショートカット。
   // アタック宣言と異なりレストや5タイミングの進行は伴わない、単発のDP比較バトルのみ。
-  function startEffectBattle(stack) {
+  function startEffectBattle(stack, opts) {
     if (!practiceState) return;
     const selfOwner = practiceState.players[practiceState.viewingIndex];
     const oppOwner = practiceState.players[1 - practiceState.viewingIndex];
-    const candidates = oppOwner.battle.filter(s => isDigimonLikeStack(s));
-    if (candidates.length === 0) {
+    const all = oppOwner.battle.filter(s => isDigimonLikeStack(s));
+    // opts.filter: 効果の条件(合わないものは「条件外も選ぶ」から)
+    const candidates = opts && opts.filter ? all.filter(opts.filter) : all;
+    const extra = all.filter(s => !candidates.includes(s));
+    if (all.length === 0) {
       showToast('相手のバトルエリアにデジモンがいません', true);
       return;
     }
@@ -20934,7 +20969,7 @@
     const myName = getStackTopCard(stack)?.name || '?';
     startFieldPick({
       title: `「${myName}」とバトルする相手のデジモンをタップ(DPが低い方が消滅)`,
-      candidates,
+      candidates, extra, showExtra: false, strict: true,
       onDone: (sel) => {
         const s = sel[0];
         if (!s) return;
