@@ -3762,7 +3762,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.96.5</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.96.6</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -5762,7 +5762,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.96.5`);
+    log(`DigiCA Tool build v0.96.6`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -15013,11 +15013,79 @@
       });
     } }];
   }
+  // ---------- 合計で決まる除去 ----------
+  // 「登場コスト合計7まで、相手のデジモンを消滅させる」「DP合計10000まで、〜」「Lv.合計4まで、〜」
+  // 「登場コスト合計15まで相手のデジモンを選び、選んだデジモン全てを消滅させる」「登場コスト合計3以下になるように相手のデジモンとテイマーを選び、〜」
+  // 「登場コスト合計14まで、相手のデジモンをデッキの下に戻す」
+  // 上限が増える「相手のデジモン1体ごとに、このDP消滅効果の上限+2000」「進化元の「ベムモン」1枚ごとに、この効果で選べる登場コスト合計の上限+1」も数える
+  function parseTotalRemovals(text) {
+    const t = engineStripNotes(text || '');
+    const out = [];
+    const re = /(登場コスト|DP|Lv\.)合計(\d+)(?:まで|以下になるように)、?(?:(?:[^。]*?)なら)?相手の(デジモン(?:とテイマー)?|テイマー)(?:を選び、選んだ(?:デジモン|カード)(?:とテイマー)?全て)?を(消滅させる|デッキの(?:下|上)に戻す|手札に戻す)/g;
+    let m;
+    while ((m = re.exec(t))) {
+      const key = m[1] === '登場コスト' ? 'cost' : m[1] === 'DP' ? 'dp' : 'lv';
+      const act = /消滅/.test(m[4]) ? { type: 'destroy' } : /手札/.test(m[4]) ? { type: 'move', dest: 'hand' } : { type: 'move', dest: /上/.test(m[4]) ? 'deckTop' : 'deckBottom' };
+      const up = /([^、。]+?)(\d+)(枚|体)ごとに、この(?:DP消滅)?効果(?:で選べる|の)(?:登場コスト合計の|DPの|Lv\.の)?(?:上限|登場コスト(?:合計)?(?:の)?上限)\+(\d+)/.exec(t);
+      out.push({ key, label: m[1], base: parseInt(m[2], 10), kinds: m[3], act, verb: m[4],
+        up: up ? { what: up[1].replace(/^.*?、/, '').trim(), n: parseInt(up[2], 10), unit: up[3], add: parseInt(up[4], 10) } : null });
+    }
+    return out;
+  }
+  function stackTotalValue(st, key) {
+    const c = getStackTopCard(st) || {};
+    if (key === 'dp') return getEffectiveDP(st);
+    if (key === 'lv') return c.level || 0;
+    return c.play_cost != null ? c.play_cost : 0;
+  }
+  function totalRemovalHandlersFor(e, holderStack) {
+    if (!practiceState) return [];
+    return parseTotalRemovals(e.text).map(tr => {
+      const actJa = tr.act.type === 'destroy' ? '消滅' : tr.act.dest === 'hand' ? '手札に戻す' : 'デッキの下へ';
+      return { label: `🧮 ${tr.label}合計${tr.base}${tr.up ? '+α' : ''}まで、相手の${tr.kinds}を${actJa}`, run: () => {
+        if (e.ownerIndex !== practiceState.viewingIndex) { showToast('この自動処理は、その効果を持つプレイヤーの視点に切り替えてから実行してください', true); return; }
+        const opi = 1 - e.ownerIndex;
+        let budget = tr.base, upNote = '';
+        if (tr.up) {
+          let k = null;
+          try { k = extraCountSubject({ what: tr.up.what, n: tr.up.n, unit: tr.up.unit }, holderStack || { cards: [] }, e.ownerIndex); } catch (er) { k = null; }
+          if (k == null) upNote = `(上限の増える分「${tr.up.what}${tr.up.n}${tr.up.unit}ごとに+${tr.up.add}」は数えられないので、選ぶときに足してください)`;
+          else { const add = Math.floor(k / tr.up.n) * tr.up.add; budget += add; upNote = `(上限+${add}: ${tr.up.what} ${k}${tr.up.unit})`; }
+        }
+        const cands = battleStacksOf(opi).filter(st => {
+          const c = getStackTopCard(st);
+          if (!c) return false;
+          if (tr.kinds === 'テイマー') return c.category === 'tamer';
+          if (tr.kinds === 'デジモンとテイマー') return isDigimonLikeStack(st) || c.category === 'tamer';
+          return isDigimonLikeStack(st);
+        });
+        if (!cands.length) { showToast(`相手の${tr.kinds}がいません`, true); return; }
+        const pick = (initial) => startFieldPick({
+          title: `🧮 ${tr.label}合計${budget}までの相手の${tr.kinds}をタップ(何体でも)${upNote}`,
+          candidates: cands, max: Infinity, initialSelected: initial || [],
+          onDone: (sel) => {
+            if (!sel.length) return;
+            const sum = sel.reduce((a, st) => a + stackTotalValue(st, tr.key), 0);
+            if (sum > budget && !upNote.includes('数えられない')) {
+              openDecisionUi(`🧮 ${tr.label}の合計が${sum}で、上限${budget}を超えています(${sel.map(st => `${stackLabel(st)}:${stackTotalValue(st, tr.key)}`).join('、')})`, [
+                { label: '選び直す', primary: true, onClick: () => pick(sel) },
+                { label: 'それでも実行する', onClick: () => runTargetAction({ action: tr.act }, e, sel) },
+              ]);
+              return;
+            }
+            showToast(`🧮 ${tr.label}合計${sum}/${budget}`);
+            runTargetAction({ action: tr.act }, e, sel);
+          },
+        });
+        pick();
+      } };
+    });
+  }
   function getEffectHandlers(e) {
     if (e.deferred) return deferredHandlersFor(e);
     const extra = () => {
       const f = e.stackUid ? findStackByUid(e.stackUid) : null;
-      const list = [...tokenHandlersFor(e), ...appFusionHandlersFor(e), ...handOpenToSecurityHandlersFor(e, holderOf(e, f)), ...securityEvolveHandlersFor(e, holderOf(e, f)), ...securitySearchPlayHandlersFor(e), ...totalCostPlayHandlersFor(e, holderOf(e, f)), ...sourcePlayHandlersFor(e, holderOf(e, f)), ...selfCardPlayHandlersFor(e), ...reductionCostHandlersFor(e), ...costHandlersFor(e, holderOf(e, f)), ...restrictHandlersFor(e), ...evolveFromZoneHandlersFor(e, f && f.stack), ...materialFromZoneHandlersFor(e, f && f.stack), ...playFromHandHandlersFor(e, holderOf(e, f)), ...toHandFromZoneHandlersFor(e, holderOf(e, f)), ...sourceMoveHandlersFor(e, holderOf(e, f)), ...simpleActionHandlersFor(e, holderOf(e, f)), ...effectMovementHandlersFor(e, holderOf(e, f))];
+      const list = [...tokenHandlersFor(e), ...totalRemovalHandlersFor(e, holderOf(e, f)), ...appFusionHandlersFor(e), ...handOpenToSecurityHandlersFor(e, holderOf(e, f)), ...securityEvolveHandlersFor(e, holderOf(e, f)), ...securitySearchPlayHandlersFor(e), ...totalCostPlayHandlersFor(e, holderOf(e, f)), ...sourcePlayHandlersFor(e, holderOf(e, f)), ...selfCardPlayHandlersFor(e), ...reductionCostHandlersFor(e), ...costHandlersFor(e, holderOf(e, f)), ...restrictHandlersFor(e), ...evolveFromZoneHandlersFor(e, f && f.stack), ...materialFromZoneHandlersFor(e, f && f.stack), ...playFromHandHandlersFor(e, holderOf(e, f)), ...toHandFromZoneHandlersFor(e, holderOf(e, f)), ...sourceMoveHandlersFor(e, holderOf(e, f)), ...simpleActionHandlersFor(e, holderOf(e, f)), ...effectMovementHandlersFor(e, holderOf(e, f))];
       // 進化元効果・セキュリティ効果・消滅時などの「デッキの上からN枚オープン」(【効果】欄のものは基本の処理で出している)
       const rm = /(?<!相手の)デッキの上から(\d+)枚オープン/.exec(e.text || '');
       if (rm && e.timing !== 'ディレイ' && (!f || e.field !== 'effect')) {
@@ -18762,7 +18830,7 @@
         }
         // 「AとB1枚ずつ」: それぞれ1枚ずつの手順にする
         if (m[4]) {
-          const parts = cond.replace(/「[^」]*」/g, q => q.replace(/と/g, '\u0002')).split(/と(?=[「特名赤青黄緑黒紫白]|Lv)/).map(x => x.replace(/\u0002/g, 'と'));
+          const parts = expandEachConds(cond) || cond.replace(/「[^」]*」/g, q => q.replace(/と/g, '\u0002')).split(/と(?=[「特名赤青黄緑黒紫白]|Lv)/).map(x => x.replace(/\u0002/g, 'と'));
           if (parts.length > 1) { parts.forEach(pc => push(pc, n, m[3], m[6], m[7], m[5])); continue; }
         }
         push(cond, n, m[3], m[6], m[7], m[5], altOf);
