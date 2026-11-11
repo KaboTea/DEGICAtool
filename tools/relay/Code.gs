@@ -4,11 +4,13 @@
  * ・アプリから「合言葉・ニックネーム・デッキ」を受け取り、GitHubのデッキファイルを書きかえる。
  * ・GitHubのトークンは「スクリプト プロパティ」にだけ置く(アプリにもGitHubにも出ない)。
  * ・書けるのは decks/decks.json(共有デッキ)と decks/users/<ニックネーム>.json(マイデッキ)だけ。
- * ・保存/削除のたびに、このスプレッドシートの「記録」シートに1行ふやす。
+ * ・保存/削除のたびに、このスプレッドシートの「記録」シートに1行ふやす(GitHubには名前を残さない)。
+ * ・管理者の合言葉なら、アプリから「記録」を見られる。
  *
  * スクリプト プロパティ(⚙プロジェクトの設定 → スクリプト プロパティ):
- *   GITHUB_TOKEN … GitHubのトークン(このリポジトリの Contents: Read and write だけ)
- *   PASSPHRASE   … 仲間に伝える合言葉
+ *   GITHUB_TOKEN     … GitHubのトークン(このリポジトリの Contents: Read and write だけ)
+ *   PASSPHRASE       … 仲間に伝える合言葉(保存・削除ができる)
+ *   ADMIN_PASSPHRASE … 管理者の合言葉(保存・削除に加えて、記録を見られる)
  */
 const REPO = 'KaboTea/DEGICAtool';
 const BRANCH = 'main';
@@ -32,9 +34,16 @@ function doGet(e) {
 function doPost(e) {
   let req;
   try { req = JSON.parse(e.postData.contents); } catch (err) { return out_({ ok: false, error: '送られてきた内容が読めません' }); }
-  const pass = PropertiesService.getScriptProperties().getProperty('PASSPHRASE') || '';
-  if (!pass || req.pass !== pass) return out_({ ok: false, error: '合言葉が違います', code: 'pass' });
-  if (req.op === 'check') return out_({ ok: true });
+  const props = PropertiesService.getScriptProperties();
+  const pass = props.getProperty('PASSPHRASE') || '';
+  const admin = props.getProperty('ADMIN_PASSPHRASE') || '';
+  const isAdmin = !!admin && req.pass === admin;
+  if (!isAdmin && (!pass || req.pass !== pass)) return out_({ ok: false, error: '合言葉が違います', code: 'pass' });
+  if (req.op === 'check') return out_({ ok: true, admin: isAdmin });
+  if (req.op === 'log') {
+    if (!isAdmin) return out_({ ok: false, error: '記録は管理者の合言葉でだけ見られます', code: 'admin' });
+    return out_({ ok: true, rows: readLog_(Math.min(parseInt(req.limit, 10) || 200, 1000)) });
+  }
   const nick = String(req.nickname || '').trim().slice(0, 40);
   if (!nick) return out_({ ok: false, error: 'ニックネームがありません' });
   if (req.file !== 'shared' && req.file !== 'user') return out_({ ok: false, error: '保存先が正しくありません' });
@@ -68,7 +77,7 @@ function doPost(e) {
         cur.data.decks = decks.filter(d => d.id !== String(req.id));
       }
       if (req.op === 'upsert') cur.data.decks = decks;
-      const msg = `${label}: ${deckName} (by ${nick})`;
+      const msg = `${label}: ${deckName}`; // 誰がやったかは非公開の記録シートにだけ残す
       const put = writeFile_(path, JSON.stringify(cur.data), msg, cur.sha);
       if (put === 'conflict' && attempt === 0) continue;
       if (put !== 'ok') throw new Error('GitHubへの保存に失敗しました: ' + put);
@@ -153,6 +162,15 @@ function log_(nick, label, place, deckName, id) {
   let sh = ss.getSheetByName(LOG_SHEET);
   if (!sh) { sh = ss.insertSheet(LOG_SHEET); sh.appendRow(['日時', 'ニックネーム', '操作', '場所', 'デッキ名', 'デッキID']); sh.setFrozenRows(1); }
   sh.appendRow([Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy/MM/dd HH:mm:ss'), nick, label, place, deckName, id]);
+}
+
+// 記録シートの新しい順に limit 行
+function readLog_(limit) {
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(LOG_SHEET);
+  if (!sh || sh.getLastRow() < 2) return [];
+  const n = Math.min(limit, sh.getLastRow() - 1);
+  const vals = sh.getRange(sh.getLastRow() - n + 1, 1, n, 6).getDisplayValues();
+  return vals.reverse().map(v => ({ at: v[0], nick: v[1], op: v[2], place: v[3], deck: v[4], id: v[5] }));
 }
 
 function out_(obj) {
