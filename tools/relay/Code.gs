@@ -4,7 +4,8 @@
  * ・アプリから「合言葉・ニックネーム・デッキ」を受け取り、GitHubのデッキファイルを書きかえる。
  * ・GitHubのトークンは「スクリプト プロパティ」にだけ置く(アプリにもGitHubにも出ない)。
  * ・書けるのは decks/decks.json(共有デッキ)と decks/users/<ニックネーム>.json(マイデッキ)だけ。
- * ・保存/削除のたびに、このスプレッドシートの「記録」シートに1行ふやす(GitHubには名前を残さない)。
+ * ・保存/削除のたびに、記録用スプレッドシート「DEGICA記録」の「記録」シートに1行ふやす(GitHubには名前を残さない)。
+ *   記録用スプレッドシートは、最初に setup を実行したときに自分のGoogleドライブに作られる(共有しない限り自分だけが見られる)。
  * ・管理者の合言葉なら、アプリから「記録」を見られる。
  *
  * スクリプト プロパティ(⚙プロジェクトの設定 → スクリプト プロパティ):
@@ -157,17 +158,35 @@ function writeFile_(path, text, message, sha) {
   return code + ' ' + r.getContentText().slice(0, 200);
 }
 
-function log_(nick, label, place, deckName, id) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+// 記録用スプレッドシートを開く(なければ作って、そのIDを覚えておく)
+function logSheet_() {
+  const props = PropertiesService.getScriptProperties();
+  let ss = null;
+  const id = props.getProperty('LOG_SHEET_ID');
+  if (id) { try { ss = SpreadsheetApp.openById(id); } catch (e) { ss = null; } }
+  if (!ss) { try { ss = SpreadsheetApp.getActiveSpreadsheet(); } catch (e) { ss = null; } }
+  if (!ss) { ss = SpreadsheetApp.create('DEGICA記録'); }
+  props.setProperty('LOG_SHEET_ID', ss.getId());
   let sh = ss.getSheetByName(LOG_SHEET);
-  if (!sh) { sh = ss.insertSheet(LOG_SHEET); sh.appendRow(['日時', 'ニックネーム', '操作', '場所', 'デッキ名', 'デッキID']); sh.setFrozenRows(1); }
+  if (!sh) {
+    sh = ss.insertSheet(LOG_SHEET);
+    sh.appendRow(['日時', 'ニックネーム', '操作', '場所', 'デッキ名', 'デッキID']);
+    sh.setFrozenRows(1);
+    const first = ss.getSheets()[0];
+    if (first.getName() !== LOG_SHEET && first.getLastRow() === 0) ss.deleteSheet(first);
+  }
+  return { ss, sh };
+}
+
+function log_(nick, label, place, deckName, id) {
+  const sh = logSheet_().sh;
   sh.appendRow([Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy/MM/dd HH:mm:ss'), nick, label, place, deckName, id]);
 }
 
 // 記録シートの新しい順に limit 行
 function readLog_(limit) {
-  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(LOG_SHEET);
-  if (!sh || sh.getLastRow() < 2) return [];
+  const sh = logSheet_().sh;
+  if (sh.getLastRow() < 2) return [];
   const n = Math.min(limit, sh.getLastRow() - 1);
   const vals = sh.getRange(sh.getLastRow() - n + 1, 1, n, 6).getDisplayValues();
   return vals.reverse().map(v => ({ at: v[0], nick: v[1], op: v[2], place: v[3], deck: v[4], id: v[5] }));
@@ -177,8 +196,13 @@ function out_(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
 }
 
-// 動作確認用: エディタでこの関数を選んで▶実行すると、GitHubの共有デッキが読めるか試せる
-function testRead() {
+// 最初に1回だけ: エディタでこの関数を選んで▶実行する。
+// GitHubの共有デッキが読めるか試し、記録用スプレッドシートを作って、その場所を表示する。
+function setup() {
+  const props = PropertiesService.getScriptProperties();
+  ['GITHUB_TOKEN', 'PASSPHRASE', 'ADMIN_PASSPHRASE'].forEach(k => { if (!props.getProperty(k)) Logger.log('⚠ スクリプト プロパティ ' + k + ' がまだありません'); });
   const r = readDecks_(SHARED_PATH);
-  Logger.log('共有デッキ ' + r.data.decks.length + '個 / sha=' + r.sha);
+  Logger.log('✅ GitHubにつながりました(共有デッキ ' + r.data.decks.length + '個)');
+  const { ss } = logSheet_();
+  Logger.log('✅ 記録用スプレッドシート: ' + ss.getUrl());
 }
