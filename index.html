@@ -3762,7 +3762,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.96.8</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.96.9</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -5762,7 +5762,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.96.8`);
+    log(`DigiCA Tool build v0.96.9`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -6017,14 +6017,123 @@
   function getStackTopCard(stack) {
     return cardIndexByNumber.get(cardEntryNum(stack.cards[stack.cards.length - 1]));
   }
+  // ---------- 場にいるだけで効く付与(常在) ----------
+  // 「【相手のターン】特徴に「D-ブリガード」を持つ自分のデジモン全ては、≪ブロッカー≫を得る」
+  // 「【自分のターン】自分の「大門大」全てはデジモン・DP12000としても扱い、≪速攻≫を得る」
+  // 「【自分のターン】このテイマーはデジモン・DP3000としても扱い〜」(条件つき「〜の間、」も)
+  // を、置いてあるカード(バトルエリア・育成エリア)から毎回読み取って反映する。
+  // ［セキュリティ］の行は securityStaticRulesFor、「このデジモンは〜を得る」は conditionalKeywordOn が担当。
+  const FIELD_GRANT_CACHE = new Map();
+  function parseFieldStaticGrants(text) {
+    if (FIELD_GRANT_CACHE.has(text)) return FIELD_GRANT_CACHE.get(text);
+    const out = [];
+    (text || '').split('\n').forEach(line => {
+      const ln = line.trim();
+      if (/^(［セキュリティ］|\[セキュリティ\])/.test(ln)) return;
+      const parsed = parseEffectLine(ln);
+      if (!parsed.labels.length || !parsed.labels.every(l => /^(自分のターン|相手のターン|お互いのターン)$/.test(l))) return;
+      const body = engineStripNotes(parsed.text).replace(/^(?:［[^］]*］|\[[^\]]*\]|【[^】]+】)+/, '');
+      if (/とき、|ことで|ターン終了まで|このターンの間|次の(相手|自分)のターン/.test(body)) return;
+      body.split('。').forEach(sent0 => {
+        let s = sent0.trim(), cond = null, m;
+        if ((m = /^(.+?)(?:の)?間、/.exec(s))) { cond = m[1]; s = s.slice(m[0].length); }
+        let subj = null;
+        if ((m = /^(.*?)(自分|相手)の(デジモン|テイマー|(?:「[^」]+」\/?)+)(?:とテイマー)?全て(?:は|に)、?/.exec(s)) && !/このデジモン(?!と同じ)/.test(m[1])) {
+          const pre = m[1] + (/^「/.test(m[3]) ? m[3] : '');
+          subj = { type: 'all', side: m[2], kind: /^「/.test(m[3]) ? 'any' : m[3], filter: pre.replace(/の$/, ''), other: /他の/.test(m[1]),
+            rested: /レスト状態の/.test(m[1]) ? true : /アクティブ状態の/.test(m[1]) ? false : null };
+        } else if ((m = /^このテイマーは、?/.exec(s))) subj = { type: 'self' };
+        if (!subj) return;
+        const rest = s.slice(m[0].length);
+        const dm = /^デジモン・DP(\d+)としても扱い/.exec(rest);
+        const km = /((?:≪[^≫]+≫(?:と|、)?)+)を(?:得る|与える)/.exec(rest);
+        if (!dm && !km) return;
+        if (subj.type === 'self' && !dm) return; // 「このテイマーは≪X≫を得る」だけのものは対象外
+        const kws = km ? (km[1].match(/≪[^≫]+≫/g) || []).map(k => k.slice(1, -1)) : [];
+        out.push({ prefix: parsed.prefix, labels: parsed.labels, cond, subj, dp: dm ? parseInt(dm[1], 10) : null, kws, text: s });
+      });
+    });
+    FIELD_GRANT_CACHE.set(text, out);
+    return out;
+  }
+  let fieldGrantBusy = false;
+  // stack が場の常在効果から受けているもの: [{ dp, kws, srcName }]
+  function fieldStaticGrantsOn(stack) {
+    if (fieldGrantBusy || !practiceState || !stack) return [];
+    const f = findStackOwnerAndZone(stack);
+    if (!f || f.zone !== 'battle') return [];
+    const tpi = practiceState.players.indexOf(f.player);
+    const top = getStackTopCard(stack);
+    if (!top) return [];
+    fieldGrantBusy = true;
+    const out = [];
+    try {
+      practiceState.players.forEach((p, hpi) => {
+        const holders = [...p.battle.map(s => [s, 'battle']), ...(p.raising ? [[p.raising, 'raising']] : [])];
+        holders.forEach(([holder, zone]) => {
+          getStackEffectSources(holder).forEach(src => {
+            parseFieldStaticGrants(src.text).forEach(r => {
+              if (!lineAllowedInZone({ prefix: r.prefix }, zone) || !engineTurnLabelOk(r.labels, hpi)) return;
+              const sj = r.subj;
+              if (sj.type === 'self') {
+                if (holder !== stack || top.category !== 'tamer') return;
+              } else {
+                if (sj.side === '自分' ? tpi !== hpi : tpi === hpi) return;
+                if (sj.other && holder === stack) return;
+                if (sj.rested != null && !!stack.rested !== sj.rested) return;
+                const isTamer = top.category === 'tamer';
+                // 「自分のデジモン全て」はデジモン(テイマーは「デジモンとしても扱う」中だけ)、「「大門大」全て」は名前で
+                if (sj.kind === 'デジモン' && !(top.category === 'digimon' || top.category === 'digi-egg' || stack.actingAsDigimon)) return;
+                if (sj.kind === 'テイマー' && !isTamer) return;
+                if (sj.filter) {
+                  const subj = { filters: parseSubjectFilters(sj.filter), colors: parseSubjectColors(sj.filter + 'の自分') };
+                  if ((subj.filters.length || subj.colors.length) && !cardMatchesSubject(top, subj)) return;
+                  const lvMin = /Lv\.(\d+)以上/.exec(sj.filter), lvMax = /Lv\.(\d+)以下/.exec(sj.filter);
+                  if (lvMin && !(top.level >= +lvMin[1])) return;
+                  if (lvMax && !(top.level <= +lvMax[1])) return;
+                  const mats = /進化元を(\d+)枚以上持つ/.exec(sj.filter);
+                  if (mats && !(stack.cards.length - 1 >= +mats[1])) return;
+                }
+                if (r.dp != null && !isTamer) return; // 「デジモン・DPNとしても扱い」はテイマーだけ
+              }
+              if (r.cond) { let ok = null; try { ok = evalExtraCond(r.cond, holder, hpi); } catch (e) { ok = null; } if (ok !== true) return; }
+              out.push({ dp: r.dp, kws: r.kws, srcName: src.card.name });
+            });
+          });
+        });
+      });
+    } catch (e) { /* 読めなければ何も付けない */ } finally { fieldGrantBusy = false; }
+    return out;
+  }
+  const KW_NORM = (k) => k.replace(/《[^》]*》/g, '').replace(/[+\-－＋]\d+$/, '').replace(/^セキュリティアタック$/, 'Sアタック');
+  function fieldStaticKeyword(stack, keyword) {
+    return fieldStaticGrantsOn(stack).some(g => g.kws.some(k => KW_NORM(k) === KW_NORM(keyword)));
+  }
+  function fieldStaticSAttackBonus(stack) {
+    let n = 0;
+    fieldStaticGrantsOn(stack).forEach(g => g.kws.forEach(k => { const m = /^(?:Sアタック|セキュリティアタック)([+\-]\d+)$/.exec(k); if (m) n += parseInt(m[1], 10); }));
+    return n;
+  }
+  // テイマーが常在効果で「デジモン・DPNとしても扱」われているときのDP(なければ null)
+  function fieldStaticTamerDP(stack) {
+    const top = getStackTopCard(stack);
+    if (!top || top.category !== 'tamer' || stack.actingAsDigimon) return null;
+    const g = fieldStaticGrantsOn(stack).find(x => x.dp != null);
+    return g ? g.dp : null;
+  }
+  // テイマーがデジモンとして扱われているか(カード詳細の「デジモンにする」か、常在効果)
+  function actsAsDigimon(stack) {
+    return !!stack.actingAsDigimon || fieldStaticTamerDP(stack) != null;
+  }
   function isDigimonLikeStack(stack) {
     if (stack.dualAsOption) return false;
     const c = getStackTopCard(stack);
-    return !!c && (c.category === 'digimon' || c.category === 'digi-egg' || !!stack.actingAsDigimon);
+    return !!c && (c.category === 'digimon' || c.category === 'digi-egg' || !!stack.actingAsDigimon || (c.category === 'tamer' && fieldStaticTamerDP(stack) != null));
   }
   function getEffectiveDP(stack) {
     const c = getStackTopCard(stack);
-    const base = stack.actingAsDigimon ? (stack.assignedDP ?? 0) : (c ? (c.dp ?? 0) : 0);
+    const staticDP = c && c.category === 'tamer' && !stack.actingAsDigimon ? fieldStaticTamerDP(stack) : null;
+    const base = stack.actingAsDigimon ? (stack.assignedDP ?? 0) : staticDP != null ? staticDP : (c ? (c.dp ?? 0) : 0);
     return base + (stack.dpModifier || 0) + getTempDPModifierSum(stack) + getMaterialTurnDPBonus(stack) + getSelfEffectDPBonus(stack) + getMaterialConditionSelfDPBonus(stack) + getMaterialConditionInheritedDPBonus(stack) + getAllOwnBroadcastDPBonus(stack) + getFieldEffectDPBonus(stack) + getSecurityStaticDPBonus(stack) + getConditionalSelfDPBonus(stack) + getExtraDPBonus(stack);
   }
   // 「【自分のターン】〜間、このデジモンはDP+N」: 条件の判定ができて満たしている間だけ自動で加える
@@ -6853,7 +6962,7 @@
     }
     const zone = `<div class="ms-zone"><button type="button">山札 ${self.library.length}</button><button type="button">トラッシュ ${self.trash.length}</button></div>`;
     // Lv/DP
-    const isDigi = card.category === 'digimon' || (stack && stack.actingAsDigimon);
+    const isDigi = card.category === 'digimon' || (stack && actsAsDigimon(stack));
     let stats = '';
     if (isDigi) {
       const base = card.dp != null ? card.dp : null;
@@ -7583,7 +7692,7 @@
     return securityStaticRulesFor(stack).some(r => r.kws.includes(keyword));
   }
   function hasInnateOrLinkedKeyword(stack, keyword) {
-    return hasInnateKeywordLine(getStackTopCard(stack), keyword) || gainedSourceEffects(stack).some(g => hasKeywordLineInText(g.text, keyword)) || stackHasLinkedKeyword(stack, keyword) || securityStaticGrantsKeyword(stack, keyword) || conditionalKeywordOn(stack, keyword);
+    return hasInnateKeywordLine(getStackTopCard(stack), keyword) || gainedSourceEffects(stack).some(g => hasKeywordLineInText(g.text, keyword)) || stackHasLinkedKeyword(stack, keyword) || securityStaticGrantsKeyword(stack, keyword) || conditionalKeywordOn(stack, keyword) || fieldStaticKeyword(stack, keyword);
   }
   // ---------- 条件つきで得るキーワード(「このデジモンが特徴に「X」を持つ間、このデジモンは≪ブロッカー≫を得る」) ----------
   const COND_KW_CACHE = new Map();
@@ -7781,7 +7890,7 @@
   function effectiveSAttackBonus(stack) {
     if (stack.sAttackBonus !== undefined) return stack.sAttackBonus;
     const own = getInnateSAttackBonus(getStackTopCard(stack)) || 0;
-    return own + getLinkedNumericBonus(stack, S_ATTACK_PATTERNS) + securityStaticNumericBonus(stack, /^(?:Sアタック|セキュリティアタック)([+\-]\d+)$/);
+    return own + getLinkedNumericBonus(stack, S_ATTACK_PATTERNS) + securityStaticNumericBonus(stack, /^(?:Sアタック|セキュリティアタック)([+\-]\d+)$/) + fieldStaticSAttackBonus(stack);
   }
   function effectiveLinkLimitBonus(stack) {
     if (stack.linkLimitBonus !== undefined) return stack.linkLimitBonus;
@@ -9247,12 +9356,12 @@
   function buildDPPlateHtml(stack, topCard) {
     if (!isDigimonLikeStack(stack)) return '';
     const eff = getEffectiveDP(stack);
-    const printed = stack.actingAsDigimon ? null : (topCard && topCard.dp != null ? topCard.dp : null);
+    const printed = actsAsDigimon(stack) ? null : (topCard && topCard.dp != null ? topCard.dp : null);
     const delta = printed == null ? 0 : eff - printed;
     const owner = findStackOwnerAndZone(stack);
     const inBattle = !!owner && owner.zone === 'battle';
     const isDigimonCard = !!topCard && topCard.category === 'digimon';
-    if (!(stack.actingAsDigimon || delta !== 0 || (inBattle && isDigimonCard))) return '';
+    if (!(actsAsDigimon(stack) || delta !== 0 || (inBattle && isDigimonCard))) return '';
     const cls = delta > 0 ? ' buff' : (delta < 0 ? ' debuff' : '');
     const arrow = delta > 0 ? '<span class="dp-arrow">▲</span>' : (delta < 0 ? '<span class="dp-arrow">▼</span>' : '');
     return `<span class="st-dp${cls}" title="${printed != null ? `印刷DP${printed} / 増減${delta >= 0 ? '+' : ''}${delta}` : ''}"><small>DP</small>${eff}${arrow}</span>`;
@@ -9773,7 +9882,7 @@
           setupStackEvolveDropTarget(tile, stack);
           setupStackDragSource(tile, stack);
         }
-        const isHumanGroup = (topCard && (topCard.category === 'tamer' || topCard.category === 'option') && !stack.actingAsDigimon) || stack.dualAsOption;
+        const isHumanGroup = (topCard && (topCard.category === 'tamer' || topCard.category === 'option') && !actsAsDigimon(stack)) || stack.dualAsOption;
         (isHumanGroup ? bottomGroup : topGroup).appendChild(tile);
       });
       battleAreaEl.appendChild(topGroup);
@@ -11895,7 +12004,7 @@
     let list = p.battle.filter(s => {
       const top = getStackTopCard(s);
       if (!top) return false;
-      const isTamer = top.category === 'tamer' && !s.actingAsDigimon;
+      const isTamer = top.category === 'tamer' && !actsAsDigimon(s);
       const isDigi = isDigimonLikeStack(s);
       if (!((ta.kinds.includes('digimon') && isDigi) || (ta.kinds.includes('tamer') && isTamer))) return false;
       if (/他の|このデジモン以外/.test(pre) && s === excludeStack) return false;
@@ -12164,7 +12273,7 @@
         if (!st) return;
         const top = getStackTopCard(st);
         if (!top) return;
-        const isTamer = top.category === 'tamer' && !st.actingAsDigimon;
+        const isTamer = top.category === 'tamer' && !actsAsDigimon(st);
         if ((ta.kinds.includes('digimon') && isDigimonLikeStack(st)) || (ta.kinds.includes('tamer') && isTamer)) out.push(st);
       });
     });
@@ -21633,7 +21742,7 @@
     if (!owner || owner.zone !== 'battle' || !stack.cards || !stack.cards.length) return '';
     const topEntry = stack.cards[stack.cards.length - 1];
     if (cardEntryFaceDown(topEntry)) return '一番上が裏向きのカードのため破棄します(17-1-3-2-4)';
-    if (stack.dualAsOption || stack.actingAsDigimon) return '';
+    if (stack.dualAsOption || actsAsDigimon(stack)) return '';
     const top = getStackTopCard(stack);
     if (!top) return '';
     if (top.category === 'digi-egg' || (top.category === 'digimon' && top.dp == null)) return `「${top.name}」はDPを持たないデジモンのため破棄します(17-1-3-2-1)`;
