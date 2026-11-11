@@ -316,6 +316,8 @@
 
   .relay-pass-row { display: flex; gap: 6px; }
   .relay-pass-row input { flex: 1; min-width: 0; }
+  /* 合言葉は日本語でも入れられるよう type=text のまま伏せ字にする(スマホは password 欄だと英字キーボードしか出ないため) */
+  .relay-pass-row input.masked { -webkit-text-security: disc; text-security: disc; }
   .relay-pass-row .btn { white-space: nowrap; padding: 6px 10px; }
   .relay-status { font-size: 11.5px; border-radius: 6px; padding: 5px 8px; margin-top: 6px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
   .relay-status.ok { color: #7fe3b5; background: rgba(63,210,143,.1); border: 1px solid rgba(63,210,143,.35); }
@@ -3851,7 +3853,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.97.0</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.97.1</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -4313,7 +4315,7 @@
     <div class="field">
       <label for="relayPass">合言葉</label>
       <div class="relay-pass-row">
-        <input type="password" id="relayPass" autocomplete="off" placeholder="仲間うちの合言葉">
+        <input type="text" id="relayPass" class="masked" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="仲間うちの合言葉">
         <button type="button" class="btn" id="relayPassEye" title="表示/非表示">👁</button>
         <button type="button" class="btn" id="relayPassCheck">確かめる</button>
       </div>
@@ -4609,7 +4611,7 @@
     },
   };
   document.getElementById('relayPassEye').addEventListener('click', () => {
-    const i = document.getElementById('relayPass'); i.type = i.type === 'password' ? 'text' : 'password';
+    document.getElementById('relayPass').classList.toggle('masked');
   });
   document.getElementById('relayPassCheck').addEventListener('click', () => {
     const v = document.getElementById('relayPass').value.trim();
@@ -6001,7 +6003,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.97.0`);
+    log(`DigiCA Tool build v0.97.1`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
