@@ -3855,7 +3855,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.97.10</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.97.11</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -6005,7 +6005,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.97.10`);
+    log(`DigiCA Tool build v0.97.11`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -15352,11 +15352,19 @@
     if (!m) return [];
     const cond = m[1].replace(/^、/, '').replace(/の$/, '');
     const shuffle = /その後、自分のセキュリティをシャッフル/.test(t);
-    return [{ label: `🛡 セキュリティを確認して登場(コストなし)${shuffle ? '→シャッフル' : ''}`, run: () => {
+    const rec = /登場したなら、?≪リカバリー\+(\d+)《デッキ》≫/.exec(t);
+    const recN = rec ? parseInt(rec[1], 10) : 0;
+    return [{ label: `🛡 セキュリティを確認して登場(コストなし)${recN ? `→リカバリー+${recN}` : ''}${shuffle ? '→シャッフル' : ''}`, run: () => {
       if (e.ownerIndex !== practiceState.viewingIndex) { showToast('この自動処理は、その効果を持つプレイヤーの視点に切り替えてから実行してください', true); return; }
       const P = practiceState.players[e.ownerIndex];
+      const afterPlay = () => {
+        let rc = 0;
+        for (let k = 0; k < recN && P.library.length; k++) { P.security.unshift(P.library.shift()); rc++; }
+        if (recN) showToast(`🛡 ≪リカバリー+${recN}≫${rc < recN ? `(デッキが足りず${rc}枚)` : ''}`);
+        doShuffle();
+      };
       const doShuffle = () => {
-        if (!shuffle) return;
+        if (!shuffle) { renderPracticeBoard(); return; }
         P.security = shuffleArray(P.security.map(x => cardEntryNum(x)));
         renderPracticeBoard();
         showToast('🛡 セキュリティをシャッフルしました(全て裏向き)');
@@ -15372,8 +15380,8 @@
         ]);
         return;
       }
-      openEffectEvolvePicker(`🛡「${e.cardName}」の効果: セキュリティから登場`, `条件: ${cond}${shuffle ? '(登場の後にセキュリティをシャッフル)' : ''}`, list, (pick) => {
-        appearFromHand(pick.pos, pick.num, centerPoint(), false, { costRule: { type: 'free' }, source: 'ref', ref: pick, effectName: e.cardName, effectText: e.text, afterPlay: doShuffle });
+      openEffectEvolvePicker(`🛡「${e.cardName}」の効果: セキュリティから登場`, `条件: ${cond}${recN || shuffle ? `(登場の後に${recN ? `≪リカバリー+${recN}≫` : ''}${recN && shuffle ? '→' : ''}${shuffle ? 'セキュリティをシャッフル' : ''})` : ''}`, list, (pick) => {
+        appearFromHand(pick.pos, pick.num, centerPoint(), false, { costRule: { type: 'free' }, source: 'ref', ref: pick, effectName: e.cardName, effectText: e.text, afterPlay });
       }, '📥登場');
     } }];
   }
