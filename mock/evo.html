@@ -23,15 +23,16 @@ html,body{height:100%;background:#070b14;color:#dbe7ff;font-family:"Hiragino San
 .fx-float{font-family:'JetBrains Mono','SF Mono',Consolas,monospace;font-size:16px;font-weight:900;white-space:nowrap;color:#fff;text-shadow:0 0 12px rgba(255,255,255,.8);-webkit-text-stroke:1px rgba(0,0,0,.6);transform:translateX(-50%);animation:fxFloat 1.3s cubic-bezier(.2,.8,.3,1) forwards}
 @keyframes fxFloat{0%{transform:translate(-50%,10px) scale(.6);opacity:0}18%{transform:translate(-50%,-6px) scale(1.25);opacity:1}35%{transform:translate(-50%,-10px) scale(1);opacity:1}100%{transform:translate(-50%,-48px) scale(1);opacity:0}}
 /* ---- 案A: 白い四角の列が、文字と一緒に下から上がる ---- */
-.fx-bars{overflow:visible}
-.fx-bars i{position:absolute;left:50%;height:5px;background:#fff;border-radius:1px;box-shadow:0 0 8px rgba(255,255,255,.9),0 0 14px rgba(var(--b-rgb),.6);opacity:0;animation:fxBar 1.3s cubic-bezier(.2,.8,.3,1) forwards}
-@keyframes fxBar{0%{transform:translate(-50%,0) scaleX(.3);opacity:0}18%{opacity:1;transform:translate(-50%,calc(var(--rise) * .45)) scaleX(1)}35%{opacity:1;transform:translate(-50%,calc(var(--rise) * .6)) scaleX(.95)}100%{transform:translate(-50%,var(--rise)) scaleX(.6);opacity:0}}
+.fx-bars{overflow:visible;transform:translateX(-50%);animation:fxBarsBox 1.3s cubic-bezier(.2,.8,.3,1) forwards}
+@keyframes fxBarsBox{0%{transform:translate(-50%,10px);opacity:0}18%{transform:translate(-50%,-6px);opacity:1}35%{transform:translate(-50%,-10px);opacity:1}100%{transform:translate(-50%,-48px);opacity:0}}
+.fx-bars i{position:absolute;left:50%;height:5px;background:#fff;border-radius:1px;box-shadow:0 0 8px rgba(255,255,255,.9),0 0 14px rgba(var(--b-rgb),.6);opacity:0;animation:fxBar .9s ease-out forwards}
+@keyframes fxBar{0%{transform:translate(-50%,8px) scaleX(.3);opacity:0}25%{transform:translate(-50%,0) scaleX(1);opacity:1}100%{transform:translate(-50%,-14px) scaleX(.8);opacity:0}}
 /* ---- 案B: 文字でできた輪がぐるっと回る(少し斜めから見た輪) ---- */
-.fx-ring3d{perspective:500px}
+.fx-ring3d{}
 .fx-ring3d .rot{position:absolute;left:0;top:0;width:100%;height:100%;transform-style:preserve-3d;animation:fxRingSpin 1.3s cubic-bezier(.3,.6,.4,1) forwards}
 .fx-ring3d span{position:absolute;left:50%;top:50%;font-family:'JetBrains Mono','SF Mono',Consolas,monospace;font-weight:900;font-size:13px;color:#fff;text-shadow:0 0 8px rgba(255,255,255,.9),0 0 14px rgba(var(--b-rgb),.8);white-space:nowrap;backface-visibility:visible}
 .fx-ring3d span.jp{font-family:"Hiragino Sans","Noto Sans JP",sans-serif;font-size:14px}
-@keyframes fxRingSpin{0%{transform:rotateX(68deg) rotateZ(0deg) scale(.4);opacity:0}15%{opacity:1}75%{opacity:1}100%{transform:rotateX(68deg) rotateZ(300deg) scale(1.35);opacity:0}}
+@keyframes fxRingSpin{0%{transform:rotate(0deg) scale(.55);opacity:0}15%{opacity:1}75%{opacity:1}100%{transform:rotate(240deg) scale(1.15);opacity:0}}
 /* ---- 操作 ---- */
 .ui{padding:12px 12px 20px}
 .ui h1{font-size:15px;color:#fff;margin-bottom:4px}
@@ -88,21 +89,20 @@ function base(r) {
 }
 // 案A: カードの下から、白い四角の列が文字と一緒に上がっていく(下ほど幅が広い=手前から奥へ)
 function bars(r) {
-  const box = spawn('fx-bars', { left: `${r.x + r.w / 2}px`, top: `${r.y + r.h}px`, width: '0', height: '0' }, '', 1500);
-  const n = 9;
+  // EVOLUTIONの文字(帯の根元)と同じ動きで上がる箱。帯は文字の上へ、上ほど細く並ぶ
+  const box = spawn('fx-bars', { left: `${r.x + r.w / 2}px`, top: `${r.y - 44}px`, width: '0', height: '0' }, '', 1400);
+  const n = 8;
   for (let i = 0; i < n; i++) {
     const b = document.createElement('i');
-    const w = r.w * (1.15 - i * 0.075);
-    b.style.width = `${w}px`;
-    b.style.top = `${-i * 12}px`;
-    b.style.setProperty('--rise', `${-(r.h + 20)}px`);
-    b.style.animationDelay = `${i * 30}ms`;
+    b.style.width = `${r.w * (1.05 - i * 0.09)}px`;
+    b.style.top = `${-8 - i * 11}px`;
+    b.style.animationDelay = `${120 + i * 55}ms`;
     box.appendChild(b);
   }
 }
 // 案B: 文字でできた輪が、カードの周りを斜めから見た円でぐるっと回る
 function ring(r, name) {
-  const size = r.w * 2.2;
+  const size = Math.hypot(r.w, r.h) + 34; // カード全体を囲む大きさ
   const box = spawn('fx-ring3d', { left: `${r.x + r.w / 2 - size / 2}px`, top: `${r.y + r.h / 2 - size / 2}px`, width: `${size}px`, height: `${size}px` }, '', 1300);
   const rot = document.createElement('div'); rot.className = 'rot'; box.appendChild(rot);
   const text = ringMode === 'name' ? (name + ' ・ ').repeat(3) : 'EVOLUTION ・ EVOLUTION ・ ';
