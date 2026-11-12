@@ -208,6 +208,18 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .xbtn{margin-left:auto;font-size:10px;font-weight:800;border:1px solid rgba(255,138,61,.5);color:#fb9;border-radius:7px;padding:2px 8px}
 .opp.expand{position:absolute;left:8px;right:8px;top:calc(env(safe-area-inset-top) + 40px);z-index:26;background:#1a0f08;box-shadow:0 10px 40px rgba(0,0,0,.8)}
 .opp.expand .field{--ocw:70px}
+
+/* デジモンの段 と テイマー/オプションの段(後ろ・小さめ) */
+.field{flex-direction:column;flex-wrap:nowrap;gap:0}
+.lane{display:flex;flex-wrap:wrap;gap:10px 5px;align-content:flex-start}
+.lane.dm{min-height:calc(var(--cw) * 1.4 + 8px)}
+.opp .lane.dm{min-height:calc(var(--ocw, calc(var(--cw) * .9)) * 1.4 + 8px)}
+.lane.tm{border-top:1px dashed rgba(216,184,93,.35);margin-top:12px;padding-top:6px;gap:8px 4px}
+.opp .lane.tm{border-top:0;border-bottom:1px dashed rgba(216,184,93,.35);margin:0 0 6px;padding:0 0 12px}
+.lane.tm .card{width:calc(var(--cw) * .72)}
+.opp .lane.tm .card{width:calc(var(--ocw, calc(var(--cw) * .9)) * .78)}
+.lane.tm:empty{display:none}
+.lane .lbl2{font-size:8px;color:#d8b85d;width:100%;margin-bottom:-4px}
 </style>
 </head>
 <body>
@@ -331,6 +343,7 @@ function cardEl(c, side, i) {
   if (S.pick && S.pick.type === 'atk' && side === 'opp' && c.kind === 'dm' && c.rest) d.classList.add('tgt');
   if (S.atk && side === 'own' && i === S.atk.from) d.classList.add('atk');
   if (S.atk && S.atk.to != null && side === 'opp' && i === S.atk.to) d.classList.add('atk');
+  d.dataset.k = side + ':' + i;
   d.addEventListener('click', ev => { ev.stopPropagation(); tapCard(side, i); });
   return d;
 }
@@ -347,8 +360,8 @@ function render() {
   for (let v = 10; v >= -10; v--) m = `<i class="${v === S.mem ? 'cur' : v > 0 ? 's' : v < 0 ? 'o' : 'z'}" data-v="${v}">${Math.abs(v)}</i>` + m;
   $('mem').innerHTML = m;
   $('mem').querySelectorAll('i').forEach(i => i.onclick = (e) => { e.stopPropagation(); S.mem = +i.dataset.v; render(); });
-  $('oppField').innerHTML = ''; S.opp.forEach((c, i) => $('oppField').appendChild(cardEl(c, 'opp', i)));
-  $('ownField').innerHTML = ''; S.own.forEach((c, i) => $('ownField').appendChild(cardEl(c, 'own', i)));
+  fillField($('oppField'), S.opp, 'opp');
+  fillField($('ownField'), S.own, 'own');
   $('hand').innerHTML = ''; S.hand.forEach((c, i) => $('hand').appendChild(cardEl(c, 'hand', i)));
   secBadge($('secB'), S.sec, S.up, 'own');
   secBadge($('osecB'), S.osec, S.oup, 'opp');
@@ -366,7 +379,7 @@ function fit() {
   // 1列に4枚並ぶくらいまで(大きすぎると3枚目以降が見づらいため)
   // 相手の場は最大2段: 1段に並べる枚数から相手のカードの幅を決める(大きく見たいときは「⤢拡大」)
   const of = $('oppField');
-  const perRow = Math.max(4, Math.ceil(S.opp.length / 2));
+  const perRow = Math.max(4, Math.ceil(S.opp.filter(c => c.kind === 'dm').length / 2));
   const room = of.clientWidth - 10 - 5 * (perRow - 1);
   for (let w = 60; w >= 34; w -= 2) {
     document.documentElement.style.setProperty('--cw', w + 'px');
@@ -387,6 +400,14 @@ function openSecList(n, up, side) {
   el.innerHTML = `<div class="h"><h3>${side === 'own' ? '自分' : '相手'}のセキュリティ(表${up}/${n}枚)</h3><button class="sb" id="sumX" style="margin-left:auto">✕</button></div><div style="padding:0 10px 10px"><div class="seclist">${h}</div></div>`;
   el.classList.add('on'); el.onclick = e => e.stopPropagation();
   $('sumX').onclick = () => closeSum();
+}
+// デジモンは前の段、テイマー/オプションは後ろの段(相手側は上下を逆にして、デジモンが真ん中寄り)
+function fillField(el, arr, side) {
+  el.innerHTML = '';
+  const dm = document.createElement('div'); dm.className = 'lane dm';
+  const tm = document.createElement('div'); tm.className = 'lane tm';
+  arr.forEach((c, i) => (c.kind === 'dm' ? dm : tm).appendChild(cardEl(c, side, i)));
+  if (side === 'opp') { el.appendChild(tm); el.appendChild(dm); } else { el.appendChild(dm); el.appendChild(tm); }
 }
 function list(side) { return side === 'own' ? S.own : side === 'opp' ? S.opp : side === 'hand' ? S.hand : side === 'raise' ? [S.raise] : [S.oRaise]; }
 function tapCard(side, i) {
@@ -409,8 +430,7 @@ function tapCard(side, i) {
 function showBubble() {
   const [side, is] = S.sel.split(':'); const i = +is; const c = list(side)[i]; if (!c) return;
   const host = $('app');
-  const box = side === 'own' ? $('ownField') : side === 'opp' ? $('oppField') : side === 'hand' ? $('hand') : $(side);
-  const el = box.querySelectorAll('.card')[i]; if (!el) return;
+  const el = side === 'raise' || side === 'oRaise' ? $(side).querySelector('.card') : document.querySelector(`.card[data-k="${side}:${i}"]`); if (!el) return;
   const r = el.getBoundingClientRect(), hr = host.getBoundingClientRect();
   const b = document.createElement('div'); b.className = 'bub';
   let acts;
