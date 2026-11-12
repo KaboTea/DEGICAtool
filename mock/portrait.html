@@ -142,6 +142,55 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .pickmsg{position:absolute;left:8px;right:8px;top:calc(env(safe-area-inset-top) + 40px);z-index:25;background:#0e2440;border:1px solid #7ef;color:#cff;border-radius:10px;padding:7px 10px;font-size:11.5px;display:none;align-items:center;gap:8px}
 .pickmsg.on{display:flex}
 .pickmsg button{margin-left:auto;height:28px;border:1px solid #d55;color:#fbb;border-radius:7px;padding:0 10px;font-size:11px}
+
+/* 横画面と同じ: 要約パネル(2回目のタップ) */
+.sum{position:absolute;left:6px;right:6px;bottom:calc(env(safe-area-inset-bottom) + var(--padb) + 6px);background:#0d1426;border:1px solid var(--line);border-left:4px solid #e0455a;border-radius:12px;z-index:28;box-shadow:0 -8px 26px rgba(0,0,0,.6);display:none;max-height:46%;overflow:auto}
+.sum.on{display:block;animation:up .16s ease-out}
+@keyframes up{from{transform:translateY(20px);opacity:0}}
+.sum .h{display:flex;align-items:center;gap:6px;padding:8px 10px 4px}
+.sum .h h3{font-size:15px;color:#fff}
+.sum .chip{font-size:9.5px;border:1px solid var(--line);border-radius:5px;padding:1px 6px;color:#cfe;margin-left:auto}
+.sum .sb{height:28px;border:1px solid var(--line);border-radius:7px;padding:0 9px;font-size:11px;font-weight:800;background:#14213d}
+.sum .nums{display:flex;gap:14px;padding:0 10px;align-items:flex-end}
+.sum .nums div{display:flex;flex-direction:column}
+.sum .nums small{font-size:8.5px;color:var(--mute)}
+.sum .nums b{font-size:22px;font-weight:900;color:#fff;line-height:1.1}
+.sum .nums b.s{font-size:15px}
+.sum .tr{font-size:10.5px;color:var(--gold);padding:3px 10px 6px;font-weight:700}
+.sum .ef{border-top:1px solid var(--line);padding:6px 10px 10px;font-size:11.5px;line-height:1.6}
+.sum .ef em{font-style:normal;font-size:9px;font-weight:800;color:#9cf;border:1px solid var(--own);border-radius:4px;padding:0 5px;margin-right:4px}
+/* 横画面と同じ: 詳細(全文)シート */
+.full{position:absolute;left:0;right:0;bottom:0;top:calc(env(safe-area-inset-top) + 40px);background:#151b28;border-top:2px solid var(--line);border-radius:16px 16px 0 0;z-index:45;padding:12px 14px calc(env(safe-area-inset-bottom) + var(--padb) + 14px);overflow:auto;display:none}
+.full.on{display:block;animation:up .18s ease-out}
+.full .fh{display:flex;align-items:center;gap:8px}
+.full .fh h3{font-size:17px;color:#fff;flex:1;text-align:center}
+.full .peek{font-size:11px;border:1px solid var(--line);border-radius:7px;padding:4px 8px;color:#cfe}
+.full .num{font-size:11px;color:var(--mute);margin-top:6px}
+.full .chips{display:flex;flex-wrap:wrap;gap:4px;margin:6px 0}
+.full .chips span{font-size:10.5px;border:1px solid var(--line);border-radius:5px;padding:2px 7px}
+.full .row2{display:flex;gap:12px;align-items:flex-start;margin-top:6px}
+.full .bigimg{width:42%;aspect-ratio:63/88;border-radius:8px;background:#1b2a48 center/cover;flex:none}
+.full h5{font-size:11px;color:#4fd1c5;margin:10px 0 3px}
+.full p{font-size:12px;line-height:1.65}
+.full .acts{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+.full .acts button{height:36px;border-radius:8px;font-size:12px;padding:0 12px}
+.full .close{display:block;margin:14px 0 0 auto;height:38px;padding:0 18px;border-radius:9px;background:#1b2433;border:1px solid var(--line)}
+/* 横画面と同じ: 効果パネル(小さく浮く。▣で広げる/＿でしまう) */
+.fxc{position:absolute;left:6px;right:6px;bottom:calc(env(safe-area-inset-bottom) + var(--padb) + 6px);background:#0d1426;border:2px solid var(--gold);border-radius:14px;padding:8px 10px 10px;z-index:31;box-shadow:0 -8px 26px rgba(0,0,0,.6),0 0 16px rgba(251,191,36,.2);display:none}
+.fxc.on{display:block;animation:up .16s ease-out}
+.fxc .h{display:flex;align-items:center;gap:6px}
+.fxc .who{font-size:10px;font-weight:900;background:var(--own);color:#001;border-radius:9px;padding:1px 8px}
+.fxc.op .who{background:var(--opp)}
+.fxc .nm2{font-size:13px;font-weight:800;color:#fff}
+.fxc .tm{font-size:10px;color:var(--gold);font-weight:800}
+.fxc .ic{margin-left:auto;display:flex;gap:4px}
+.fxc .ic button{width:32px;height:28px;border:1px solid var(--line);border-radius:7px;background:#14213d;font-size:12px}
+.fxc .tx{font-size:11.5px;line-height:1.6;color:#cfe;margin:6px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fxc.big .tx{white-space:normal}
+.fxc .auto{width:100%;height:36px;border-radius:8px;border:1px solid #4fd1c5;background:rgba(79,209,197,.1);color:#9ff;font-weight:800;font-size:12px}
+.fxc .two{display:flex;gap:6px;margin-top:6px}
+.fxc .two button{flex:1;height:38px;border-radius:9px;font-weight:800;font-size:12.5px}
+.fxc .more{font-size:10px;color:var(--mute);margin-top:6px}
 </style>
 </head>
 <body>
@@ -183,7 +232,9 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 
   <div class="pickmsg" id="pickMsg"><span id="pickTxt"></span><button id="pickPlayer" class="b2" style="border:0;color:#fff;margin-left:auto">プレイヤーへ</button><button id="pickCancel" style="margin-left:4px">やめる</button></div>
   <div class="scrim" id="scrim"></div>
-  <div class="sheet" id="fxSheet"></div>
+  <div class="fxc" id="fxSheet"></div>
+  <div class="sum" id="sum"></div>
+  <div class="full" id="full"></div>
   <div class="sheet atkbar" id="atkBar"></div>
   <div class="sheet menu" id="menuSheet">
     <div class="grab"></div>
@@ -203,8 +254,8 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
   <div class="detail" id="detail"></div>
   <div class="toast" id="toast"></div>
   <div class="banner" id="banner">
-    <b>縦画面の試作その3</b>(動きはイメージ)<br>
-    ・カードを押す → 上に行動メニュー。もう一度押すと詳細<br>
+    <b>縦画面の試作その4</b>(動きはイメージ)<br>
+    ・カードを押す → 上に行動メニュー。もう一度押すと下に要約パネル、そこの「詳細」で全文(横画面と同じ流れ)<br>・効果パネルは横画面と同じ形(▣で広げる/＿でしまう)<br>
     ・アグモンの「アタック」→ 相手のデジモンかプレイヤーを選ぶと、ブロック確認→バトル/セキュリティチェックまで流れます<br>
     ・手札の「アグモン(ST1-03)」を登場させると【登場時】効果が出ます<br>
     ・≡メニューで「場のカードの数」と「下の余白」を変えられます
@@ -310,8 +361,8 @@ function tapCard(side, i) {
     startAttack(i); return;
   }
   if (S.atk) return;
-  if (S.sel === key) { openDetail(side, i); return; }
-  S.sel = key; render();
+  if (S.sel === key) { openSum(side, i); return; }
+  S.sel = key; closeSum(); render();
 }
 function showBubble() {
   const [side, is] = S.sel.split(':'); const i = +is; const c = list(side)[i]; if (!c) return;
@@ -351,7 +402,7 @@ function act(a, side, i) {
   if (a === 'atk') { if (c.rest) return; S.sel = null; S.pick = { type: 'atk', from: i }; pickMsg(`⚔「${c.name}」のアタック先(レストの相手デジモン)をタップ`, true); render(); return; }
   if (a === 'eff') { S.sel = null; render(); openFx(); return; }
   if (a === 'move') { S.own.unshift(S.raise); S.raise = null; S.sel = null; render(); return; }
-  if (a === 'det' || a === 'more') { openDetail(side, i); return; }
+  if (a === 'det' || a === 'more') { openSum(side, i); return; }
 }
 function pickMsg(t, player) { $('pickTxt').textContent = t; $('pickPlayer').style.display = player ? '' : 'none'; $('pickMsg').classList.add('on'); }
 function endPick() { S.pick = null; $('pickMsg').classList.remove('on'); }
@@ -404,17 +455,57 @@ const STEP = {
   endCheck: () => { const a = S.own[S.atk.from]; S.own.splice(S.atk.from, 1); S.trash++; S.otrash++; closeAtk(); toast(`「${a.name}」が消滅しました`); },
 };
 // ---- 効果パネル ----
+let fxBig = false;
 function openFx() {
   if (!S.fx.length) { toast('処理待ちの効果はありません'); return; }
+  closeSum();
   const cur = S.fx[0];
-  $('fxSheet').innerHTML = `<div class="grab"></div><div class="sh">⚡ 効果処理 <span style="color:#fff;font-weight:700">${cur.name}${cur.timing}</span>${S.fx.length > 1 ? `<span style="font-size:10px;color:var(--mute)">ほか${S.fx.length - 1}件</span>` : ''}<button class="x" id="fxClose">▼ たたむ</button></div>
-    <div class="fxitem ${cur.op ? 'op' : ''}"><div class="who"><b>${cur.who}</b>${cur.timing} ${cur.name}</div><p>${cur.text}</p>
-    <div class="bs"><button class="g" id="fxDo">${cur.btn}</button><button class="b1" id="fxDone">✔ 処理完了</button><button class="b3" id="fxSkip">発揮しない</button></div></div>
-    ${S.fx.slice(1).map(f => `<div class="fxitem wait ${f.op ? 'op' : ''}"><div class="who"><b>${f.who}</b>${f.timing} ${f.name}(待ち)</div></div>`).join('')}`;
-  $('fxSheet').classList.add('on'); $('scrim').classList.add('on');
-  $('fxClose').onclick = closeSheets;
+  const el = $('fxSheet');
+  el.className = 'fxc on' + (cur.op ? ' op' : '') + (fxBig ? ' big' : '');
+  el.innerHTML = `<div class="h"><span class="who">${cur.who}</span><span class="nm2">${cur.name}</span><span class="tm">${cur.timing}</span><div class="ic"><button id="fxBig">${fxBig ? '▭' : '▣'}</button><button id="fxMin">＿</button></div></div>
+    <div class="tx">${cur.text}</div>
+    <button class="auto" id="fxDo">${cur.btn}</button>
+    <div class="two"><button class="b3" id="fxSkip">発揮しない</button><button class="g" id="fxDone">✔ 処理完了</button></div>
+    ${S.fx.length > 1 ? `<div class="more">ほかに${S.fx.length - 1}件待ち: ${S.fx.slice(1).map(f => f.name + f.timing).join(' / ')}</div>` : ''}`;
+  $('fxBig').onclick = (e) => { e.stopPropagation(); fxBig = !fxBig; openFx(); };
+  $('fxMin').onclick = (e) => { e.stopPropagation(); el.classList.remove('on'); toast('右上の⚡でまた開けます'); };
   $('fxDo').onclick = () => toast(cur.btn + '(イメージ)');
-  $('fxDone').onclick = $('fxSkip').onclick = () => { S.fx.shift(); render(); if (S.fx.length) openFx(); else { closeSheets(); toast('効果の処理を終えました'); } };
+  $('fxDone').onclick = $('fxSkip').onclick = () => { S.fx.shift(); render(); if (S.fx.length) openFx(); else { el.classList.remove('on'); toast('効果の処理を終えました'); } };
+  el.onclick = e => e.stopPropagation();
+}
+// 2回目のタップ: 要約パネル(横画面と同じ中身)
+const TRAITS = { dm: 'ワクチン種・爬虫類型', tamer: 'テイマー', option: 'オプション', egg: 'デジタマ' };
+function openSum(side, i) {
+  const c = list(side)[i]; if (!c) return;
+  const el = $('sum');
+  const kind = c.kind === 'dm' ? 'デジモン' : c.kind === 'tamer' ? 'テイマー' : c.kind === 'option' ? 'オプション' : '育成';
+  el.innerHTML = `<div class="h"><h3>${c.name}</h3><span class="chip">${kind}</span><button class="sb" id="sumFull">詳細</button><button class="sb" id="sumX">✕</button></div>
+    ${c.kind === 'dm' || c.kind === 'egg' ? `<div class="nums"><div><small>Lv</small><b>${c.lv || '-'}</b></div>${c.dp ? `<div><small>DP</small><b>${c.dp}</b></div>` : ''}<div><small>進化元</small><b class="s">${c.src || 0}</b></div></div>` : ''}
+    <div class="tr">${TRAITS[c.kind] || ''}</div>
+    <div class="ef"><em>効果</em>(ここに効果文。横画面の要約パネルと同じ内容)</div>`;
+  el.classList.add('on');
+  el.onclick = e => e.stopPropagation();
+  $('sumX').onclick = () => { closeSum(); S.sel = null; render(); };
+  $('sumFull').onclick = () => openFull(side, i);
+}
+function closeSum() { $('sum').classList.remove('on'); }
+// 「詳細」: 全文のシート(横画面の詳細と同じ中身)
+function openFull(side, i) {
+  const c = list(side)[i];
+  const el = $('full');
+  const acts = side === 'own' && c.kind === 'dm' ? '<button class="b2">アタック</button><button class="b3">レスト</button><button class="b3">消滅</button><button class="b3">手札に戻す</button><button class="b3">⛨ 耐性</button><button class="b3">一番上を移動▾</button>'
+    : side === 'hand' ? '<button class="b1">登場</button><button class="b1">進化</button><button class="b4">破棄</button>' : '';
+  el.innerHTML = `<div class="fh"><span style="width:70px"></span><h3>${c.name}</h3><button class="peek" id="peek">👁 盤面を見る</button></div>
+    <div class="row2"><div class="bigimg" style="background-image:url(${IMG(c.n)})"></div><div style="flex:1">
+    <div class="num">${c.n}</div><div class="chips"><span>${c.kind === 'dm' ? 'D・Lv' + c.lv : c.kind === 'tamer' ? 'テイマー' : c.kind === 'option' ? 'オプション' : 'デジタマ'}</span><span>赤</span>${c.dp ? `<span>DP${c.dp}</span>` : ''}</div>
+    ${c.dp ? `<div style="font-size:12px">現在DP: <b style="color:#4fd1c5">${c.dp}</b></div>` : ''}</div></div>
+    <h5>進化条件</h5><p>Lv.2 赤 コスト0</p><h5>効果</h5><p>(効果文の全文)</p>
+    ${acts ? `<div class="acts">${acts}</div>` : ''}<button class="close" id="fullClose">閉じる</button>`;
+  el.classList.add('on');
+  el.onclick = e => e.stopPropagation();
+  $('fullClose').onclick = () => el.classList.remove('on');
+  $('peek').onclick = () => { el.classList.remove('on'); setTimeout(() => el.classList.add('on'), 1500); toast('1.5秒だけ盤面を見せます(イメージ)'); };
+  el.querySelectorAll('.acts button').forEach(b => b.onclick = () => { toast(b.textContent + '(イメージ)'); el.classList.remove('on'); closeSum(); S.sel = null; render(); });
 }
 function closeSheets() { $('fxSheet').classList.remove('on'); $('menuSheet').classList.remove('on'); $('scrim').classList.remove('on'); }
 function openDetail(side, i) {
@@ -458,7 +549,7 @@ $('nextBtn').onclick = e => {
   else toast(PH[S.phase] + ' フェーズへ');
   S.sel = null; render();
 };
-document.getElementById('app').addEventListener('click', () => { if (S.sel && !S.pick) { S.sel = null; render(); } });
+document.getElementById('app').addEventListener('click', () => { if (S.sel && !S.pick) { S.sel = null; closeSum(); render(); } });
 $('bannerOk').onclick = e => { e.stopPropagation(); $('banner').remove(); };
 window.addEventListener('resize', () => setTimeout(render, 60));
 render();
