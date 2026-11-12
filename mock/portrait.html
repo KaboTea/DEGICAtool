@@ -357,7 +357,7 @@ function render() {
   $('pips').innerHTML = PH.map((p, i) => `<span class="${i === S.phase ? 'on' : ''}">${p}</span>`).join('');
   $('nextTo').textContent = S.phase === 4 ? '相手' : PH[S.phase + 1];
   let m = '';
-  for (let v = 10; v >= -10; v--) m = `<i class="${v === S.mem ? 'cur' : v > 0 ? 's' : v < 0 ? 'o' : 'z'}" data-v="${v}">${Math.abs(v)}</i>` + m;
+  for (let v = 10; v >= -10; v--) m += `<i class="${v === S.mem ? 'cur' : v > 0 ? 's' : v < 0 ? 'o' : 'z'}" data-v="${v}">${Math.abs(v)}</i>`; // 本番と同じ: 左が自分側・右が相手側
   $('mem').innerHTML = m;
   $('mem').querySelectorAll('i').forEach(i => i.onclick = (e) => { e.stopPropagation(); S.mem = +i.dataset.v; render(); });
   fillField($('oppField'), S.opp, 'opp');
