@@ -221,6 +221,42 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .opp .lane.tm .card{width:calc(var(--ocw, calc(var(--cw) * .9)) * .78)}
 .lane.tm:empty{display:none}
 .lane .lbl2{font-size:8px;color:#d8b85d;width:100%;margin-bottom:-4px}
+
+/* 一覧シート(トラッシュ/セキュリティ/公開): 横画面の一覧と同じ見た目 */
+.ls{position:absolute;left:4px;right:4px;bottom:calc(env(safe-area-inset-bottom) + var(--padb) + 4px);top:calc(env(safe-area-inset-top) + 44px);background:#0b1426;border:2px solid rgba(251,191,36,.75);border-radius:16px;z-index:50;display:none;flex-direction:column;box-shadow:0 0 30px rgba(0,0,0,.8)}
+.ls.on{display:flex;animation:up .18s ease-out}
+.ls.peek{opacity:.08;pointer-events:none}
+.ls .lh{display:flex;align-items:center;gap:6px;padding:10px 10px 6px}
+.ls .lh h3{font-size:15px;color:#fff;flex:1}
+.ls .lh button{height:30px;min-width:32px;border:1px solid var(--line);border-radius:8px;background:#14213d;font-size:12px;padding:0 8px}
+.ls .ins{margin:0 10px 6px;border:1px solid rgba(251,191,36,.6);background:rgba(251,191,36,.08);border-radius:10px;padding:7px 9px;font-size:11.5px;line-height:1.6}
+.ls .ins b{color:var(--gold)}
+.ls .ins .stp{display:block}
+.ls .ins .stp.done{opacity:.5;text-decoration:line-through}
+.ls .ins .cnt{color:#6f6;font-weight:800}
+.ls .body{flex:1;overflow:auto;padding:0 8px 6px;display:flex;flex-direction:column;gap:5px}
+.ls .it{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;padding:5px 6px;background:#101b33}
+.ls .it.gone{opacity:.35}
+.ls .it .card{width:38px;flex:none}
+.ls .it .card.down{background:repeating-linear-gradient(45deg,#1b2a48,#1b2a48 6px,#22355a 6px,#22355a 12px)!important}
+.ls .it .nm3{flex:1;min-width:0}
+.ls .it .nm3 b{display:block;font-size:12.5px;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ls .it .nm3 small{font-size:10px;color:var(--mute)}
+.ls .it .ok{color:#6f6;font-size:9.5px;font-weight:800}
+.ls .it .bt{display:flex;gap:4px;flex:none}
+.ls .it .bt button{height:32px;border-radius:7px;font-size:11px;font-weight:700;padding:0 8px;background:#1b2a48;border:1px solid var(--line);white-space:nowrap}
+.ls .it .bt button.p{background:linear-gradient(180deg,#ffe08a,var(--gold));color:#1a1204;border:0}
+.ls .it .bt button:disabled{opacity:.3}
+.ls .ft{display:flex;gap:6px;padding:8px 10px 10px;border-top:1px solid var(--line);flex-wrap:wrap}
+.ls .ft button{height:38px;border-radius:9px;font-size:12px;font-weight:700;padding:0 12px;flex:1;white-space:nowrap}
+.side .bd{cursor:pointer}
+
+.fxc .multi{display:flex;flex-direction:column;gap:5px}
+.fxc .multi button{min-height:34px;border-radius:8px;border:1px solid #4fd1c5;background:rgba(79,209,197,.1);color:#9ff;font-weight:800;font-size:11.5px;text-align:left;padding:4px 10px;line-height:1.35}
+.fxc .multi button.kcost{border-color:var(--gold);background:rgba(251,191,36,.12);color:var(--gold)}
+.fxc .multi button.ng{opacity:.45;text-decoration:line-through}
+.fxc .multi button.used{opacity:.5}
+.fxc.big{max-height:70%;overflow:auto}
 </style>
 </head>
 <body>
@@ -241,7 +277,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
       <div class="row">
         <div class="side"><div class="bd">✋5</div><div class="secb" id="osecB"></div><div class="raise" id="oRaise"></div></div>
         <div class="field" id="oppField"></div>
-        <div class="side"><div class="bd tall"><small>山札</small>36</div><div class="bd tall"><small>トラッシュ</small><span id="otrash">2</span></div></div>
+        <div class="side"><div class="bd tall" id="odeckB"><small>山札</small>36</div><div class="bd tall" id="otrashB"><small>トラッシュ</small><span id="otrash">2</span></div></div>
       </div>
     </div>
     <div class="hud">
@@ -254,7 +290,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
       <div class="row" style="flex:1;align-items:stretch">
         <div class="side"><div class="secb" id="secB"></div><div class="bd">🥚5</div><div class="raise" id="raise"></div></div>
         <div class="field" id="ownField"></div>
-        <div class="side"><div class="bd tall"><small>山札</small><span id="deck">33</span></div><div class="bd tall"><small>トラッシュ</small><span id="trash">4</span></div></div>
+        <div class="side"><div class="bd tall" id="deckB"><small>山札</small><span id="deck">33</span></div><div class="bd tall" id="trashB"><small>トラッシュ</small><span id="trash">4</span></div></div>
       </div>
       <div class="hand" id="hand"></div>
     </div>
@@ -277,6 +313,8 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     </div>
     <div class="lbl">【試作用】場のカードの数</div>
     <div class="seg" id="crowdSeg"><button data-v="0" class="on">ふつう</button><button data-v="1">多め</button><button data-v="2">いっぱい</button><button data-v="3">相手すごく多い</button></div>
+    <div class="lbl">【試作用】効果パネルの例</div>
+    <div class="seg" id="fxSeg"><button data-v="many">ボタン多め</button><button data-v="multi">効果3つ待ち</button></div>
     <div class="lbl">【試作用】表向きのセキュリティ</div>
     <div class="seg" id="upSeg"><button data-v="0" class="on">なし</button><button data-v="1">1枚</button><button data-v="3">3枚</button><button data-v="5">全部</button></div>
     <div class="lbl">【試作用】画面下の余白(下のバーに隠れるときに調整)</div>
@@ -284,13 +322,14 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
   </div>
   <div class="scrim2" id="scrim2"></div>
   <div class="detail" id="detail"></div>
+  <div class="ls" id="ls"></div>
   <div class="toast" id="toast"></div>
   <div class="banner" id="banner">
-    <b>縦画面の試作その5</b>(動きはイメージ)<br>
+    <b>縦画面の試作その7</b>(動きはイメージ)<br>
     ・カードを押す → 上に行動メニュー。もう一度押すと下に要約パネル、そこの「詳細」で全文(横画面と同じ流れ)<br>・効果パネルは横画面と同じ形(▣で広げる/＿でしまう)<br>
     ・アグモンの「アタック」→ 相手のデジモンかプレイヤーを選ぶと、ブロック確認→バトル/セキュリティチェックまで流れます<br>
     ・手札の「アグモン(ST1-03)」を登場させると【登場時】効果が出ます<br>
-    ・≡メニューで「場のカードの数」と「下の余白」を変えられます
+    ・トラッシュ/セキュリティ/山札の枠を押すと一覧。効果パネルの「デッキの上から5枚オープン」で公開の画面<br>・≡メニューで「場のカードの数」と「下の余白」を変えられます
     <button class="g" id="bannerOk">さわってみる</button>
   </div>
 </div>
@@ -392,15 +431,60 @@ const UPCARDS = ['BT1-096', 'BT1-030', 'BT1-108', 'BT1-028', 'BT1-099'];
 function secBadge(el, n, up, side) {
   up = Math.min(up || 0, n);
   el.innerHTML = `<span class="n">🛡${n}</span>` + (up ? `<div class="ups">${UPCARDS.slice(0, Math.min(up, 2)).map(x => `<i style="background-image:url(${IMG(x)})"></i>`).join('')}</div><span class="up">表${up}</span>` : '');
-  el.onclick = (e) => { e.stopPropagation(); if (!up) { toast('表向きのセキュリティはありません'); return; } openSecList(n, up, side); };
+  el.onclick = (e) => { e.stopPropagation(); openSecList(n, up, side); };
 }
 function openSecList(n, up, side) {
-  const el = $('sum');
-  let h = '';
-  for (let k = 0; k < n; k++) h += k < up ? `<div><div class="card" style="background-image:url(${IMG(UPCARDS[k])})"></div>上から${k + 1}枚目</div>` : `<div><div class="card down"></div>裏向き</div>`;
-  el.innerHTML = `<div class="h"><h3>${side === 'own' ? '自分' : '相手'}のセキュリティ(表${up}/${n}枚)</h3><button class="sb" id="sumX" style="margin-left:auto">✕</button></div><div style="padding:0 10px 10px"><div class="seclist">${h}</div></div>`;
-  el.classList.add('on'); el.onclick = e => e.stopPropagation();
-  $('sumX').onclick = () => closeSum();
+  const rows = [];
+  for (let k = 0; k < n; k++) rows.push(k < up ? { n: UPCARDS[k], name: cardName(UPCARDS[k]), sub: `上から${k + 1}枚目・表向き` } : { down: true, name: '(裏向き)', sub: `上から${k + 1}枚目` });
+  openLs({ title: `${side === 'own' ? '自分' : '相手'}のセキュリティ(${n}枚・表${up})`, rows,
+    btns: side === 'own' ? [['手札', ''], ['トラッシュ', ''], ['表/裏', '']] : [],
+    foot: side === 'own' ? [['シャッフル', 'b3'], ['閉じる', 'b3']] : [['閉じる', 'b3']] });
+}
+const NAMES = { 'BT1-096': 'ヘルファイアー', 'BT1-030': 'ゴマモン', 'BT1-108': 'ホーンバスター', 'BT1-028': 'エレキモン', 'BT1-099': 'ラブリーアタック', 'BT1-085': '八神太一', 'BT1-087': '高石タケル', 'BT3-093': '本宮大輔', 'BT1-009': 'モノドラモン', 'BT5-007': 'アグモン', 'ST2-02': 'ゴマモン', 'BT2-112': 'ブラックウォーグレイモン', 'BT3-008': 'ズバモン' };
+const KIND = { 'BT1-096': 'オプション', 'BT1-108': 'オプション', 'BT1-099': 'オプション', 'BT1-085': 'テイマー', 'BT1-087': 'テイマー', 'BT3-093': 'テイマー' };
+function cardName(n) { return NAMES[n] || n; }
+// 共通の一覧シート。rows: {n, name, sub, down, ok}, btns: [[label, cls]] 各行のボタン
+function openLs(o) {
+  const el = $('ls');
+  closeSum();
+  el.innerHTML = `<div class="lh"><h3>${o.title}</h3><button id="lsPeek">👁</button><button id="lsX">✕</button></div>
+    ${o.ins ? `<div class="ins" id="lsIns">${o.ins}</div>` : ''}
+    <div class="body">${o.rows.map((r, i) => `<div class="it" data-i="${i}"><div class="card${r.down ? ' down' : ''}" style="${r.n ? `background-image:url(${IMG(r.n)})` : ''}"></div>
+      <div class="nm3"><b>${r.name}</b><small>${r.sub || KIND[r.n] || 'デジモン'}</small>${r.ok ? '<div class="ok">✓ 条件に合う</div>' : ''}</div>
+      <div class="bt">${(o.rowBtns ? o.rowBtns(r) : o.btns || []).map((b, j) => `<button class="${b[1] || ''}" data-j="${j}" ${b[2] ? 'disabled' : ''}>${b[0]}</button>`).join('')}</div></div>`).join('')}</div>
+    ${o.foot && o.foot.length ? `<div class="ft">${o.foot.map((b, j) => `<button class="${b[1]}" data-f="${j}">${b[0]}</button>`).join('')}</div>` : ''}`;
+  el.classList.add('on');
+  el.onclick = e => e.stopPropagation();
+  $('lsX').onclick = () => el.classList.remove('on');
+  $('lsPeek').onclick = () => { el.classList.add('peek'); toast('盤面を見ています(押すと戻ります)'); setTimeout(() => { const back = () => { el.classList.remove('peek'); document.removeEventListener('click', back, true); }; document.addEventListener('click', back, true); }, 50); };
+  el.querySelectorAll('.it .bt button').forEach(b => b.onclick = () => {
+    const it = b.closest('.it'); const i = +it.dataset.i;
+    if (o.onRow) o.onRow(i, +b.dataset.j, it, b); else { it.classList.add('gone'); it.querySelectorAll('button').forEach(x => x.disabled = true); toast(`「${o.rows[i].name}」→ ${b.textContent}(イメージ)`); }
+  });
+  el.querySelectorAll('.ft button').forEach(b => b.onclick = () => { const f = o.foot[+b.dataset.f]; if (f[2]) f[2](); else { el.classList.remove('on'); if (f[0] !== '閉じる') toast(f[0] + '(イメージ)'); } });
+}
+// トラッシュ
+function openTrash(side) {
+  const own = side === 'own';
+  const nums = own ? ['BT1-096', 'BT1-030', 'BT1-009', 'BT1-085', 'BT5-007', 'BT1-028'].slice(0, S.trash) : ['BT1-108', 'ST2-02', 'BT1-099'].slice(0, S.otrash);
+  openLs({ title: `${own ? '自分' : '相手'}のトラッシュ(${nums.length}枚)`, rows: nums.map(n => ({ n, name: cardName(n) })),
+    btns: own ? [['手札', ''], ['登場', ''], ['山札▾', '']] : [], foot: [['閉じる', 'b3']] });
+}
+// 山札: 公開
+function openReveal() {
+  $('fxSheet').classList.remove('on');
+  const nums = ['BT1-028', 'BT1-087', 'BT3-093', 'BT1-099', 'BT1-030'];
+  const rows = nums.map(n => ({ n, name: cardName(n), ok: KIND[n] === 'テイマー' }));
+  let got = 0;
+  const ins = () => `📖 <b>アグモンの指示</b><span class="stp${got ? ' done' : ''}">① テイマーカード 1枚を 手札に加える <span class="cnt">(${got}/1)</span></span><span class="stp">② 残り: 好きな順番でデッキの下に戻す</span>`;
+  openLs({ title: `公開したカード(${nums.length}枚)`, ins: ins(), rows,
+    rowBtns: r => [['①手札', r.ok ? 'p' : '', !r.ok], ['②山札下', '']],
+    onRow: (i, j, it) => {
+      if (j === 0) { if (got) { toast('①はもう選びました'); return; } got = 1; $('lsIns').innerHTML = ins(); $('ls').querySelectorAll('.bt button[data-j="0"]').forEach(x => { x.disabled = true; x.classList.remove('p'); }); toast(`「${rows[i].name}」を手札に加えました`); }
+      else toast(`「${rows[i].name}」をデッキの下へ`);
+      it.classList.add('gone'); it.querySelectorAll('button').forEach(x => x.disabled = true);
+    },
+    foot: [['残りをデッキの下へ(順番お任せ)', 'g', () => { $('ls').classList.remove('on'); S.fx.shift(); render(); toast('公開の処理を終えました'); }], ['✋ 手動で振り分ける', 'b3']] });
 }
 // デジモンは前の段、テイマー/オプションは後ろの段(相手側は上下を逆にして、デジモンが真ん中寄り)
 function fillField(el, arr, side) {
@@ -527,12 +611,14 @@ function openFx() {
   el.className = 'fxc on' + (cur.op ? ' op' : '') + (fxBig ? ' big' : '');
   el.innerHTML = `<div class="h"><span class="who">${cur.who}</span><span class="nm2">${cur.name}</span><span class="tm">${cur.timing}</span><div class="ic"><button id="fxBig">${fxBig ? '▭' : '▣'}</button><button id="fxMin">＿</button></div></div>
     <div class="tx">${cur.text}</div>
-    <button class="auto" id="fxDo">${cur.btn}</button>
+    ${cur.ng ? `<div style="font-size:10.5px;color:#f88;margin:-2px 0 6px">✕ 条件未達: ${cur.ng}</div>` : ''}
+    ${cur.btns ? `<div class="multi">${cur.btns.map((b, k) => `<button class="${b[1] || ''}" data-k="${k}">${b[0]}</button>`).join('')}</div>` : `<button class="auto" id="fxDo">${cur.btn}</button>`}
     <div class="two"><button class="b3" id="fxSkip">発揮しない</button><button class="g" id="fxDone">✔ 処理完了</button></div>
     ${S.fx.length > 1 ? `<div class="more">ほかに${S.fx.length - 1}件待ち: ${S.fx.slice(1).map(f => f.name + f.timing).join(' / ')}</div>` : ''}`;
   $('fxBig').onclick = (e) => { e.stopPropagation(); fxBig = !fxBig; openFx(); };
   $('fxMin').onclick = (e) => { e.stopPropagation(); el.classList.remove('on'); toast('右上の⚡でまた開けます'); };
-  $('fxDo').onclick = () => toast(cur.btn + '(イメージ)');
+  if ($('fxDo')) $('fxDo').onclick = () => { if (/オープン/.test(cur.btn)) openReveal(); else toast(cur.btn + '(イメージ)'); };
+  el.querySelectorAll('.multi button').forEach(b => b.onclick = () => { b.classList.add('used'); b.textContent = '✔済 ' + b.textContent.replace(/^✔済 /, ''); toast(b.textContent + '(イメージ)'); });
   $('fxDone').onclick = $('fxSkip').onclick = () => { S.fx.shift(); render(); if (S.fx.length) openFx(); else { el.classList.remove('on'); toast('効果の処理を終えました'); } };
   el.onclick = e => e.stopPropagation();
 }
@@ -599,6 +685,18 @@ $('upSeg').querySelectorAll('button').forEach(b => b.onclick = () => {
   $('upSeg').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
   S.up = S.oup = +b.dataset.v; render();
 });
+$('fxSeg').querySelectorAll('button').forEach(b => b.onclick = () => {
+  if (b.dataset.v === 'many') S.fx.unshift({ who: '自分', name: '純平&輝二&輝一', timing: '【メイン開始時】【登場時】',
+    text: '【自分のメインフェイズ開始時】【登場時】自分の手札/トラッシュから、特徴に「ハイブリッド体」を持つ色の異なるカード2枚までをこのテイマーの下に置ける。この効果で置いたなら、≪1ドロー≫。その後、このテイマーの下に特徴に「ハイブリッド体」を持つカードが4枚以上あるなら、メモリー+2。',
+    ng: 'このテイマーの下に特徴に「ハイブリッド体」を持つカードが4枚以上ある',
+    btns: [['💸 代償: 手札/トラッシュから2枚をこのテイマーの下へ', 'kcost'], ['📥 手札/トラッシュから2枚をこのテイマーの下へ'], ['🃏 1枚ドロー'], ['⚡ メモリー+2', 'ng'], ['🛡 ≪リカバリー+1≫(デッキの上から1枚をセキュリティの上へ)'], ['🎯 相手のデジモン1体を選んでDP-3000(このターン)']] });
+  else S.fx.push({ who: '相手', op: true, name: 'ティンカーモン', timing: '【相手のアタック時】', text: '(相手の誘発効果の例)', btn: '🎯 対象を選ぶ' }, { who: '自分', name: '八神太一', timing: '【自分のターン】', text: '(自分の効果の例)', btn: '⚡ メモリー+1' });
+  closeSheets(); render(); openFx();
+});
+$('trashB').onclick = e => { e.stopPropagation(); openTrash('own'); };
+$('otrashB').onclick = e => { e.stopPropagation(); openTrash('opp'); };
+$('deckB').onclick = e => { e.stopPropagation(); openLs({ title: '山札(31枚)', ins: '山札は裏向きなので、ここでは操作を選びます', rows: [], foot: [['上から1枚公開', 'b1', () => openReveal()], ['上から○枚を見る', 'b3'], ['シャッフル', 'b3'], ['閉じる', 'b3']] }); };
+$('odeckB').onclick = e => { e.stopPropagation(); toast('相手の山札(36枚)'); };
 $('oppX').onclick = (e) => { e.stopPropagation(); const o = document.querySelector('.opp'); const on = !o.classList.contains('expand'); o.classList.toggle('expand', on); $('oppX').textContent = on ? '✕ 戻す' : '⤢ 拡大'; };
 $('padSeg').querySelectorAll('button').forEach(b => b.onclick = () => {
   $('padSeg').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
