@@ -3812,7 +3812,7 @@
     body.pt-mode.ls-dock-open:not(.ls-dock-full) #practiceBoardPanel .ls-dock {
       position: absolute; grid-column: 1; left: 6px; right: 6px; top: auto; bottom: calc(6px + env(safe-area-inset-bottom, 0px)); width: auto; min-height: 0; max-height: 62%; z-index: 80;
     }
-    body.pt-mode.ls-dock-open.ls-dock-full #practiceBoardPanel .ls-dock { top: 44px; max-height: none; }
+    body.pt-mode.ls-dock-open.ls-dock-full #practiceBoardPanel .ls-dock { top: 44px; max-height: none; left: 6px; right: 6px; width: auto; bottom: calc(6px + env(safe-area-inset-bottom, 0px)); }
     /* 相手の場・メモリー・自分の場 */
     body.pt-mode #practiceBoardPanel #oppMatBlock { grid-column: 1; grid-row: 2; margin: 0 6px; }
     body.pt-mode #practiceBoardPanel .arena-hud { grid-column: 1; grid-row: 3; padding: 0 6px; }
@@ -3856,6 +3856,15 @@
     body.pt-mode #practiceBoardPanel .field-pick-banner .fpb-btns button { min-height: 34px; padding: 4px 10px; }
     body.pt-mode #practiceBoardPanel .field-pick-banner .fpb-btns button.cancel { min-width: 36px; padding: 4px 0; }
     body.pt-mode.field-picking .ls-dock-toggle { visibility: hidden; }
+    /* 進化先などを選ぶ案内: 画面の上に横長(場のカードを選ぶ案内と同じ形)。キャンセルは「✕」 */
+    body.pt-mode #practiceBoardPanel .evolve-mode-banner.active {
+      position: fixed; top: calc(var(--pt-head) + 2px); left: 6px; right: 6px; width: auto; transform: none;
+      display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 10px; font-size: 12px; line-height: 1.35; border-radius: 10px; writing-mode: horizontal-tb;
+    }
+    body.pt-mode #practiceBoardPanel .evolve-mode-banner.active #evolveModeText { flex: 1; min-width: 0; }
+    body.pt-mode #practiceBoardPanel .evolve-mode-banner.active #evolveModeCancel { flex: none; width: 36px; min-height: 34px; padding: 0; font-size: 0; border-radius: 8px; }
+    body.pt-mode #practiceBoardPanel .evolve-mode-banner.active #evolveModeCancel::after { content: '✕'; font-size: 15px; font-weight: 800; }
+    body.pt-mode:has(.evolve-mode-banner.active) .ls-dock-toggle { visibility: hidden; }
     /* 効果パネルのボタンが4つ以上なら2列(代償のボタンは横いっぱい) */
     body.pt-mode #practiceBoardPanel .ls-dock .ep-auto-wrap:has(> :nth-child(4)) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
     body.pt-mode #practiceBoardPanel .ls-dock .ep-auto-wrap:has(> :nth-child(4)) > .k-cost { grid-column: 1 / -1; }
@@ -3967,7 +3976,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.98.0</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.98.1</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -6117,7 +6126,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.98.0`);
+    log(`DigiCA Tool build v0.98.1`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');

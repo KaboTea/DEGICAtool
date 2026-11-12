@@ -17,6 +17,10 @@ await (await tile()).click({ force: true }); await page.waitForTimeout(250);
 o.bubble = await ev(`!!document.getElementById('lsFieldBar')`);
 await (await tile()).click({ force: true }); await page.waitForTimeout(300);
 o.sum = await ev(`(() => { const p=document.getElementById('lsSumPanel'); if(!p) return 'none'; const r=p.getBoundingClientRect(); return r.width > innerWidth - 20 && Math.abs(r.bottom - innerHeight) < 20; })()`);
+// 進化先を選ぶ案内は、画面の上に横長(キャンセルは✕)
+await ev(`(() => { lsSummary = null; lsRenderOverlay(); enterEvolveMode(1, practiceState.players[practiceState.viewingIndex].hand[1], false); })()`); await page.waitForTimeout(300);
+o.evoBanner = await ev(`(() => { const r=document.querySelector('.evolve-mode-banner.active').getBoundingClientRect(); return r.width > innerWidth - 20 && r.height < 80; })()`);
+await ev(`document.getElementById('evolveModeCancel').click()`); await page.waitForTimeout(200);
 // 横画面・PCでは縦画面用にならない
 await page.setViewportSize({ width: 844, height: 390 }); await page.waitForTimeout(500);
 o.landscape = await ev(`document.body.classList.contains('ls-mode') && !document.body.classList.contains('pt-mode')`);
