@@ -3855,7 +3855,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.97.12</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.97.13</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -6005,7 +6005,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.97.12`);
+    log(`DigiCA Tool build v0.97.13`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -11946,6 +11946,84 @@
     return out;
   }
   // 対象が決まらない呼び出し(「そのデジモンの【進化時】効果1つ」等)は、選んで出すボタンにする
+  // 「相手の裏向きのセキュリティを上から1枚表向きにする」(BT20-050 / EX11-064)
+  function secFlipFaceUpHandlersFor(e) {
+    if (!practiceState) return [];
+    const t = engineStripNotes(e.text || '');
+    const out = [];
+    const re = /(相手|自分)の裏向きのセキュリティを上から(\d+)枚表向きにする/g;
+    let m;
+    while ((m = re.exec(t))) {
+      const side = m[1], n = parseInt(m[2], 10);
+      out.push({ label: `🛡 ${side}の裏向きのセキュリティを上から${n}枚表向きにする`, run: () => {
+        const pl = practiceState.players[side === '自分' ? e.ownerIndex : 1 - e.ownerIndex];
+        const idx = [];
+        pl.security.forEach((en, i) => { if (idx.length < n && !cardEntryFaceUp(en)) idx.push(i); });
+        if (!idx.length) { showToast(`${side}の裏向きのセキュリティがありません`, true); return; }
+        snapshotPracticeState();
+        const names = idx.map(i => { const num = cardEntryNum(pl.security[i]); pl.security[i] = { n: num, u: 1 }; return (cardIndexByNumber.get(num) || {}).name || num; });
+        renderPracticeBoard();
+        showToast(`🛡 ${side}のセキュリティを表向きにしました:「${names.join('」「')}」`);
+      } });
+    }
+    return out;
+  }
+  // 「自分のセキュリティの特徴に「ザクソン」を持つ表向きのデジモンカード1枚の【登場時】効果1つをこのデジモンの効果として発揮する」(BT23-060)
+  function secCardEffectUseHandlersFor(e, holderStack) {
+    if (!practiceState) return [];
+    const t = engineStripNotes(e.text || '');
+    const m = /自分のセキュリティの(.*?)表向きの((?:デジモン|テイマー|オプション)?カード)1枚の((?:【[^】]+】)+)効果(?:1つ)?を(このデジモンの効果として)?発揮する/.exec(t);
+    if (!m) return [];
+    const cond = (m[1].replace(/の$/, '') + m[2]);
+    const labels = [...m[3].matchAll(/【([^】]+)】/g)].map(x => x[1]);
+    return [{ label: `🛡 表向きのセキュリティの${m[1].replace(/の$/, '')}カードの【${labels.join('】【')}】効果を発揮`, run: () => {
+      const P = practiceState.players[e.ownerIndex];
+      const ref = { labels, self: false };
+      const stackUid = m[4] && holderStack ? ensureStackUid(holderStack) : null;
+      const list = P.security.map((en, i) => {
+        if (!cardEntryFaceUp(en)) return null;
+        const c = cardIndexByNumber.get(cardEntryNum(en));
+        if (!c) return null;
+        const ok = revealCondMatches(c, cond) !== false && referencedEntriesFrom(c, ref, { ownerIndex: e.ownerIndex }).length > 0;
+        return { zone: 'security', num: c.number, card: c, ok, tag: `(上から${i + 1}枚目)` };
+      }).filter(Boolean);
+      if (!list.some(x => x.ok)) { showToast(`表向きのセキュリティに、【${labels.join('】【')}】効果を持つ${cond}がありません`, true); return; }
+      openEffectEvolvePicker(`🛡「${e.cardName}」の効果: 表向きのセキュリティのカードの効果を発揮`, `条件: ${cond}(【${labels.join('】【')}】効果)`, list, (pick) => {
+        const entries = referencedEntriesFrom(pick.card, ref, Object.assign({ ownerIndex: e.ownerIndex }, stackUid ? { stackUid } : {}));
+        entries.forEach(x => { if (stackUid) { x.stackUid = stackUid; x.asEffectOf = e.cardName; } else { x.lki = true; x.lkiUid = 'secref-' + pick.card.number; } });
+        enqueueEffects(entries, []);
+        renderPracticeBoard();
+        renderEffectPanel();
+        showToast(`「${pick.card.name}」の【${labels.join('】【')}】効果を発揮待ちに追加しました(今の効果を処理完了にすると選べます)`);
+      }, '🔗この効果');
+    } }];
+  }
+  // 「【アタック終了時】このデジモンを自分のセキュリティの上に置く」(LM-007): 場にいるこのデジモン自身をセキュリティへ
+  function selfToSecurityHandlersFor(e, holderStack) {
+    if (!practiceState || !holderStack) return [];
+    const t = engineStripNotes(e.text || '');
+    const m = /このデジモンを(?:自分の)?セキュリティの(上|下)に(表向きで|裏向きで)?置(?:く|ける)(?!ことで)/.exec(t);
+    if (!m || /このデジモンを(?:自分の)?セキュリティの(?:上|下)に(?:表向きで|裏向きで)?置(?:く|ける)ことで/.test(t)) return [];
+    return [{ label: `🛡 このデジモンをセキュリティの${m[1]}に置く${m[2] === '表向きで' ? '(表向き)' : ''}`, run: () => {
+      if (!findStackOwnerAndZone(holderStack)) { showToast('このデジモンはもう場にいません', true); return; }
+      runTargetAction({ action: { type: 'move', dest: m[1] === '上' ? 'secTop' : 'secBottom', faceUp: m[2] === '表向きで' } }, e, [holderStack]);
+    } }];
+  }
+  // 「自分の「高石タケル」がいるとき、自分の「パタモン」1体を〜」(P-023): 「〜がいるとき、」を条件として外して、対象を選ぶ効果として扱う
+  function whileExistsTargetHandlersFor(e, holderStack) {
+    const t = engineStripNotes(e.text || '');
+    const m = /^((?:【[^】]+】|［[^］]*］)*)(自分の|相手の)(「[^」]+」|[^、。]{1,30}?)がいるとき、(.+)$/.exec(t);
+    if (!m || /とき、.*とき、/.test(m[4])) return [];
+    const who = m[2] + m[3];
+    const pi = e.ownerIndex;
+    const tpi = m[2] === '自分の' ? pi : 1 - pi;
+    const subj = m[3].replace(/^「|」$/g, '');
+    const present = () => practiceState.players[tpi].battle.some(st => { const c = getStackTopCard(st); return c && (/^「/.test(m[3]) ? cardHasName(c, subj) : stackMatchesFilterText(st, subj, null)); });
+    return targetHandlersFor(Object.assign({}, e, { text: m[1] + m[4] }), holderStack).map(h => Object.assign({}, h, {
+      label: `${h.label}(${who}がいるとき)`,
+      run: () => { if (!present()) { showToast(`${who}がいないので、この効果は発揮できません`, true); return; } h.run(); },
+    }));
+  }
   function effectRefHandlersFor(e) {
     return parseEffectRefs(e.text).filter(r => !r.self).map(ref => ({
       label: `🔗 対象の【${ref.labels.join('】【')}】効果を発揮`,
@@ -12723,8 +12801,13 @@
     const lk = a.type !== 'lock' && (a.locks || []).length ? '・🔒' + a.locks.map(k => LOCK_LABELS[k].replace('を発揮しない', 'なし')).join('・') : '';
     return `${per}${pre ? pre : ''}${ta.phrase}${a.type === 'lock' ? 'に' : 'を'}${what}${lk}${ex}${rz}${dur}`;
   }
+  // 「自分の「パタモン」1体を」のように名前だけで書かれた対象を、「自分の「パタモン」のデジモン1体を」として読む(その名前のデジモンがいるときだけ)
+  function normalizeNamedTargets(text) {
+    return String(text || '').replace(/(自分|相手)の「([^」]+)」(\d+)体を/g, (all, side, name, n) =>
+      [...cardIndexByNumber.values()].some(c => c.category === 'digimon' && c.name === name) ? `${side}の「${name}」のデジモン${n}体を` : all);
+  }
   function targetHandlersFor(e, holderStack) {
-    return parseTargetActions(e.text).map(ta => ({
+    return parseTargetActions(normalizeNamedTargets(e.text)).map(ta => ({
       label: (() => {
         // 長い条件文は省略するが、DPの持続期間(末尾の括弧)は必ず残す
         const full = `🎯 ${targetActionLabel(ta)}`;
@@ -16101,7 +16184,7 @@
     if (e.deferred) return deferredHandlersFor(e);
     const extra = () => {
       const f = e.stackUid ? findStackByUid(e.stackUid) : null;
-      const list = [...chooseCountHandlersFor(e, holderOf(e, f)), ...tokenHandlersFor(e), ...tamerAsDigimonHandlersFor(e, holderOf(e, f)), ...tamerEvolveIntoSelfHandlersFor(e), ...mindLinkHandlersFor(e, holderOf(e, f)), ...linkEffectHandlersFor(e, holderOf(e, f)), ...selfDPHandlersFor(e, holderOf(e, f)), ...securityDigimonDPHandlersFor(e, holderOf(e, f)), ...battleEffectHandlersFor(e, holderOf(e, f)), ...totalRemovalHandlersFor(e, holderOf(e, f)), ...appFusionHandlersFor(e), ...handOpenToSecurityHandlersFor(e, holderOf(e, f)), ...securityEvolveHandlersFor(e, holderOf(e, f)), ...securitySearchPlayHandlersFor(e), ...securitySearchToHandHandlersFor(e), ...totalCostPlayHandlersFor(e, holderOf(e, f)), ...sourcePlayHandlersFor(e, holderOf(e, f)), ...selfCardPlayHandlersFor(e), ...reductionCostHandlersFor(e), ...costHandlersFor(e, holderOf(e, f)), ...restrictHandlersFor(e), ...evolveFromZoneHandlersFor(e, f && f.stack), ...materialFromZoneHandlersFor(e, f && f.stack), ...playFromHandHandlersFor(e, holderOf(e, f)), ...toHandFromZoneHandlersFor(e, holderOf(e, f)), ...sourceMoveHandlersFor(e, holderOf(e, f)), ...simpleActionHandlersFor(e, holderOf(e, f)), ...effectMovementHandlersFor(e, holderOf(e, f))];
+      const list = [...chooseCountHandlersFor(e, holderOf(e, f)), ...tokenHandlersFor(e), ...tamerAsDigimonHandlersFor(e, holderOf(e, f)), ...tamerEvolveIntoSelfHandlersFor(e), ...mindLinkHandlersFor(e, holderOf(e, f)), ...linkEffectHandlersFor(e, holderOf(e, f)), ...selfDPHandlersFor(e, holderOf(e, f)), ...securityDigimonDPHandlersFor(e, holderOf(e, f)), ...secFlipFaceUpHandlersFor(e), ...secCardEffectUseHandlersFor(e, holderOf(e, f)), ...selfToSecurityHandlersFor(e, holderOf(e, f)), ...whileExistsTargetHandlersFor(e, holderOf(e, f)), ...battleEffectHandlersFor(e, holderOf(e, f)), ...totalRemovalHandlersFor(e, holderOf(e, f)), ...appFusionHandlersFor(e), ...handOpenToSecurityHandlersFor(e, holderOf(e, f)), ...securityEvolveHandlersFor(e, holderOf(e, f)), ...securitySearchPlayHandlersFor(e), ...securitySearchToHandHandlersFor(e), ...totalCostPlayHandlersFor(e, holderOf(e, f)), ...sourcePlayHandlersFor(e, holderOf(e, f)), ...selfCardPlayHandlersFor(e), ...reductionCostHandlersFor(e), ...costHandlersFor(e, holderOf(e, f)), ...restrictHandlersFor(e), ...evolveFromZoneHandlersFor(e, f && f.stack), ...materialFromZoneHandlersFor(e, f && f.stack), ...playFromHandHandlersFor(e, holderOf(e, f)), ...toHandFromZoneHandlersFor(e, holderOf(e, f)), ...sourceMoveHandlersFor(e, holderOf(e, f)), ...simpleActionHandlersFor(e, holderOf(e, f)), ...effectMovementHandlersFor(e, holderOf(e, f))];
       // 進化元効果・セキュリティ効果・消滅時などの「デッキの上からN枚オープン」(【効果】欄のものは基本の処理で出している)
       const rm = /(?<!相手の)デッキの上から(\d+)枚オープン/.exec(e.text || '');
       if (rm && e.timing !== 'ディレイ' && (!f || e.field !== 'effect')) {
@@ -16150,7 +16233,7 @@
       const safe = (fn) => { try { return fn(); } catch (er) { return []; } };
       return [...safe(() => selfCardPlayHandlersFor(e)), ...safe(() => playFromHandHandlersFor(e, null)), ...safe(() => evolveFromZoneHandlersFor(e, null)), ...targetHandlersFor(e, null), ...memoryHandlersFor(e), ...drawHandlersFor(e)];
     }
-    if (!f || e.field !== 'effect') return [...securityCardHandlersFor(e), ...securityDigimonDPHandlersFor(e, null), ...securitySelfHandlersFor(e), ...leftSelfMoveHandlersFor(e), ...keywordGrantHandlersFor(e, f && f.stack), ...effectGrantHandlersFor(e, f && f.stack), ...effectRefHandlersFor(e), ...targetHandlersFor(e, f && f.stack), ...retargetHandlersFor(e, f && f.stack), ...(f ? resistGrantHandlersFor(e, f.stack) : []), ...memoryHandlersFor(e), ...drawHandlersFor(e)];
+    if (!f || e.field !== 'effect') return [...securityCardHandlersFor(e), ...securityDigimonDPHandlersFor(e, null), ...secFlipFaceUpHandlersFor(e), ...securitySelfHandlersFor(e), ...leftSelfMoveHandlersFor(e), ...keywordGrantHandlersFor(e, f && f.stack), ...effectGrantHandlersFor(e, f && f.stack), ...effectRefHandlersFor(e), ...targetHandlersFor(e, f && f.stack), ...retargetHandlersFor(e, f && f.stack), ...(f ? resistGrantHandlersFor(e, f.stack) : []), ...memoryHandlersFor(e), ...drawHandlersFor(e)];
     const stack = f.stack;
     const line = e.text;
     const list = [];
