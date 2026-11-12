@@ -257,10 +257,20 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .fxc .multi button.ng{opacity:.45;text-decoration:line-through}
 .fxc .multi button.used{opacity:.5}
 .fxc.big{max-height:70%;overflow:auto}
+
+/* 見出しとタブ(出しっぱなし・1行にまとめる) */
+.apphead{display:flex;align-items:center;gap:6px;padding:5px 8px 3px;flex:none;border-bottom:1px solid rgba(120,170,255,.15)}
+.apphead .br{display:flex;align-items:center;gap:5px;font-family:ui-monospace,Menlo,monospace;font-weight:800;font-size:12px;letter-spacing:1px;color:#fff;white-space:nowrap}
+.apphead .br i{width:7px;height:7px;border-radius:50%;background:#4fd1c5;box-shadow:0 0 8px #4fd1c5}
+.apphead .br small{font-size:8.5px;color:var(--mute);font-weight:600;letter-spacing:0}
+.apphead .tabs{margin-left:auto;display:flex;gap:3px}
+.apphead .tabs button{height:28px;padding:0 8px;border-radius:7px;border:1px solid var(--line);background:rgba(20,35,65,.6);font-size:11px;font-weight:700;color:#9fb3d9;white-space:nowrap}
+.apphead .tabs button.on{background:rgba(59,156,255,.2);border-color:var(--own);color:#fff}
 </style>
 </head>
 <body>
 <div id="app">
+  <div class="apphead"><span class="br"><i></i>DIGICA TOOL<small>v0.97</small></span><div class="tabs"><button>🔍 検索</button><button>🃏 デッキ</button><button class="on">🎮 練習</button></div></div>
   <div class="top">
     <span class="turn" id="turn">TURN 3</span>
     <div class="pips" id="pips"></div>
@@ -309,7 +319,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
       <button class="on">⚡ 効果パネル ON</button><button class="on">⏭ 自動エンド ON</button>
       <button class="on">✨ 演出 ON</button><button>📱 横画面で遊ぶ</button>
       <button>🥚 孵化(効果)</button><button>🔄 パス</button>
-      <button>🏠 タブ・見出しを出す</button><button class="b4" style="color:#fbb">練習を終了</button>
+      <button>🔢 DB管理</button><button class="b4" style="color:#fbb">練習を終了</button>
     </div>
     <div class="lbl">【試作用】場のカードの数</div>
     <div class="seg" id="crowdSeg"><button data-v="0" class="on">ふつう</button><button data-v="1">多め</button><button data-v="2">いっぱい</button><button data-v="3">相手すごく多い</button></div>
@@ -693,6 +703,7 @@ $('fxSeg').querySelectorAll('button').forEach(b => b.onclick = () => {
   else S.fx.push({ who: '相手', op: true, name: 'ティンカーモン', timing: '【相手のアタック時】', text: '(相手の誘発効果の例)', btn: '🎯 対象を選ぶ' }, { who: '自分', name: '八神太一', timing: '【自分のターン】', text: '(自分の効果の例)', btn: '⚡ メモリー+1' });
   closeSheets(); render(); openFx();
 });
+document.querySelectorAll('.apphead .tabs button').forEach(b => b.onclick = e => { e.stopPropagation(); if (!b.classList.contains('on')) toast(b.textContent.trim() + 'のタブへ(イメージ)'); });
 $('trashB').onclick = e => { e.stopPropagation(); openTrash('own'); };
 $('otrashB').onclick = e => { e.stopPropagation(); openTrash('opp'); };
 $('deckB').onclick = e => { e.stopPropagation(); openLs({ title: '山札(31枚)', ins: '山札は裏向きなので、ここでは操作を選びます', rows: [], foot: [['上から1枚公開', 'b1', () => openReveal()], ['上から○枚を見る', 'b3'], ['シャッフル', 'b3'], ['閉じる', 'b3']] }); };
