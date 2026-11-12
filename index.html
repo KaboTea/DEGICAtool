@@ -3855,7 +3855,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.97.9</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.97.10</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -6005,7 +6005,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.97.9`);
+    log(`DigiCA Tool build v0.97.10`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -14090,7 +14090,9 @@
           let n = +pm[3];
           const subj = pm[6].replace(/^、/, '');
           const onTop = /上$/.test(pm[7]), faceDown = !!pm[8];
-          const toTamer = pm[7] === '下' && /テイマー/.test(subj);
+          // 「自分の「源輝二」1体の下に置く」: 名前のカードがテイマーなら、テイマーの下
+          const subjName = (/「([^」]+)」/.exec(subj) || [])[1];
+          const toTamer = pm[7] === '下' && (/テイマー/.test(subj) || (!/デジモン/.test(subj) && !!subjName && [...cardIndexByNumber.values()].some(c => c.category === 'tamer' && cardHasName(c, subjName))));
           // 「Lv.4とLv.5のデジモンカード1枚ずつ」: 条件ごとに1枚
           const eachItems = pm[5] ? expandEachConds(cond) : null;
           if (eachItems) n = eachItems.length;
@@ -15908,6 +15910,34 @@
     return out;
   }
   // 🦖「自分の「大門大」1体はデジモン・DP3000としても扱い」: カード詳細の「デジモンにする」と同じ処理を、効果のボタンから行う
+  // ［手札］「〜を自分の「源輝二」1体の下に置くことで、そのテイマーを青のLv.4のデジモンとして扱いこのカードに進化コスト3で進化する」(BT17-026 など)
+  function tamerEvolveIntoSelfHandlersFor(e) {
+    if (!practiceState) return [];
+    const t = engineStripNotes(e.text || '');
+    const m = /そのテイマーを(.*?)Lv\.(\d+)のデジモンとして扱い、?このカードに(?:進化コスト(\d+)|コストを支払わず)で?進化(?:する|できる)/.exec(t);
+    if (!m) return [];
+    const name = (/自分の「([^」]+)」1体の下に置く/.exec(t) || [])[1] || null;
+    const costRule = m[3] != null ? { type: 'fixed', n: parseInt(m[3], 10) } : { type: 'free' };
+    return [{ label: `🧬 ${name ? `「${name}」` : 'そのテイマー'}をLv.${m[2]}のデジモンとして扱い、このカードに進化(${EVOLVE_COST_RULE_LABEL(costRule).replace(/で$|に$/, '')})`, run: () => {
+      if (e.ownerIndex !== practiceState.viewingIndex) { showToast('この自動処理は、その効果を持つプレイヤーの視点に切り替えてから実行してください', true); return; }
+      const P = practiceState.players[e.ownerIndex];
+      const hi = P.hand.findIndex(x => cardEntryNum(x) === e.cardNumber);
+      if (hi < 0) { showToast(`「${e.cardName}」が手札にありません`, true); return; }
+      const tamers = P.battle.filter(st => { const c = getStackTopCard(st); return c && c.category === 'tamer'; });
+      const cands = name ? tamers.filter(st => cardHasName(getStackTopCard(st), name)) : tamers;
+      if (!tamers.length) { showToast('自分のテイマーがいません', true); return; }
+      const go = (st) => {
+        enterEvolveMode(hi, e.cardNumber, false, { costRule, ignoreCond: true, effectName: e.cardName });
+        evolveMode.overrideBlockFor = st;
+        performEvolve(st);
+      };
+      // 代償で下にカードを置いたテイマーを優先
+      const placed = cands.filter(st => st.cards.length > 1);
+      const pool = placed.length ? placed : cands;
+      if (pool.length === 1) { go(pool[0]); return; }
+      startFieldPick({ title: `🧬 進化させるテイマーをタップ${name ? `(「${name}」)` : ''}`, candidates: pool, extra: tamers.filter(st => !pool.includes(st)), max: 1, onDone: (sel) => { if (sel[0]) go(sel[0]); } });
+    } }];
+  }
   function tamerAsDigimonHandlersFor(e, holderStack) {
     if (!practiceState) return [];
     const t = engineStripNotes(e.text || '');
@@ -15939,7 +15969,7 @@
     if (e.deferred) return deferredHandlersFor(e);
     const extra = () => {
       const f = e.stackUid ? findStackByUid(e.stackUid) : null;
-      const list = [...chooseCountHandlersFor(e, holderOf(e, f)), ...tokenHandlersFor(e), ...tamerAsDigimonHandlersFor(e, holderOf(e, f)), ...mindLinkHandlersFor(e, holderOf(e, f)), ...linkEffectHandlersFor(e, holderOf(e, f)), ...selfDPHandlersFor(e, holderOf(e, f)), ...battleEffectHandlersFor(e, holderOf(e, f)), ...totalRemovalHandlersFor(e, holderOf(e, f)), ...appFusionHandlersFor(e), ...handOpenToSecurityHandlersFor(e, holderOf(e, f)), ...securityEvolveHandlersFor(e, holderOf(e, f)), ...securitySearchPlayHandlersFor(e), ...securitySearchToHandHandlersFor(e), ...totalCostPlayHandlersFor(e, holderOf(e, f)), ...sourcePlayHandlersFor(e, holderOf(e, f)), ...selfCardPlayHandlersFor(e), ...reductionCostHandlersFor(e), ...costHandlersFor(e, holderOf(e, f)), ...restrictHandlersFor(e), ...evolveFromZoneHandlersFor(e, f && f.stack), ...materialFromZoneHandlersFor(e, f && f.stack), ...playFromHandHandlersFor(e, holderOf(e, f)), ...toHandFromZoneHandlersFor(e, holderOf(e, f)), ...sourceMoveHandlersFor(e, holderOf(e, f)), ...simpleActionHandlersFor(e, holderOf(e, f)), ...effectMovementHandlersFor(e, holderOf(e, f))];
+      const list = [...chooseCountHandlersFor(e, holderOf(e, f)), ...tokenHandlersFor(e), ...tamerAsDigimonHandlersFor(e, holderOf(e, f)), ...tamerEvolveIntoSelfHandlersFor(e), ...mindLinkHandlersFor(e, holderOf(e, f)), ...linkEffectHandlersFor(e, holderOf(e, f)), ...selfDPHandlersFor(e, holderOf(e, f)), ...battleEffectHandlersFor(e, holderOf(e, f)), ...totalRemovalHandlersFor(e, holderOf(e, f)), ...appFusionHandlersFor(e), ...handOpenToSecurityHandlersFor(e, holderOf(e, f)), ...securityEvolveHandlersFor(e, holderOf(e, f)), ...securitySearchPlayHandlersFor(e), ...securitySearchToHandHandlersFor(e), ...totalCostPlayHandlersFor(e, holderOf(e, f)), ...sourcePlayHandlersFor(e, holderOf(e, f)), ...selfCardPlayHandlersFor(e), ...reductionCostHandlersFor(e), ...costHandlersFor(e, holderOf(e, f)), ...restrictHandlersFor(e), ...evolveFromZoneHandlersFor(e, f && f.stack), ...materialFromZoneHandlersFor(e, f && f.stack), ...playFromHandHandlersFor(e, holderOf(e, f)), ...toHandFromZoneHandlersFor(e, holderOf(e, f)), ...sourceMoveHandlersFor(e, holderOf(e, f)), ...simpleActionHandlersFor(e, holderOf(e, f)), ...effectMovementHandlersFor(e, holderOf(e, f))];
       // 進化元効果・セキュリティ効果・消滅時などの「デッキの上からN枚オープン」(【効果】欄のものは基本の処理で出している)
       const rm = /(?<!相手の)デッキの上から(\d+)枚オープン/.exec(e.text || '');
       if (rm && e.timing !== 'ディレイ' && (!f || e.field !== 'effect')) {
