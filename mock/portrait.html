@@ -14,7 +14,7 @@
 html,body{height:100%;overflow:hidden;background:var(--bg);overscroll-behavior:none}
 body{font-family:"Hiragino Sans","Noto Sans JP",sans-serif;color:var(--txt);-webkit-user-select:none;user-select:none}
 #app{height:100dvh;display:flex;flex-direction:column;background:radial-gradient(120% 60% at 50% 0%,#10203e,var(--bg));padding:env(safe-area-inset-top) 0 calc(env(safe-area-inset-bottom) + var(--padb));position:relative}
-#board{flex:1;min-height:0;display:flex;flex-direction:column;justify-content:space-evenly;overflow:hidden}
+#board{flex:1;min-height:0;display:flex;flex-direction:column;gap:5px;padding-top:2px;overflow:hidden}
 button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 /* top */
 .top{display:flex;align-items:center;gap:5px;padding:6px 8px 2px;flex:none}
@@ -30,7 +30,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 /* areas */
 .area{margin:0 8px;border-radius:12px;padding:5px 6px 6px;position:relative;flex:none}
 .opp{border:1px solid rgba(255,138,61,.45);background:linear-gradient(180deg,rgba(255,138,61,.08),rgba(0,0,0,.2))}
-.own{border:1px solid rgba(59,156,255,.5);background:linear-gradient(0deg,rgba(59,156,255,.10),rgba(0,0,0,.2))}
+.own{flex:1 1 auto;display:flex;flex-direction:column;border:1px solid rgba(59,156,255,.5);background:linear-gradient(0deg,rgba(59,156,255,.10),rgba(0,0,0,.2))}
 .hdr{display:flex;align-items:center;gap:6px;height:16px}
 .tag{font-size:8.5px;font-weight:900;letter-spacing:2px;padding:2px 8px;clip-path:polygon(0 0,100% 0,88% 100%,0 100%)}
 .opp .tag{background:var(--opp);color:#200}.own .tag{background:var(--own);color:#001}
@@ -74,7 +74,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .nx small{font-size:8px;opacity:.85}
 .nx:active{transform:scale(.96)}
 /* hand */
-.hand{flex:none;display:flex;align-items:flex-end;justify-content:center;padding:10px 2px 0;position:relative}
+.hand{flex:none;margin-top:auto;display:flex;align-items:flex-end;justify-content:center;padding:10px 2px 0;position:relative}
 .hand .card{width:56px;margin:0 -7px;border-color:#7aa6f0}
 .hand .card.sel{transform:translateY(-12px)}
 .cost{position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#ff8a1f;color:#fff;font-size:8.5px;font-weight:900;display:grid;place-items:center;box-shadow:0 0 0 1px #000}
@@ -172,7 +172,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     </div>
     <div class="area own">
       <div class="hdr"><span class="tag">YOU</span><span class="nm">赤ハイブリッド</span></div>
-      <div class="row">
+      <div class="row" style="flex:1;align-items:stretch">
         <div class="side"><div class="bd">🛡<span id="sec">5</span></div><div class="bd">🥚5</div><div class="raise" id="raise"></div></div>
         <div class="field" id="ownField"></div>
         <div class="side"><div class="bd tall"><small>山札</small><span id="deck">33</span></div><div class="bd tall"><small>トラッシュ</small><span id="trash">4</span></div></div>
@@ -203,7 +203,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
   <div class="detail" id="detail"></div>
   <div class="toast" id="toast"></div>
   <div class="banner" id="banner">
-    <b>縦画面の試作その2</b>(動きはイメージ)<br>
+    <b>縦画面の試作その3</b>(動きはイメージ)<br>
     ・カードを押す → 上に行動メニュー。もう一度押すと詳細<br>
     ・アグモンの「アタック」→ 相手のデジモンかプレイヤーを選ぶと、ブロック確認→バトル/セキュリティチェックまで流れます<br>
     ・手札の「アグモン(ST1-03)」を登場させると【登場時】効果が出ます<br>
@@ -289,7 +289,8 @@ function render() {
 // 見えている高さに合わせて、場のカードの大きさを決める(はみ出さない一番大きいサイズ)
 function fit() {
   const board = $('board');
-  for (let w = 72; w >= 34; w -= 2) {
+  // 1列に4枚並ぶくらいまで(大きすぎると3枚目以降が見づらいため)
+  for (let w = 60; w >= 34; w -= 2) {
     document.documentElement.style.setProperty('--cw', w + 'px');
     if (board.scrollHeight <= board.clientHeight + 1) return;
   }
