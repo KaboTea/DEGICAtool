@@ -3855,7 +3855,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.97.11</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.97.12</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -6005,7 +6005,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.97.11`);
+    log(`DigiCA Tool build v0.97.12`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -6874,7 +6874,8 @@
     if (!practiceState) return sum;
     [0, 1].forEach(spi => {
       practiceState.players[spi].battle.forEach(srcStack => {
-        if (!isDigimonLikeStack(srcStack)) return;
+        // テイマーの「自分のセキュリティデジモン全てのDPを+」(ST3-12 など)も数える
+        if (!isDigimonLikeStack(srcStack) && (getStackTopCard(srcStack) || {}).category !== 'tamer') return;
         getStackEffectSources(srcStack).forEach(src => {
           parseExtraDPLines(src.text).forEach(r => {
             if (r.kind !== 'sec') return;
@@ -6885,6 +6886,11 @@
           });
         });
       });
+    });
+    // 効果で期間つきでかかった「セキュリティデジモン全てのDP±」
+    (practiceState.fieldEffects || []).forEach(f => {
+      if (f.kind !== 'secDP' || !isFieldEffectActive(f)) return;
+      if ((f.target === 'own') === (f.ownerIndex === defPi)) sum += f.amount;
     });
     return sum;
   }
@@ -6955,7 +6961,7 @@
     return true;
   }
   function fieldEffectAppliesToStack(effect, stack) {
-    if (effect.kind === 'restrict') return false; // 制限はDPに関係しない
+    if (effect.kind === 'restrict' || effect.kind === 'secDP') return false; // 制限・セキュリティデジモンのDPは場のデジモンに関係しない
     if (!isDigimonLikeStack(stack)) return false;
     if (!isFieldEffectActive(effect)) return false;
     const owner = findStackOwnerAndZone(stack);
@@ -7500,6 +7506,20 @@
     const st0 = engineStripNotes(e.text || '');
     const sre = /(?<!相手の)自分のセキュリティ(?:の)?(?:を)?(上|下)から(\d+)枚(?:を)?手札に加え(?!(?:る|て)?ことで)/g;
     let sm;
+    // 「相手は相手(自身)のセキュリティを上から1枚手札に加える」
+    const ore = /相手は、?(?:相手|自身)のセキュリティを上から(\d+)枚手札に加え/g;
+    while ((sm = ore.exec(st0))) {
+      const n = parseInt(sm[1], 10);
+      secTop.push({ label: `🛡 相手のセキュリティの上から${n}枚を相手の手札へ`, run: () => {
+        const op = practiceState.players[1 - e.ownerIndex];
+        if (!op.security.length) { showToast('相手のセキュリティがありません', true); return; }
+        snapshotPracticeState();
+        const nums = op.security.splice(0, n).map(cardEntryNum);
+        op.hand.push(...nums);
+        renderPracticeBoard();
+        showToast(`相手のセキュリティを上から${nums.length}枚、相手の手札に加えました`);
+      } });
+    }
     while ((sm = sre.exec(st0))) {
       const fromBottom = sm[1] === '下';
       const n = parseInt(sm[2], 10);
@@ -10861,8 +10881,35 @@
       if (!timings.length) return;
       if (p.raising) res.push(...collectStackTriggers(p.raising, pi, 'raising', timings, { event }));
       p.battle.forEach(s => res.push(...collectStackTriggers(s, pi, 'battle', timings, { event })));
+      // 表向きでセキュリティにあるカードの［セキュリティ］【相手のターン終了時】など
+      forEachSecStaticLine(p, (c, parsed, lineIndex) => {
+        const timing = timings.find(t => parsed.labels.includes(t));
+        if (!timing) return;
+        const entry = secStaticEntry(pi, c, parsed, lineIndex, { timing, event: event || timing });
+        if (!isOnceUsed(entry)) res.push(entry);
+      });
     });
     return res;
+  }
+  // 表向きのセキュリティのカードの［セキュリティ］行(そのカードが表向きでセキュリティにある間だけ働く)
+  function forEachSecStaticLine(p, fn) {
+    (p.security || []).forEach(entry => {
+      if (!cardEntryFaceUp(entry)) return;
+      const c = cardIndexByNumber.get(cardEntryNum(entry));
+      if (!c || !c.effect) return;
+      c.effect.split('\n').forEach((line, lineIndex) => {
+        const parsed = parseEffectLine(line);
+        if (!/セキュリティ/.test(parsed.prefix || '') || !parsed.labels.length) return;
+        fn(c, parsed, lineIndex);
+      });
+    });
+  }
+  function secStaticEntry(pi, c, parsed, lineIndex, extra) {
+    return Object.assign({
+      ownerIndex: pi, stackUid: null, lki: true, lkiUid: 'secstatic-' + c.number, secStatic: c.number,
+      cardNumber: c.number, cardName: c.name, field: 'effect', sourceLabel: 'セキュリティ(表向き)', lineIndex,
+      text: withSubLines(parsed.text, c.effect, lineIndex),
+    }, extra);
   }
 
   // ---------- フェーズ2: 「〜したとき」の推定・［ターン1回］・アタック/消滅/カウンター連携 ----------
@@ -11047,6 +11094,17 @@
       p.battle.forEach(s => res.push(...collectWhenTriggersFor(s, pi, 'battle', events)));
     });
     (extraHolders || []).forEach(h => res.push(...collectWhenTriggersFor(h.stack, h.pi, 'battle', events, { lki: true, uid: h.uid })));
+    // 表向きのセキュリティの［セキュリティ］【自分のターン】「〜がアタックしたとき」など
+    practiceState.players.forEach((p, pi) => forEachSecStaticLine(p, (c, parsed, lineIndex) => {
+      if (!engineTurnLabelOk(parsed.labels, pi)) return;
+      if (/離れるとき/.test(parsed.text)) return; // 「離れるとき、〜ことで、離れない」は collectLeavePreventers 側
+      const clauses = parseWhenClauses(parsed.text);
+      if (!clauses.length) return;
+      const hit = events.find(ev => clauses.some(cl => engineClauseMatches(cl, ev, pi, 'secstatic-' + c.number)));
+      if (!hit) return;
+      const entry = secStaticEntry(pi, c, parsed, lineIndex, { timing: parsed.labels[0], event: ENGINE_EVENT_LABEL[hit.kind] || hit.kind, eventLabel: ENGINE_EVENT_LABEL[hit.kind] || '', eventUid: hit.uid || null });
+      if (!isOnceUsed(entry)) res.push(entry);
+    }));
     return res;
   }
 
@@ -12023,6 +12081,24 @@
     }
     return list;
   }
+  // ≪リカバリー+N《デッキ》≫(自分のデッキの上からN枚をセキュリティの上に置く)
+  function recoveryFor(pi, n, cardName) {
+    const P = practiceState.players[pi];
+    if (!P.library.length) { showToast('デッキがありません', true); return; }
+    snapshotPracticeState();
+    let k = 0;
+    for (; k < n && P.library.length; k++) P.security.unshift(P.library.shift());
+    renderPracticeBoard();
+    showToast(`🛡「${cardName || ''}」の効果: ≪リカバリー+${n}≫${k < n ? `(デッキが足りず${k}枚)` : ''}`);
+  }
+  function recoveryHandlersFor(e) {
+    const text = engineStripNotes(e.text || '');
+    const ns = [...new Set([...text.matchAll(/≪リカバリー[+＋]([0-9０-９]+)(?:《デッキ》)?≫/g)].map(m => parseInt(m[1].replace(/[０-９]/g, d => String.fromCharCode(d.charCodeAt(0) - 0xFEE0)), 10)))];
+    return ns.map(n => ({ label: `🛡 ≪リカバリー+${n}≫(デッキの上から${n}枚をセキュリティの上へ)`, isRecovery: true, run: () => {
+      if (e.ownerIndex !== practiceState.viewingIndex) { showToast('この自動処理は、その効果を持つプレイヤーの視点に切り替えてから実行してください', true); return; }
+      recoveryFor(e.ownerIndex, n, e.cardName);
+    } }));
+  }
   // 効果のプレイヤーのメモリーを±Nする(+は自分側へ、-は相手側へ)
   function changeMemoryFor(pi, amount, cardName) {
     if (!practiceState || !amount) return;
@@ -12252,7 +12328,7 @@
         // 場から別の場所へ移す(進化元はルールでトラッシュへ)
         else if (/^(持ち主の)?手札に戻(す|せ)/.test(rest)) action = { type: 'move', dest: 'hand' };
         else if ((am = /^(?:好きな順番で)?(?:持ち主の)?デッキの(上|下)に戻(す|せ)/.exec(rest))) action = { type: 'move', dest: am[1] === '上' ? 'deckTop' : 'deckBottom' };
-        else if ((am = /^(?:持ち主の)?セキュリティの(上|下)に(表向きで)?置/.exec(rest))) action = { type: 'move', dest: am[1] === '上' ? 'secTop' : 'secBottom', faceUp: !!am[2] };
+        else if ((am = /^(?:持ち主の|自分の|相手の)?セキュリティの(上|下)に(表向きで|裏向きで)?置/.exec(rest))) action = { type: 'move', dest: am[1] === '上' ? 'secTop' : 'secBottom', faceUp: am[2] === '表向きで' };
         else if (/^破棄(する|でき)/.test(rest)) action = { type: 'trash' };
         if (!action) continue;
         if (action.type === 'dp' || action.type === 'rest') {
@@ -14856,7 +14932,7 @@
       } });
     }
     // 相手のセキュリティを上からN枚破棄する
-    const sre = /相手のセキュリティを上から(\d+)枚破棄(する|できる|し)/g;
+    const sre = /相手(?:は、?自身)?のセキュリティを上から(\d+)枚破棄(する|できる|し)/g;
     while ((m = sre.exec(t))) {
       if (!notCost(m.index, m[0].length - m[2].length)) continue;
       const n0 = parseInt(m[1], 10);
@@ -15718,6 +15794,54 @@
     return out;
   }
 
+  // 🛡「このターンの間、相手のデジモン1体と相手のセキュリティデジモン全てのDPを-3000する」「次の相手のターン終了時まで、自分のセキュリティデジモン全てのDPを+7000する」
+  // 「自分のターン終了まで、相手のデジモンとセキュリティデジモン全てをDP-5000」: セキュリティデジモンの分は期間つきのフィールド効果として積む
+  function securityDigimonDPHandlersFor(e, holderStack) {
+    if (!practiceState) return [];
+    const t = engineStripNotes(e.text || '').replace(/[＋]/g, '+').replace(/[－]/g, '-');
+    const re = /((?:次の)?(?:相手の|自分の)?ターン終了時?まで|このターンの間|このターン中)、(?:([^、。]{1,40}?)ごとに、)?(相手|自分)の(デジモン1体と、?|デジモンと)?(?:相手の|自分の)?セキュリティデジモン全て(?:を|の|は)?(?:DPを|DP)([+\-]\d+)/g;
+    const out = [];
+    let m;
+    while ((m = re.exec(t))) {
+      const durPh = m[1], per = m[2] ? cleanPerPhrase(m[2]) : null, side = m[3], withDm = m[4] || '', amount0 = parseInt(m[5], 10);
+      const one = /1体/.test(withDm), allDm = !!withDm && !one;
+      const sideJa = side === '相手' ? '相手' : '自分';
+      out.push({ label: `🛡 ${per ? per + 'ごとに、' : ''}${one ? `${sideJa}のデジモン1体と` : allDm ? `${sideJa}のデジモンと` : ''}${sideJa}のセキュリティデジモン全てをDP${amount0 > 0 ? '+' : ''}${amount0}(${durPh})`, run: () => {
+        if (e.ownerIndex !== practiceState.viewingIndex) { showToast('この自動処理は、その効果を持つプレイヤーの視点に切り替えてから実行してください', true); return; }
+        const pi = e.ownerIndex;
+        let amount = amount0;
+        if (per) {
+          const k = countPerUnit(per, pi, holderStack, null);
+          if (k == null) showToast(`「${per}」を数えられませんでした。1つ分として処理します`, true);
+          else if (k <= 0) { showToast(`${per}が0なので、DPは変わりません`); return; }
+          else amount = amount0 * k;
+        }
+        const duration = durationFromPhrase(durPh);
+        const target = side === '自分' ? 'own' : 'opponent';
+        const pushFx = () => {
+          if (!practiceState.fieldEffects) practiceState.fieldEffects = [];
+          const base = { ownerIndex: pi, target, amount, duration, expireAtTurnCount: computeExpireAtTurnCount(duration, pi), refCardNumber: e.cardNumber, refCardName: e.cardName, refCheck: null, createdTurn: practiceState.turn.count };
+          practiceState.fieldEffects.push(Object.assign({ id: `fe-sec-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, kind: 'secDP' }, base));
+          if (allDm) practiceState.fieldEffects.push(Object.assign({ id: `fe-dm-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` }, base));
+        };
+        const msg = `🛡「${e.cardName}」の効果: ${allDm ? `${sideJa}のデジモンと` : ''}${sideJa}のセキュリティデジモン全てをDP${amount > 0 ? '+' : ''}${amount}(${DURATION_LABELS[duration] || durPh})`;
+        if (!one) { snapshotPracticeState(); pushFx(); renderPracticeBoard(); showToast(msg); return; }
+        const tpi = side === '自分' ? pi : 1 - pi;
+        const cands = battleStacksOf(tpi).filter(isDigimonLikeStack);
+        const finish = (sel) => {
+          snapshotPracticeState();
+          pushFx();
+          if (sel && sel[0]) runTargetAction({ action: { type: 'dp', amount, durPhrase: durPh } }, e, sel);
+          renderPracticeBoard();
+          showToast(msg);
+        };
+        if (!cands.length) { finish(null); return; }
+        startFieldPick({ title: `🛡 DP${amount > 0 ? '+' : ''}${amount}する${sideJa}のデジモンをタップ(セキュリティデジモンの分は自動でかかります)`, candidates: cands, max: 1, strict: true,
+          onDone: (sel) => finish(sel), onCancel: () => renderPracticeBoard() });
+      } });
+    }
+    return out;
+  }
   // 💪「相手のターン終了まで、このデジモンをDP+2000」「このターンの間、このデジモンのDPを+1000する」: 効果を持つデジモン自身のDP増減
   // (常在の【自分のターン】〜DP+や、キーワードといっしょの「≪X≫を得て、DP+」、進化時の自動処理は別の仕組みが扱う)
   function selfDPHandlersFor(e, holderStack) {
@@ -15977,7 +16101,7 @@
     if (e.deferred) return deferredHandlersFor(e);
     const extra = () => {
       const f = e.stackUid ? findStackByUid(e.stackUid) : null;
-      const list = [...chooseCountHandlersFor(e, holderOf(e, f)), ...tokenHandlersFor(e), ...tamerAsDigimonHandlersFor(e, holderOf(e, f)), ...tamerEvolveIntoSelfHandlersFor(e), ...mindLinkHandlersFor(e, holderOf(e, f)), ...linkEffectHandlersFor(e, holderOf(e, f)), ...selfDPHandlersFor(e, holderOf(e, f)), ...battleEffectHandlersFor(e, holderOf(e, f)), ...totalRemovalHandlersFor(e, holderOf(e, f)), ...appFusionHandlersFor(e), ...handOpenToSecurityHandlersFor(e, holderOf(e, f)), ...securityEvolveHandlersFor(e, holderOf(e, f)), ...securitySearchPlayHandlersFor(e), ...securitySearchToHandHandlersFor(e), ...totalCostPlayHandlersFor(e, holderOf(e, f)), ...sourcePlayHandlersFor(e, holderOf(e, f)), ...selfCardPlayHandlersFor(e), ...reductionCostHandlersFor(e), ...costHandlersFor(e, holderOf(e, f)), ...restrictHandlersFor(e), ...evolveFromZoneHandlersFor(e, f && f.stack), ...materialFromZoneHandlersFor(e, f && f.stack), ...playFromHandHandlersFor(e, holderOf(e, f)), ...toHandFromZoneHandlersFor(e, holderOf(e, f)), ...sourceMoveHandlersFor(e, holderOf(e, f)), ...simpleActionHandlersFor(e, holderOf(e, f)), ...effectMovementHandlersFor(e, holderOf(e, f))];
+      const list = [...chooseCountHandlersFor(e, holderOf(e, f)), ...tokenHandlersFor(e), ...tamerAsDigimonHandlersFor(e, holderOf(e, f)), ...tamerEvolveIntoSelfHandlersFor(e), ...mindLinkHandlersFor(e, holderOf(e, f)), ...linkEffectHandlersFor(e, holderOf(e, f)), ...selfDPHandlersFor(e, holderOf(e, f)), ...securityDigimonDPHandlersFor(e, holderOf(e, f)), ...battleEffectHandlersFor(e, holderOf(e, f)), ...totalRemovalHandlersFor(e, holderOf(e, f)), ...appFusionHandlersFor(e), ...handOpenToSecurityHandlersFor(e, holderOf(e, f)), ...securityEvolveHandlersFor(e, holderOf(e, f)), ...securitySearchPlayHandlersFor(e), ...securitySearchToHandHandlersFor(e), ...totalCostPlayHandlersFor(e, holderOf(e, f)), ...sourcePlayHandlersFor(e, holderOf(e, f)), ...selfCardPlayHandlersFor(e), ...reductionCostHandlersFor(e), ...costHandlersFor(e, holderOf(e, f)), ...restrictHandlersFor(e), ...evolveFromZoneHandlersFor(e, f && f.stack), ...materialFromZoneHandlersFor(e, f && f.stack), ...playFromHandHandlersFor(e, holderOf(e, f)), ...toHandFromZoneHandlersFor(e, holderOf(e, f)), ...sourceMoveHandlersFor(e, holderOf(e, f)), ...simpleActionHandlersFor(e, holderOf(e, f)), ...effectMovementHandlersFor(e, holderOf(e, f))];
       // 進化元効果・セキュリティ効果・消滅時などの「デッキの上からN枚オープン」(【効果】欄のものは基本の処理で出している)
       const rm = /(?<!相手の)デッキの上から(\d+)枚オープン/.exec(e.text || '');
       if (rm && e.timing !== 'ディレイ' && (!f || e.field !== 'effect')) {
@@ -15989,8 +16113,10 @@
       }
       return list;
     };
-    if (e.event === '破棄') { const ds = discardedSelfHandlersFor(e); if (ds.length) return [...ds, ...getEffectHandlersBase(e), ...extra()]; }
-    return [...getEffectHandlersBase(e), ...extra()];
+    // ≪リカバリー≫は、ほかのボタンがまとめて処理しない場合だけ、単独のボタンを足す
+    const withRecovery = (list) => (list.some(h => /リカバリー/.test(h.label || '')) ? list : [...list, ...recoveryHandlersFor(e)]);
+    if (e.event === '破棄') { const ds = discardedSelfHandlersFor(e); if (ds.length) return withRecovery([...ds, ...getEffectHandlersBase(e), ...extra()]); }
+    return withRecovery([...getEffectHandlersBase(e), ...extra()]);
   }
   function getEffectHandlersBase(e) {
     if (e.burst) {
@@ -16020,7 +16146,11 @@
     }
     const f = findStackByUid(e.stackUid);
     // 進化元効果・リンク効果・消滅時(場を離れた後)・手札の効果などでも、ドローだけは使えるようにする
-    if (!f || e.field !== 'effect') return [...securityCardHandlersFor(e), ...securitySelfHandlersFor(e), ...leftSelfMoveHandlersFor(e), ...keywordGrantHandlersFor(e, f && f.stack), ...effectGrantHandlersFor(e, f && f.stack), ...effectRefHandlersFor(e), ...targetHandlersFor(e, f && f.stack), ...retargetHandlersFor(e, f && f.stack), ...(f ? resistGrantHandlersFor(e, f.stack) : []), ...memoryHandlersFor(e), ...drawHandlersFor(e)];
+    if (!f && e.secStatic) {
+      const safe = (fn) => { try { return fn(); } catch (er) { return []; } };
+      return [...safe(() => selfCardPlayHandlersFor(e)), ...safe(() => playFromHandHandlersFor(e, null)), ...safe(() => evolveFromZoneHandlersFor(e, null)), ...targetHandlersFor(e, null), ...memoryHandlersFor(e), ...drawHandlersFor(e)];
+    }
+    if (!f || e.field !== 'effect') return [...securityCardHandlersFor(e), ...securityDigimonDPHandlersFor(e, null), ...securitySelfHandlersFor(e), ...leftSelfMoveHandlersFor(e), ...keywordGrantHandlersFor(e, f && f.stack), ...effectGrantHandlersFor(e, f && f.stack), ...effectRefHandlersFor(e), ...targetHandlersFor(e, f && f.stack), ...retargetHandlersFor(e, f && f.stack), ...(f ? resistGrantHandlersFor(e, f.stack) : []), ...memoryHandlersFor(e), ...drawHandlersFor(e)];
     const stack = f.stack;
     const line = e.text;
     const list = [];
@@ -19026,7 +19156,11 @@
       }
       // デュアルカードを使用した場合、アーツ進化またはディレイで場を離れるまでは
       // オプション扱い(デジモンとして数えない・下段グループ表示)にする。
-      self.battle.push({ cards: [handNumber], rested: false, enteredTurn: practiceState.turn.count, dualAsOption: isDualUse || undefined,
+      const under = pendingPlayUnder && pendingPlayUnder.num === handNumber && pendingPlayUnder.pi === practiceState.viewingIndex ? pendingPlayUnder.entries : [];
+      pendingPlayUnder = null;
+      const underNums = [];
+      under.forEach(en => { const i = self.security.indexOf(en); if (i >= 0) { self.security.splice(i, 1); underNums.push(cardEntryNum(en)); } });
+      self.battle.push({ cards: [...underNums, handNumber], rested: false, enteredTurn: practiceState.turn.count, dualAsOption: isDualUse || undefined,
         pendingEntry: { fromZone: opts && opts.source === 'ref' && opts.ref ? opts.ref.zone : (opts && opts.source) || 'hand', byEffect: opts && opts.effectName ? true : undefined } });
       // 効果で登場: その効果の「レスト状態で」「【登場時】効果は発揮しない」「進化できず」「≪速攻≫を得る」を付ける(効果のルートで出したときだけ)
       const postNotes = opts && opts.effectText ? applyEffectPlayPostRules(self.battle[self.battle.length - 1], opts.effectText, practiceState.viewingIndex) : [];
@@ -20219,6 +20353,8 @@
   // ---------- 常時のコスト軽減(代償なし) ----------
   // kind: 'evolve' | 'play' | 'use'。ctx: { pi, target(進化元スタック), source('hand'|'trash'|…) }
   // 返り値: [{ n, label, holds(true/null), scaling(注記|null), once(発揮記録用エントリ|null) }]
+  // 登場コストの軽減で「〜をこのカードの下に置くことで」を選んだとき、登場したスタックの下に入れるカード
+  let pendingPlayUnder = null;
   function collectCostReductions(kind, card, ctx) {
     const out = [];
     if (!card || !practiceState) return out;
@@ -20272,6 +20408,51 @@
           out.push({ n: nOf(m[3]), label: `「${name}」の効果`, holds: h, cond: m[2] || '', scaling, once: isOncePerTurnText(parsed.text) ? entry : null });
         }
       })));
+    }
+    // (1b) 表向きのセキュリティの［セキュリティ］【自分のターン】「自分のデジモンが〜に進化するとき、支払う進化コスト-N」(P-181)
+    if (practiceState.turn.playerIndex === pi) {
+      forEachSecStaticLine(practiceState.players[pi], (c, parsed, lineIndex) => {
+        if (!engineTurnLabelOk(parsed.labels, pi)) return;
+        const body = stripHead(parsed.text);
+        const entry = { ownerIndex: pi, lkiUid: 'secstatic-' + c.number, stackUid: null, cardNumber: c.number, field: 'effect', lineIndex, text: parsed.text };
+        if (isOnceUsed(entry)) return;
+        let m;
+        if (kind === 'evolve' && (m = /^(.*?)自分のデジモンが(?:(.+?)に)?進化するとき、(?:(.+?)なら、)?支払う進化コスト[-－](\d+)/.exec(body))) {
+          if (m[1] && ctx.target && !stackMatchesFilterText(ctx.target, m[1].replace(/の$/, ''), null)) return;
+          const dest = (m[2] || '').replace(/^手札の/, '');
+          if (dest && !revealCondMatches(card, dest.replace(/(デジモン)?カード$|デジモン$/, '') + (/(デジモン)?カード$|デジモン$/.test(dest) ? 'デジモンカード' : ''))) return;
+          const h = condOf(m[3], null);
+          if (h === false) return;
+          out.push({ n: nOf(m[4]), label: `「${c.name}」(セキュリティ)の効果`, holds: h, cond: m[3] || '', scaling: null, once: isOncePerTurnText(parsed.text) ? entry : null });
+        } else if (kind !== 'evolve' && (m = /^(?:自分の)?(?:手札の|手札から、?)?(.+?)(?:が|を)登場(?:する|させる)とき、(?:(.+?)なら、)?支払う(?:登場)?コスト[-－](\d+)/.exec(body))) {
+          if (!revealCondMatches(card, m[1].replace(/1枚$/, '').replace(/^自分の/, ''))) return;
+          const h = condOf(m[2], null);
+          if (h === false) return;
+          out.push({ n: nOf(m[3]), label: `「${c.name}」(セキュリティ)の効果`, holds: h, cond: m[2] || '', scaling: null, once: isOncePerTurnText(parsed.text) ? entry : null });
+        }
+      });
+    }
+    // (2a)「このカードが登場するとき、自分のセキュリティから、名称の異なる〜を持つ表向きのカード1枚ずつをこのカードの下に置くことで、置いたカード1枚ごとに、支払う登場コスト-4」(EX10-061)
+    if (kind !== 'evolve') pendingPlayUnder = null;
+    if (kind !== 'evolve') {
+      const sm = /このカードが登場するとき、自分のセキュリティから、名称の異なる(.+?)表向きのカード1枚ずつをこのカードの下に置くことで、置いたカード1枚ごとに、支払う(?:登場)?コスト[-－](\d+)/.exec(engineStripNotes(card.effect || ''));
+      if (sm) {
+        const cond = sm[1].replace(/の$/, '');
+        const P = practiceState.players[pi];
+        const names = new Set();
+        const picks = [];
+        P.security.forEach(en => {
+          if (!cardEntryFaceUp(en)) return;
+          const c = cardIndexByNumber.get(cardEntryNum(en));
+          if (!c || names.has(c.name) || revealCondMatches(c, cond + 'カード') === false) return;
+          names.add(c.name);
+          picks.push(en);
+        });
+        if (picks.length) {
+          out.push({ n: nOf(sm[2]) * picks.length, label: `このカードの効果(表向きのセキュリティ${picks.length}枚「${picks.map(en => (cardIndexByNumber.get(cardEntryNum(en)) || {}).name).join('」「')}」を下に置く)`, holds: null, cond: '',
+            scaling: null, onPick: () => { pendingPlayUnder = { num: card.number, entries: picks.slice(), pi }; } });
+        }
+      }
     }
     // (2) このカード自身の効果(「このカードが登場するとき、〜なら、支払う登場コスト-N」)
     const own = (card.effect || '').split('\n');
@@ -20364,7 +20545,7 @@
       return Object.assign({}, r0, {
         cost: Math.max(0, base - n), origCost: r0.origCost != null ? r0.origCost : base,
         reductionText: (warn ? '❓ ' : '➖ ') + [r0.ruleText, ...list.map(x => `${x.label} -${x.n}${x.cond ? `(${x.cond}なら)` : ''}`)].filter(Boolean).join('、') + (warn ? ' ※条件を確認' : ''),
-        onPick: () => list.forEach(x => x.once && markOnceUsed(x.once)),
+        onPick: () => list.forEach(x => { if (x.once) markOnceUsed(x.once); if (x.onPick) x.onPick(); }),
       });
     };
     routes.forEach(r0 => {
@@ -21151,6 +21332,40 @@
   // 消滅以外でバトルエリアを離れるとき(手札/デッキ/セキュリティに送る・破棄する)の確認。
   // ≪守護≫と「〜離れるとき、…ことで、離れない」系の効果を選べるようにする。条件(「相手の効果で」等)は判定しない。
   // onProceed: そのまま離れる / onPrevented: 離れないことになった
+  // 「特徴に「ローヤルベース」を持つ自分のデジモンがバトル以外でバトルエリアを離れるとき、そのデジモンをセキュリティの下に表向きで置ける」(BT19-053):
+  // 離れる代わりに、そのデジモン(一番上のカード)をセキュリティに置く。下のカードとリンクはトラッシュへ
+  function leaveRedirectActions(stack, done) {
+    const f = findStackOwnerAndZone(stack);
+    if (!f || f.zone !== 'battle' || !isDigimonLikeStack(stack)) return [];
+    const pi = practiceState.players.indexOf(f.player);
+    const top = getStackTopCard(stack);
+    const out = [];
+    f.player.battle.forEach(holder => getStackEffectSources(holder).forEach(src => src.text.split('\n').forEach(line => {
+      const parsed = parseEffectLine(line);
+      if (!lineAllowedInZone(parsed, 'battle')) return;
+      if (parsed.labels.length && !engineTurnLabelOk(parsed.labels, pi)) return;
+      const m = /(.*?)自分のデジモンがバトル以外でバトルエリアを離れるとき、そのデジモンをセキュリティの(上|下)に(表向きで|裏向きで)?置ける/.exec(engineStripNotes(parsed.text).replace(/^(【[^】]+】|[［\[][^］\]]*[］\]])+/, ''));
+      if (!m) return;
+      const subj = m[1].replace(/の$/, '');
+      if (subj && !cardMatchesSubject(top, { filters: parseSubjectFilters(subj), colors: parseSubjectColors(subj) })) return;
+      const onTop = m[2] === '上', faceUp = m[3] === '表向きで';
+      out.push({ label: `🛡 「${src.card.name}」の効果: 代わりにセキュリティの${m[2]}へ${faceUp ? '(表向き)' : ''}`, onClick: () => {
+        const o = findStackOwnerAndZone(stack);
+        if (!o) { done(); return; }
+        snapshotPracticeState();
+        const P = o.player;
+        o.player.battle.splice(o.index, 1);
+        stack.cards.slice(0, -1).forEach(en => P.trash.push(cardEntryNum(en)));
+        (stack.links || []).forEach(num => P.trash.push(num));
+        const en = faceUp ? { n: cardEntryNum(stack.cards[stack.cards.length - 1]), u: 1 } : cardEntryNum(stack.cards[stack.cards.length - 1]);
+        if (onTop) P.security.unshift(en); else P.security.push(en);
+        renderPracticeBoard();
+        showToast(`🛡「${top ? top.name : '?'}」をセキュリティの${m[2]}に${faceUp ? '表向きで' : ''}置きました`);
+        done();
+      } });
+    })));
+    return out;
+  }
   function checkLeaveBeforeMove(stack, onProceed, onPrevented, verb) {
     const ownerZone = findStackOwnerAndZone(stack);
     const prevented = onPrevented || (() => {});
@@ -21165,6 +21380,7 @@
       }
     }
     actions.push(...separationActions(stack, prevented));
+    actions.push(...leaveRedirectActions(stack, prevented));
     collectLeavePreventers(stack, 'leave').forEach(pv => {
       const cost = parseTopToSecurity(pv.text);
       const canPay = !cost || (pv.stackUid === ensureStackUid(stack) && stack.cards.length > cost.n);
@@ -22043,6 +22259,7 @@
         }
         // 「バトルエリアを離れるとき、…ことで、離れない」系(即時型)。条件・コストは手動で処理する。
         separationActions(stack, next).forEach(a => actions.push(a));
+        if (!battleContext) leaveRedirectActions(stack, next).forEach(a => actions.push(a));
         collectLeavePreventers(stack, battleContext ? 'battle' : 'destroy').forEach(pv => {
           const cost = parseTopToSecurity(pv.text);
           const canPay = !cost || (pv.stackUid === ensureStackUid(stack) && stack.cards.length > cost.n);
@@ -23221,7 +23438,7 @@
       const tail = effect.auto ? `「${effect.refCardName || '?'}」がいる間${effect.cond ? `・${effect.cond}` : ''}(場のカードから自動)` : `${durOf(effect.duration)}${effect.refCardName ? ` — ${effect.refCardName}` : ''}`;
       return `${restrictDescribe(effect)}(${tail})`;
     }
-    const targetLabel = effect.target === 'own' ? `「${ownerName}」の全デジモン` : `「${oppName}」の全デジモン`;
+    const targetLabel = (effect.target === 'own' ? `「${ownerName}」の` : `「${oppName}」の`) + (effect.kind === 'secDP' ? 'セキュリティデジモン全て' : '全デジモン');
     const amountLabel = `DP${effect.amount >= 0 ? '+' : ''}${effect.amount}`;
     const durationLabel = {
       thisTurn: 'このターンの間',
