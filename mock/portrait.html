@@ -43,6 +43,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .bd.tall{flex-direction:column;gap:0;height:38px}
 .field{flex:1;border:1px dashed var(--line);border-radius:8px;display:flex;flex-wrap:wrap;gap:10px 5px;padding:6px 5px 10px;align-content:flex-start;position:relative;min-width:0;min-height:calc(var(--cw) * 1.4 + 18px)}
 .opp .field{border-color:rgba(255,138,61,.35);min-height:calc(var(--cw) * .9 * 1.4 + 18px)}
+.sheet.atkbar:not(.on){display:none}
 .raise{width:46px;border:1px solid var(--own);border-radius:7px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:8.5px;font-weight:800;color:#9cf;aspect-ratio:63/88;position:relative}
 .opp .raise{border-color:var(--opp);color:#fb9}
 .raise .card{width:100%!important;border:0}
@@ -50,7 +51,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .opp .raise small{color:#fb9}
 /* card */
 .card{width:var(--cw);aspect-ratio:63/88;border-radius:5px;background:#1b2a48 center/cover no-repeat;border:1px solid #5d8be0;position:relative;flex:none;transition:transform .15s}
-.opp .card{width:calc(var(--cw) * .9);border-color:#e08a5d}
+.opp .card{width:var(--ocw, calc(var(--cw) * .9));border-color:#e08a5d}
 .card.rest{transform:rotate(90deg) scale(.82)}
 .card.sel{outline:2px solid var(--gold);box-shadow:0 0 14px var(--gold);z-index:3}
 .card.tgt{outline:2px dashed #7ef;animation:blink .8s infinite}
@@ -191,6 +192,22 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .fxc .two{display:flex;gap:6px;margin-top:6px}
 .fxc .two button{flex:1;height:38px;border-radius:9px;font-weight:800;font-size:12.5px}
 .fxc .more{font-size:10px;color:var(--mute);margin-top:6px}
+
+/* セキュリティ(表向きがあるとき): 枚数の下に小さな絵＋「表N」 */
+.secb{border:1px solid var(--line);border-radius:8px;background:rgba(15,28,55,.8);display:flex;flex-direction:column;align-items:center;padding:3px 2px;gap:2px}
+.opp .secb{border-color:rgba(255,138,61,.4)}
+.secb .n{font-size:11px;font-weight:800}
+.secb .ups{display:flex;gap:1px}
+.secb .ups i{width:13px;aspect-ratio:63/88;border-radius:2px;background:#1b2a48 center/cover;border:1px solid var(--gold)}
+.secb .up{font-size:8.5px;font-weight:900;color:#1a1204;background:var(--gold);border-radius:6px;padding:0 5px}
+.seclist{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.seclist div{width:70px;text-align:center;font-size:9.5px;color:var(--mute)}
+.seclist .card{width:70px;margin-bottom:3px}
+.seclist .card.down{background:repeating-linear-gradient(45deg,#1b2a48,#1b2a48 6px,#22355a 6px,#22355a 12px)!important}
+/* 相手の場を一時的に広げる */
+.xbtn{margin-left:auto;font-size:10px;font-weight:800;border:1px solid rgba(255,138,61,.5);color:#fb9;border-radius:7px;padding:2px 8px}
+.opp.expand{position:absolute;left:8px;right:8px;top:calc(env(safe-area-inset-top) + 40px);z-index:26;background:#1a0f08;box-shadow:0 10px 40px rgba(0,0,0,.8)}
+.opp.expand .field{--ocw:70px}
 </style>
 </head>
 <body>
@@ -207,9 +224,9 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
   </div>
   <div id="board">
     <div class="area opp">
-      <div class="hdr"><span class="tag">OPPONENT</span><span class="nm">青ミラージュ</span></div>
+      <div class="hdr"><span class="tag">OPPONENT</span><span class="nm">青ミラージュ</span><button class="xbtn" id="oppX">⤢ 拡大</button></div>
       <div class="row">
-        <div class="side"><div class="bd">✋5</div><div class="bd">🛡<span id="osec">5</span></div><div class="raise" id="oRaise"></div></div>
+        <div class="side"><div class="bd">✋5</div><div class="secb" id="osecB"></div><div class="raise" id="oRaise"></div></div>
         <div class="field" id="oppField"></div>
         <div class="side"><div class="bd tall"><small>山札</small>36</div><div class="bd tall"><small>トラッシュ</small><span id="otrash">2</span></div></div>
       </div>
@@ -222,7 +239,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     <div class="area own">
       <div class="hdr"><span class="tag">YOU</span><span class="nm">赤ハイブリッド</span></div>
       <div class="row" style="flex:1;align-items:stretch">
-        <div class="side"><div class="bd">🛡<span id="sec">5</span></div><div class="bd">🥚5</div><div class="raise" id="raise"></div></div>
+        <div class="side"><div class="secb" id="secB"></div><div class="bd">🥚5</div><div class="raise" id="raise"></div></div>
         <div class="field" id="ownField"></div>
         <div class="side"><div class="bd tall"><small>山札</small><span id="deck">33</span></div><div class="bd tall"><small>トラッシュ</small><span id="trash">4</span></div></div>
       </div>
@@ -246,7 +263,9 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
       <button>🏠 タブ・見出しを出す</button><button class="b4" style="color:#fbb">練習を終了</button>
     </div>
     <div class="lbl">【試作用】場のカードの数</div>
-    <div class="seg" id="crowdSeg"><button data-v="0" class="on">ふつう</button><button data-v="1">多め</button><button data-v="2">いっぱい</button></div>
+    <div class="seg" id="crowdSeg"><button data-v="0" class="on">ふつう</button><button data-v="1">多め</button><button data-v="2">いっぱい</button><button data-v="3">相手すごく多い</button></div>
+    <div class="lbl">【試作用】表向きのセキュリティ</div>
+    <div class="seg" id="upSeg"><button data-v="0" class="on">なし</button><button data-v="1">1枚</button><button data-v="3">3枚</button><button data-v="5">全部</button></div>
     <div class="lbl">【試作用】画面下の余白(下のバーに隠れるときに調整)</div>
     <div class="seg" id="padSeg"><button data-v="0" class="on">なし</button><button data-v="30">小</button><button data-v="60">中</button><button data-v="90">大</button></div>
   </div>
@@ -254,7 +273,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
   <div class="detail" id="detail"></div>
   <div class="toast" id="toast"></div>
   <div class="banner" id="banner">
-    <b>縦画面の試作その4</b>(動きはイメージ)<br>
+    <b>縦画面の試作その5</b>(動きはイメージ)<br>
     ・カードを押す → 上に行動メニュー。もう一度押すと下に要約パネル、そこの「詳細」で全文(横画面と同じ流れ)<br>・効果パネルは横画面と同じ形(▣で広げる/＿でしまう)<br>
     ・アグモンの「アタック」→ 相手のデジモンかプレイヤーを選ぶと、ブロック確認→バトル/セキュリティチェックまで流れます<br>
     ・手札の「アグモン(ST1-03)」を登場させると【登場時】効果が出ます<br>
@@ -278,9 +297,11 @@ const CROWD = [
           opp: [D('BT10-030', 'ティンカーモン', 3, 2000), D('BT1-028', 'エレキモン', 3, 3000, { rest: true }), D('BT2-030', 'メタルシードラモン', 6, 10000, { src: 3 }), T('BT14-084', '高石タケル'), T('BT3-093', '本宮大輔')] }),
   () => ({ own: [D('BT1-010', 'アグモン', 3, 2000, { src: 1 }), D('BT2-112', 'ブラックウォーグレイモン', 6, 12000, { src: 3 }), D('BT1-030', 'ゴマモン', 3, 3000), D('EX1-073', 'ムゲンドラモン', 6, 11000, { src: 4 }), D('BT5-007', 'アグモン', 3, 2000), T('BT1-085', '八神太一'), T('BT1-087', '高石タケル'), O('BT1-096', 'ヘルファイアー')],
           opp: [D('BT10-030', 'ティンカーモン', 3, 2000), D('BT1-028', 'エレキモン', 3, 3000, { rest: true }), D('BT2-030', 'メタルシードラモン', 6, 10000, { src: 3 }), D('BT1-063', 'セラフィモン', 6, 10000, { src: 2 }), D('ST2-02', 'ゴマモン', 3, 3000), T('BT14-084', '高石タケル'), T('BT3-093', '本宮大輔'), O('BT1-108', 'ホーンバスター')] }),
+  () => ({ own: [D('BT1-010', 'アグモン', 3, 2000, { src: 1 }), D('BT2-112', 'ブラックウォーグレイモン', 6, 12000, { src: 3 }), T('BT1-085', '八神太一')],
+          opp: [D('BT10-030', 'ティンカーモン', 3, 2000), D('BT1-028', 'エレキモン', 3, 3000, { rest: true }), D('BT2-030', 'メタルシードラモン', 6, 10000, { src: 3 }), D('BT1-063', 'セラフィモン', 6, 10000, { src: 2 }), D('ST2-02', 'ゴマモン', 3, 3000), D('BT1-030', 'ゴマモン', 3, 3000), D('BT5-007', 'アグモン', 3, 2000, { rest: true }), D('EX1-073', 'ムゲンドラモン', 6, 11000, { src: 4 }), D('BT1-009', 'モノドラモン', 3, 3000), T('BT14-084', '高石タケル'), T('BT3-093', '本宮大輔'), O('BT1-108', 'ホーンバスター')] }),
 ];
 const S = Object.assign({
-  phase: 3, mem: 2, turn: 3, sec: 5, osec: 5, trash: 4, otrash: 2, deck: 33,
+  phase: 3, mem: 2, turn: 3, sec: 5, osec: 5, up: 0, oup: 0, trash: 4, otrash: 2, deck: 33,
   raise: null, oRaise: D('BT4-005', 'ミサイモン', 2, null, { kind: 'egg' }),
   hand: [
     D('BT1-009', 'モノドラモン', 3, 3000, { cost: 3 }), D('BT4-019', 'ビクトリーグレイモン', 6, 12000, { cost: 12, evo: 3 }),
@@ -329,10 +350,12 @@ function render() {
   $('oppField').innerHTML = ''; S.opp.forEach((c, i) => $('oppField').appendChild(cardEl(c, 'opp', i)));
   $('ownField').innerHTML = ''; S.own.forEach((c, i) => $('ownField').appendChild(cardEl(c, 'own', i)));
   $('hand').innerHTML = ''; S.hand.forEach((c, i) => $('hand').appendChild(cardEl(c, 'hand', i)));
+  secBadge($('secB'), S.sec, S.up, 'own');
+  secBadge($('osecB'), S.osec, S.oup, 'opp');
   raiseHtml($('raise'), S.raise, '育成', 'raise');
   raiseHtml($('oRaise'), S.oRaise, '育成', 'oRaise');
   $('fxN').textContent = S.fx.length; $('fxBtn').classList.toggle('zero', !S.fx.length);
-  $('deck').textContent = S.deck; $('trash').textContent = S.trash; $('sec').textContent = S.sec; $('osec').textContent = S.osec; $('otrash').textContent = S.otrash;
+  $('deck').textContent = S.deck; $('trash').textContent = S.trash; $('otrash').textContent = S.otrash;
   document.querySelectorAll('.bub').forEach(b => b.remove());
   fit();
   if (S.sel && !S.pick) showBubble();
@@ -341,10 +364,29 @@ function render() {
 function fit() {
   const board = $('board');
   // 1列に4枚並ぶくらいまで(大きすぎると3枚目以降が見づらいため)
+  // 相手の場は最大2段: 1段に並べる枚数から相手のカードの幅を決める(大きく見たいときは「⤢拡大」)
+  const of = $('oppField');
+  const perRow = Math.max(4, Math.ceil(S.opp.length / 2));
+  const room = of.clientWidth - 10 - 5 * (perRow - 1);
   for (let w = 60; w >= 34; w -= 2) {
     document.documentElement.style.setProperty('--cw', w + 'px');
+    document.documentElement.style.setProperty('--ocw', Math.min(w * .9, Math.floor(room / perRow)) + 'px');
     if (board.scrollHeight <= board.clientHeight + 1) return;
   }
+}
+const UPCARDS = ['BT1-096', 'BT1-030', 'BT1-108', 'BT1-028', 'BT1-099'];
+function secBadge(el, n, up, side) {
+  up = Math.min(up || 0, n);
+  el.innerHTML = `<span class="n">🛡${n}</span>` + (up ? `<div class="ups">${UPCARDS.slice(0, Math.min(up, 2)).map(x => `<i style="background-image:url(${IMG(x)})"></i>`).join('')}</div><span class="up">表${up}</span>` : '');
+  el.onclick = (e) => { e.stopPropagation(); if (!up) { toast('表向きのセキュリティはありません'); return; } openSecList(n, up, side); };
+}
+function openSecList(n, up, side) {
+  const el = $('sum');
+  let h = '';
+  for (let k = 0; k < n; k++) h += k < up ? `<div><div class="card" style="background-image:url(${IMG(UPCARDS[k])})"></div>上から${k + 1}枚目</div>` : `<div><div class="card down"></div>裏向き</div>`;
+  el.innerHTML = `<div class="h"><h3>${side === 'own' ? '自分' : '相手'}のセキュリティ(表${up}/${n}枚)</h3><button class="sb" id="sumX" style="margin-left:auto">✕</button></div><div style="padding:0 10px 10px"><div class="seclist">${h}</div></div>`;
+  el.classList.add('on'); el.onclick = e => e.stopPropagation();
+  $('sumX').onclick = () => closeSum();
 }
 function list(side) { return side === 'own' ? S.own : side === 'opp' ? S.opp : side === 'hand' ? S.hand : side === 'raise' ? [S.raise] : [S.oRaise]; }
 function tapCard(side, i) {
@@ -532,6 +574,11 @@ $('crowdSeg').querySelectorAll('button').forEach(b => b.onclick = () => {
   $('crowdSeg').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
   Object.assign(S, CROWD[+b.dataset.v]()); S.sel = null; render();
 });
+$('upSeg').querySelectorAll('button').forEach(b => b.onclick = () => {
+  $('upSeg').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+  S.up = S.oup = +b.dataset.v; render();
+});
+$('oppX').onclick = (e) => { e.stopPropagation(); const o = document.querySelector('.opp'); const on = !o.classList.contains('expand'); o.classList.toggle('expand', on); $('oppX').textContent = on ? '✕ 戻す' : '⤢ 拡大'; };
 $('padSeg').querySelectorAll('button').forEach(b => b.onclick = () => {
   $('padSeg').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
   document.documentElement.style.setProperty('--padb', b.dataset.v + 'px');
