@@ -22,17 +22,19 @@ html,body{height:100%;background:#070b14;color:#dbe7ff;font-family:"Hiragino San
 @keyframes fxSpark{0%{transform:translate(0,0) scale(1);opacity:1}100%{transform:translate(var(--dx),var(--dy)) scale(.2);opacity:0}}
 .fx-float{font-family:'JetBrains Mono','SF Mono',Consolas,monospace;font-size:16px;font-weight:900;white-space:nowrap;color:#fff;text-shadow:0 0 12px rgba(255,255,255,.8);-webkit-text-stroke:1px rgba(0,0,0,.6);transform:translateX(-50%);animation:fxFloat 1.3s cubic-bezier(.2,.8,.3,1) forwards}
 @keyframes fxFloat{0%{transform:translate(-50%,10px) scale(.6);opacity:0}18%{transform:translate(-50%,-6px) scale(1.25);opacity:1}35%{transform:translate(-50%,-10px) scale(1);opacity:1}100%{transform:translate(-50%,-48px) scale(1);opacity:0}}
+.fx-float.evo{animation-name:fxFloatEvo}
+@keyframes fxFloatEvo{0%{transform:translate(-50%,10px) scale(.6);opacity:0}18%{transform:translate(-50%,-6px) scale(1.25);opacity:1}35%{transform:translate(-50%,calc(var(--rise) * .3)) scale(1);opacity:1}100%{transform:translate(-50%,var(--rise)) scale(1);opacity:0}}
 /* ---- 案A: 白い四角の列が、文字と一緒に下から上がる ---- */
 .fx-bars{overflow:visible;transform:translateX(-50%);animation:fxBarsBox 1.3s cubic-bezier(.2,.8,.3,1) forwards}
-@keyframes fxBarsBox{0%{transform:translate(-50%,10px);opacity:0}18%{transform:translate(-50%,-6px);opacity:1}35%{transform:translate(-50%,-10px);opacity:1}100%{transform:translate(-50%,-48px);opacity:0}}
+@keyframes fxBarsBox{0%{transform:translate(-50%,10px);opacity:0}18%{transform:translate(-50%,-6px);opacity:1}35%{transform:translate(-50%,calc(var(--rise) * .3));opacity:1}100%{transform:translate(-50%,var(--rise));opacity:0}}
 .fx-bars i{position:absolute;left:50%;height:5px;background:#fff;border-radius:1px;box-shadow:0 0 8px rgba(255,255,255,.9),0 0 14px rgba(var(--b-rgb),.6);opacity:0;animation:fxBar .9s ease-out forwards}
 @keyframes fxBar{0%{transform:translate(-50%,8px) scaleX(.3);opacity:0}25%{transform:translate(-50%,0) scaleX(1);opacity:1}100%{transform:translate(-50%,-14px) scaleX(.8);opacity:0}}
 /* ---- 案B: 文字でできた輪がぐるっと回る(少し斜めから見た輪) ---- */
 .fx-ring3d{}
 .fx-ring3d .rot{position:absolute;left:0;top:0;width:100%;height:100%;transform-style:preserve-3d;animation:fxRingSpin 1.3s cubic-bezier(.3,.6,.4,1) forwards}
-.fx-ring3d span{position:absolute;left:50%;top:50%;font-family:'JetBrains Mono','SF Mono',Consolas,monospace;font-weight:900;font-size:13px;color:#fff;text-shadow:0 0 8px rgba(255,255,255,.9),0 0 14px rgba(var(--b-rgb),.8);white-space:nowrap;backface-visibility:visible}
+.fx-ring3d span{position:absolute;left:50%;top:50%;font-family:'JetBrains Mono','SF Mono',Consolas,monospace;font-weight:900;font-size:11px;color:#fff;text-shadow:0 0 8px rgba(255,255,255,.9),0 0 14px rgba(var(--b-rgb),.8);white-space:nowrap;backface-visibility:visible}
 .fx-ring3d span.jp{font-family:"Hiragino Sans","Noto Sans JP",sans-serif;font-size:14px}
-@keyframes fxRingSpin{0%{transform:rotate(0deg) scale(.55);opacity:0}15%{opacity:1}75%{opacity:1}100%{transform:rotate(240deg) scale(1.15);opacity:0}}
+@keyframes fxRingSpin{0%{transform:rotate(0deg) scale(.6);opacity:0}15%{opacity:1}75%{opacity:1}100%{transform:rotate(240deg) scale(1.08);opacity:0}}
 /* ---- 操作 ---- */
 .ui{padding:12px 12px 20px}
 .ui h1{font-size:15px;color:#fff;margin-bottom:4px}
@@ -78,19 +80,24 @@ function spawn(cls, style, html, life) {
   return el;
 }
 function rect() { const c = $('card').getBoundingClientRect(), s = $('stage').getBoundingClientRect(); return { x: c.left - s.left, y: c.top - s.top, w: c.width, h: c.height }; }
-function base(r) {
+function base(r, opt) {
+  opt = opt || {};
   const pw = r.w * 0.9, ph = r.h * 2.3;
-  spawn('fx-pillar', { left: `${r.x + r.w / 2 - pw / 2}px`, top: `${r.y + r.h - ph}px`, width: `${pw}px`, height: `${ph}px` }, '', 900);
+  // 帯を出すときは、光の柱(だんだん細くなる白い光)は出さない
+  if (!opt.noPillar) spawn('fx-pillar', { left: `${r.x + r.w / 2 - pw / 2}px`, top: `${r.y + r.h - ph}px`, width: `${pw}px`, height: `${ph}px` }, '', 900);
   for (let i = 0; i < 12; i++) {
     const a = Math.random() * Math.PI * 2, d = r.w * 0.9 * (0.6 + Math.random() * 0.6);
     spawn('fx-spark', { left: `${r.x + r.w / 2}px`, top: `${r.y + r.h / 2}px`, '--dx': '0' }, '', 900).style.cssText += `--dx:${Math.cos(a) * d}px;--dy:${Math.sin(a) * d}px;`;
   }
-  spawn('fx-float', { left: `${r.x + r.w / 2}px`, top: `${r.y - 44}px` }, 'EVOLUTION', 1300);
+  // 「今のまま」はカードの上から。新しい案はカードの中央から上へ抜けていく
+  if (opt.fromCenter) { const t = spawn('fx-float evo', { left: `${r.x + r.w / 2}px`, top: `${r.y + r.h / 2 - 12}px` }, 'EVOLUTION', 1300); t.style.setProperty('--rise', `${-(r.h / 2 + 46)}px`); }
+  else spawn('fx-float', { left: `${r.x + r.w / 2}px`, top: `${r.y - 44}px` }, 'EVOLUTION', 1300);
 }
 // 案A: カードの下から、白い四角の列が文字と一緒に上がっていく(下ほど幅が広い=手前から奥へ)
 function bars(r) {
   // EVOLUTIONの文字(帯の根元)と同じ動きで上がる箱。帯は文字の上へ、上ほど細く並ぶ
-  const box = spawn('fx-bars', { left: `${r.x + r.w / 2}px`, top: `${r.y - 44}px`, width: '0', height: '0' }, '', 1400);
+  const box = spawn('fx-bars', { left: `${r.x + r.w / 2}px`, top: `${r.y + r.h / 2 - 12}px`, width: '0', height: '0' }, '', 1400);
+  box.style.setProperty('--rise', `${-(r.h / 2 + 46)}px`);
   const n = 8;
   for (let i = 0; i < n; i++) {
     const b = document.createElement('i');
@@ -102,10 +109,10 @@ function bars(r) {
 }
 // 案B: 文字でできた輪が、カードの周りを斜めから見た円でぐるっと回る
 function ring(r, name) {
-  const size = Math.hypot(r.w, r.h) + 34; // カード全体を囲む大きさ
+  const size = r.w * 1.25; // カードの上に重なるくらいの大きさ
   const box = spawn('fx-ring3d', { left: `${r.x + r.w / 2 - size / 2}px`, top: `${r.y + r.h / 2 - size / 2}px`, width: `${size}px`, height: `${size}px` }, '', 1300);
   const rot = document.createElement('div'); rot.className = 'rot'; box.appendChild(rot);
-  const text = ringMode === 'name' ? (name + ' ・ ').repeat(3) : 'EVOLUTION ・ EVOLUTION ・ ';
+  const text = ringMode === 'name' ? (name + ' ・ ').repeat(2) : 'EVOLUTION ・ EVOLUTION ・ ';
   const chars = [...text];
   const R = size / 2 - 6;
   chars.forEach((ch, i) => {
@@ -114,6 +121,7 @@ function ring(r, name) {
     s.textContent = ch;
     const ang = i / chars.length * 360;
     s.style.transform = `translate(-50%,-50%) rotate(${ang}deg) translateY(${-R}px)`;
+    s.style.fontSize = ringMode === 'name' ? '11px' : '10px';
     rot.appendChild(s);
   });
 }
@@ -130,7 +138,7 @@ function play(v) {
   card.style.backgroundImage = img(num);
   card.classList.remove('flash'); void card.offsetWidth; card.classList.add('flash');
   const r = rect();
-  base(r);
+  base(r, { noPillar: v === 'a' || v === 'c', fromCenter: v !== 'now' });
   if (v === 'a' || v === 'c') bars(r);
   if (v === 'b' || v === 'c') ring(r, name);
   // ゆっくり再生: 全部のアニメーションを引き延ばす
