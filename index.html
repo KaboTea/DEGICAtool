@@ -3785,7 +3785,7 @@
     body.pt-mode > nav.tabs .tab-btn[data-tab="db"] { display: none; }
     body.pt-mode #practiceBoardPanel.panel { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto auto minmax(0, 1fr); row-gap: 4px; padding: 0 0 env(safe-area-inset-bottom, 0px); }
     /* ターン・フェーズ・ボタンを1行に */
-    body.pt-mode #practiceBoardPanel .ls-hud { grid-column: 1; grid-row: 1; flex-direction: row; align-items: center; gap: 4px; padding: 4px 50px 0 8px; background: none; border: none; overflow: visible; }
+    body.pt-mode #practiceBoardPanel .ls-hud { grid-column: 1; grid-row: 1; flex-direction: row; align-items: center; gap: 4px; padding: 4px 8px 0 8px; background: none; border: none; overflow: visible; }
     body.pt-mode #practiceBoardPanel .ls-ver { display: none; }
     body.pt-mode #practiceBoardPanel .ls-hud-top { flex-direction: row; align-items: center; gap: 4px; }
     body.pt-mode #practiceBoardPanel #arenaTurnChip { display: flex; align-items: baseline; gap: 4px; font-size: 9px; padding: 4px 8px; }
@@ -3798,7 +3798,7 @@
     /* 効果パネルを開くボタン(⚡と件数)は、その行の右端 */
     body.pt-mode .ls-dock-toggle { display: block; }
     body.pt-mode:not(.ls-dock-open) .ls-dock-toggle, body.pt-mode.ls-dock-open .ls-dock-toggle {
-      display: grid; place-items: center; position: fixed; top: calc(var(--pt-head) + 4px); right: 8px; bottom: auto; left: auto; transform: none;
+      display: block; flex: none; position: relative; top: auto; right: auto; bottom: auto; left: auto; transform: none; text-align: center; line-height: 30px;
       width: 40px; height: 32px; min-height: 0; padding: 0; margin: 0; writing-mode: horizontal-tb; letter-spacing: 0; font-size: 0;
       border-radius: 8px; border: 1px solid rgba(251,191,36,0.6); background: rgba(13,22,42,0.92); color: var(--gold); box-shadow: none; z-index: 82;
     }
@@ -3879,11 +3879,21 @@
     body.pt-mode .detail-modal .modal:is(:has(.deck-list-item), :has(.rg-row)):not(:has(.detail-img-col)):not(:has(.cmp-wrap)) { margin: 0; height: calc(100% - var(--pt-head) - 8px); flex: none; border-radius: 16px 16px 0 0; }
     body.pt-mode .detail-modal .modal:is(:has(.deck-list-item), :has(.rg-row)):not(:has(.detail-img-col)):not(:has(.cmp-wrap)) .deck-list,
     body.pt-mode .detail-modal .modal:is(:has(.deck-list-item), :has(.rg-row)):not(:has(.detail-img-col)):not(:has(.cmp-wrap)) .rg-list { grid-template-columns: minmax(0, 1fr); }
-    body.pt-mode .detail-modal .modal:has(.cmp-wrap) { height: calc(100% - var(--pt-head) - 8px); }
-    body.pt-mode .cmp-wrap { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr) auto; grid-template-areas: "head" "bar" "list" "act"; }
-    body.pt-mode .cmp-wrap .cmp-bar { flex-direction: row; margin: 0 0 6px; padding: 0; border: none; }
-    body.pt-mode .cmp-wrap .cmp-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    body.pt-mode .cmp-wrap .cmp-actions { flex-direction: row; padding: 6px 0 0; border: none; }
+    /* カードを選ぶ画面: 中身の量に合わせた高さ(下から)。選んだ枚数は1行、ボタンは横いっぱいに大きく */
+    body.pt-mode .detail-modal .modal:has(.cmp-wrap) { height: auto; display: flex; flex-direction: column; padding-top: 10px; }
+    body.pt-mode .detail-modal .modal:has(.cmp-wrap) .detail-body { flex: 0 1 auto; min-height: 0; display: flex; }
+    body.pt-mode .cmp-wrap { display: flex; flex-direction: column; height: auto; max-height: 100%; min-height: 0; }
+    body.pt-mode .cmp-wrap .cmp-head .d-title { font-size: 13.5px; line-height: 1.35; padding-right: 110px; }
+    body.pt-mode .cmp-wrap .cmp-head .d-number { font-size: 11px; margin: 3px 0 6px; }
+    body.pt-mode .cmp-wrap .cmp-bar { flex-direction: row; align-items: center; margin: 0 0 6px; padding: 0; border: none; gap: 8px; }
+    body.pt-mode .cmp-wrap .cmp-count { text-align: left; font-size: 11px; }
+    body.pt-mode .cmp-wrap .cmp-count .cmp-cnt-l { display: inline; font-size: 11px; }
+    body.pt-mode .cmp-wrap .cmp-count b { font-size: 18px; }
+    body.pt-mode .cmp-wrap .cmp-bar .btn { padding: 5px 10px; font-size: 11px; }
+    body.pt-mode .cmp-wrap .cmp-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    body.pt-mode .cmp-wrap .cmp-actions { flex-direction: row; padding: 10px 0 0; margin: 0; border: none; gap: 8px; }
+    body.pt-mode .cmp-wrap .cmp-actions .btn { flex: 1; min-height: 46px; font-size: 13.5px; padding: 8px 6px; }
+    body.pt-mode .cmp-wrap .cmp-actions .btn.primary { flex: 1.6; }
     body.pt-mode .modal-backdrop:not(.detail-modal) .modal { max-height: calc(100dvh - 24px); }
     /* ---- デッキ構築の横画面(スマホ横): 細いタブ・左に一覧・中央に画像・下にボタン・検索は右から出す ---- */
     @media (orientation: landscape) and (max-height: 500px) {
@@ -3976,7 +3986,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.98.1</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.98.2</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -6126,7 +6136,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.98.1`);
+    log(`DigiCA Tool build v0.98.2`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -16838,6 +16848,12 @@
     const pt = boardOn && !lsForce && ptMediaMatches();
     const on = boardOn && (lsMediaMatches() || rot || pt);
     document.body.classList.toggle('pt-mode', on && pt);
+    // 縦画面: 効果パネルを開く⚡ボタンは、上の行(ボタンの並び)の中に置く(画面に固定すると端末によって見えないことがあるため)
+    {
+      const tg = document.getElementById('lsDockToggle'), hud = document.getElementById('lsHud');
+      const want = on && pt ? hud : document.body;
+      if (tg && want && tg.parentNode !== want) want.appendChild(tg);
+    }
     document.documentElement.classList.toggle('ls-rot', rot);
     document.documentElement.classList.toggle('ls-on', on);
     document.documentElement.classList.toggle('ls-rot-rev', rot && lsForceRev);
@@ -20523,7 +20539,8 @@
     const out = [];
     let base = 0;
     t.split('。').forEach(sent => {
-      const re = /(場合|なら)、/g;
+      // 「〜なら、」「〜場合、」に加えて「青の自分のテイマーがいるとき、」のような状態の「とき」も条件として読む(「〜したとき」の誘発は含まない)
+      const re = /(場合|なら|(?<=(?:いる|ある|いない|ない))とき)、/g;
       let m;
       while ((m = re.exec(sent))) {
         const head = sent.slice(0, m.index);

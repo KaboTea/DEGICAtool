@@ -21,9 +21,12 @@ o.sum = await ev(`(() => { const p=document.getElementById('lsSumPanel'); if(!p)
 await ev(`(() => { lsSummary = null; lsRenderOverlay(); enterEvolveMode(1, practiceState.players[practiceState.viewingIndex].hand[1], false); })()`); await page.waitForTimeout(300);
 o.evoBanner = await ev(`(() => { const r=document.querySelector('.evolve-mode-banner.active').getBoundingClientRect(); return r.width > innerWidth - 20 && r.height < 80; })()`);
 await ev(`document.getElementById('evolveModeCancel').click()`); await page.waitForTimeout(200);
+// 効果パネルを開く⚡は上の行の中(画面に固定しない)
+o.toggleInHud = await ev(`document.getElementById('lsDockToggle').parentNode.id === 'lsHud' && document.getElementById('lsDockToggle').getBoundingClientRect().width > 20`);
 // 横画面・PCでは縦画面用にならない
 await page.setViewportSize({ width: 844, height: 390 }); await page.waitForTimeout(500);
 o.landscape = await ev(`document.body.classList.contains('ls-mode') && !document.body.classList.contains('pt-mode')`);
+o.toggleBack = await ev(`document.getElementById('lsDockToggle').parentNode === document.body`);
 await page.setViewportSize({ width: 1280, height: 800 }); await page.waitForTimeout(500);
 o.pc = await ev(`!document.body.classList.contains('ls-mode') && !document.body.classList.contains('pt-mode')`);
 const ng = Object.entries(o).filter(([k, x]) => x !== true).map(([k]) => k);
