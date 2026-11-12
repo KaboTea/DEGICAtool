@@ -143,6 +143,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .pickmsg{position:absolute;left:8px;right:8px;top:calc(env(safe-area-inset-top) + 40px);z-index:25;background:#0e2440;border:1px solid #7ef;color:#cff;border-radius:10px;padding:7px 10px;font-size:11.5px;display:none;align-items:center;gap:8px}
 .pickmsg.on{display:flex}
 .pickmsg button{margin-left:auto;height:28px;border:1px solid #d55;color:#fbb;border-radius:7px;padding:0 10px;font-size:11px}
+.pickmsg button{white-space:nowrap;flex:none}
 
 /* 横画面と同じ: 要約パネル(2回目のタップ) */
 .sum{position:absolute;left:6px;right:6px;bottom:calc(env(safe-area-inset-bottom) + var(--padb) + 6px);background:#0d1426;border:1px solid var(--line);border-left:4px solid #e0455a;border-radius:12px;z-index:28;box-shadow:0 -8px 26px rgba(0,0,0,.6);display:none;max-height:46%;overflow:auto}
@@ -259,7 +260,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     </div>
   </div>
 
-  <div class="pickmsg" id="pickMsg"><span id="pickTxt"></span><button id="pickPlayer" class="b2" style="border:0;color:#fff;margin-left:auto">プレイヤーへ</button><button id="pickCancel" style="margin-left:4px">やめる</button></div>
+  <div class="pickmsg" id="pickMsg"><span id="pickTxt"></span><button id="pickPlayer" class="b2" style="border:0;color:#fff;margin-left:auto">プレイヤー</button><button id="pickCancel" style="margin-left:4px;width:30px;padding:0">✕</button></div>
   <div class="scrim" id="scrim"></div>
   <div class="fxc" id="fxSheet"></div>
   <div class="sum" id="sum"></div>
