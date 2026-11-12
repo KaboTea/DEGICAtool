@@ -3764,6 +3764,118 @@
     body.ls-mode #practiceBoardPanel .status-badges-row { flex-wrap: nowrap; gap: 2px; width: auto; white-space: nowrap; }
     body.ls-mode #practiceBoardPanel .status-badges-row .kw-pill { min-width: 16px; height: 16px; padding: 0 2px; font-size: 10px; }
     body.ls-mode #practiceBoardPanel .status-badges-row .kw-pill-more { font-size: 8.5px; font-weight: 800; opacity: 0.8; padding: 0 3px; }
+
+    /* ======== スマホの縦画面(pt-mode): 横画面(ls-mode)の仕組みのまま、縦に並べ替える ========
+       上から: 見出しとタブ(1行) / ターン・フェーズ・ボタン / 相手の場 / メモリー+次へ / 自分の場(+手札)。
+       効果パネル・カードの選択・詳細などは、横画面と同じものを下側に重ねて出す。 */
+    body.ls-mode.pt-mode { --ls-l: 0px; --ls-r: 100vw; --pt-head: 38px; --ls-h: calc(100dvh - var(--pt-head)); }
+    body.pt-mode > header { display: flex; flex-wrap: nowrap; height: var(--pt-head); box-sizing: border-box; padding: 0 8px; gap: 6px; }
+    body.pt-mode > header .status-readout, body.pt-mode > header .header-actions { display: none; }
+    body.pt-mode > header .brand h1 { font-size: 13px; letter-spacing: 0.06em; }
+    body.pt-mode > nav.tabs { display: flex; position: absolute; top: 0; right: 4px; height: var(--pt-head); align-items: center; border: none; background: none; padding: 0; gap: 3px; z-index: 5; }
+    body.pt-mode > nav.tabs button { padding: 5px 8px; font-size: 11px; border-radius: 7px; border: 1px solid rgba(255,255,255,0.14); }
+    body.pt-mode > nav.tabs button.active { color: #fff; border-color: var(--self, #3b9cff); background: rgba(var(--self-rgb),0.2); }
+    body.pt-mode > nav.tabs .nav-gear { display: none; }
+    body.pt-mode > header #appVersion { display: none; }
+    body.pt-mode > nav.tabs .tab-btn { font-size: 0; }
+    body.pt-mode > nav.tabs .tab-btn::after { font-size: 11px; }
+    body.pt-mode > nav.tabs .tab-btn[data-tab="search"]::after { content: '🔍 検索'; }
+    body.pt-mode > nav.tabs .tab-btn[data-tab="deck"]::after { content: '🃏 デッキ'; }
+    body.pt-mode > nav.tabs .tab-btn[data-tab="practice"]::after { content: '🎮 練習'; }
+    body.pt-mode > nav.tabs .tab-btn[data-tab="db"] { display: none; }
+    body.pt-mode #practiceBoardPanel.panel { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto auto minmax(0, 1fr); row-gap: 4px; padding: 0 0 env(safe-area-inset-bottom, 0px); }
+    /* ターン・フェーズ・ボタンを1行に */
+    body.pt-mode #practiceBoardPanel .ls-hud { grid-column: 1; grid-row: 1; flex-direction: row; align-items: center; gap: 4px; padding: 4px 50px 0 8px; background: none; border: none; overflow: visible; }
+    body.pt-mode #practiceBoardPanel .ls-ver { display: none; }
+    body.pt-mode #practiceBoardPanel .ls-hud-top { flex-direction: row; align-items: center; gap: 4px; }
+    body.pt-mode #practiceBoardPanel #arenaTurnChip { display: flex; align-items: baseline; gap: 4px; font-size: 9px; padding: 4px 8px; }
+    body.pt-mode #practiceBoardPanel #arenaTurnChip b { display: inline; font-size: 14px; }
+    body.pt-mode #practiceBoardPanel #phasePips { flex-direction: row; gap: 2px; }
+    body.pt-mode #practiceBoardPanel #phasePips .phase-pip.current { font-size: 10px; padding: 5px 8px; }
+    body.pt-mode #practiceBoardPanel .ls-hud-btns { flex-direction: row; gap: 4px; }
+    body.pt-mode #practiceBoardPanel .ls-hud button.btn { width: 36px; min-height: 32px; height: 32px; padding: 0; }
+    body.pt-mode #practiceBoardPanel .ls-hud button.btn .bs { display: none; }
+    /* 効果パネルを開くボタン(⚡と件数)は、その行の右端 */
+    body.pt-mode .ls-dock-toggle { display: block; }
+    body.pt-mode:not(.ls-dock-open) .ls-dock-toggle, body.pt-mode.ls-dock-open .ls-dock-toggle {
+      display: grid; place-items: center; position: fixed; top: calc(var(--pt-head) + 4px); right: 8px; bottom: auto; left: auto; transform: none;
+      width: 40px; height: 32px; min-height: 0; padding: 0; margin: 0; writing-mode: horizontal-tb; letter-spacing: 0; font-size: 0;
+      border-radius: 8px; border: 1px solid rgba(251,191,36,0.6); background: rgba(13,22,42,0.92); color: var(--gold); box-shadow: none; z-index: 82;
+    }
+    body.pt-mode .ls-dock-toggle::before { content: '⚡'; font-size: 15px; }
+    body.pt-mode .ls-dock-toggle b { position: absolute; top: -6px; right: -6px; font-size: 10px; min-width: 16px; height: 16px; line-height: 16px; border-radius: 8px; background: var(--gold); color: #1a1204; text-align: center; }
+    body.pt-mode .ls-dock-toggle.fx-off { border-style: dashed; border-color: rgba(255,110,110,0.75); color: #ffb3b3; }
+    body.pt-mode .ls-dock-toggle.fx-off::before { content: '⚡OFF'; font-size: 9px; font-weight: 800; }
+    /* 効果パネル(開いたとき): 画面の下に重ねる。全文のときは上まで */
+    body.pt-mode:not(.ls-dock-open) #practiceBoardPanel .ls-dock { display: none; }
+    body.pt-mode.ls-dock-open #practiceBoardPanel .ls-dock,
+    body.pt-mode.ls-dock-open:not(.ls-dock-full) #practiceBoardPanel .ls-dock {
+      position: absolute; grid-column: 1; left: 6px; right: 6px; top: auto; bottom: calc(6px + env(safe-area-inset-bottom, 0px)); width: auto; min-height: 0; max-height: 62%; z-index: 80;
+    }
+    body.pt-mode.ls-dock-open.ls-dock-full #practiceBoardPanel .ls-dock { top: 44px; max-height: none; }
+    /* 相手の場・メモリー・自分の場 */
+    body.pt-mode #practiceBoardPanel #oppMatBlock { grid-column: 1; grid-row: 2; margin: 0 6px; }
+    body.pt-mode #practiceBoardPanel .arena-hud { grid-column: 1; grid-row: 3; padding: 0 6px; }
+    body.pt-mode #practiceBoardPanel .turn-memory-row #practiceNextPhaseBtn { order: 2; min-height: 32px; font-size: 12px; padding: 4px 16px 4px 10px; }
+    body.pt-mode #practiceBoardPanel #memoryLine .ml-slot { height: 22px; font-size: 9.5px; }
+    body.pt-mode #practiceBoardPanel #selfMatBlock { grid-column: 1; grid-row: 4; margin: 0 6px 4px; min-height: 0; }
+    body.pt-mode #practiceBoardPanel { --ls-zc: 54px; }
+    body.pt-mode #practiceBoardPanel .mat-block { --ls-z: 0.62; --ls-zp: 0.5; }
+    body.pt-mode #practiceBoardPanel #oppMatBlock { --ls-z: 0.5; --ls-zp: 0.42; margin-top: 0; }
+    body.pt-mode #practiceBoardPanel #oppMatBlock .mat-row {
+      grid-template-columns: var(--ls-zc) minmax(0, 1fr) var(--ls-zc);
+      grid-template-areas: "security battle decktrash" "egg battle decktrash" "raising battle decktrash";
+      grid-template-rows: auto auto 1fr;
+    }
+    body.pt-mode #practiceBoardPanel #oppMatBlock .raising-sub-area { justify-self: stretch; max-width: var(--ls-zc); zoom: 1; display: flex; flex-direction: column; align-items: center; }
+    body.pt-mode #practiceBoardPanel #oppMatBlock .raising-sub-area .stack-tile { width: calc(var(--ls-zc) - 14px); margin-right: 0 !important; }
+    /* バトルエリア: デジモンの段(前)とテイマー/オプションの段(後ろ)。横スクロールせず折り返す */
+    body.pt-mode #practiceBoardPanel .battle-sub-area { overflow: visible; width: auto; }
+    body.pt-mode #practiceBoardPanel .mat-block .battle-groups-wrap,
+    body.pt-mode #practiceBoardPanel .mat-block.is-compact .battle-groups-wrap { flex-direction: column; flex-wrap: nowrap; row-gap: 4px; align-items: stretch; }
+    body.pt-mode #practiceBoardPanel .battle-top-group,
+    body.pt-mode #practiceBoardPanel .battle-bottom-group { flex-wrap: wrap; padding-top: 12px; row-gap: 6px; }
+    body.pt-mode #practiceBoardPanel #selfMatBlock .battle-sub-area { padding-bottom: 0; }
+    body.pt-mode #practiceBoardPanel #oppMatBlock .battle-groups-wrap { flex-direction: column-reverse; }
+    body.pt-mode #practiceBoardPanel .battle-top-group:not(:empty) + .battle-bottom-group:not(:empty) { border-top: 1px dashed rgba(216,184,93,0.4); }
+    body.pt-mode #practiceBoardPanel #oppMatBlock .battle-top-group:not(:empty) + .battle-bottom-group:not(:empty) { border-top: none; border-bottom: 1px dashed rgba(216,184,93,0.4); padding-bottom: 4px; }
+    /* 手札: 自分の場の下にいつも出しておく(横画面のような引き出しにしない) */
+    body.pt-mode #practiceBoardPanel .hand-row.hand-fan,
+    body.pt-mode:not(.ls-hand-up) #practiceBoardPanel .hand-row.hand-fan:not(.has-selection) {
+      position: relative; left: auto; right: auto; bottom: auto; transform: none !important; z-index: 40; margin: 4px 0 0; padding: 14px 4px 0; background: none; border-radius: 0;
+    }
+    body.pt-mode #practiceBoardPanel .ls-hand-tab { display: none; }
+    body.pt-mode #practiceBoardPanel #selfMatBlock > .arena-plate { order: -1; }
+    /* 2回目のタップの要約パネル: 下に横長で(横画面の右の要約と同じ中身) */
+    body.pt-mode #lsSumPanel { top: auto; bottom: calc(6px + env(safe-area-inset-bottom, 0px)); left: 6px; right: 6px !important; width: auto; max-height: 46%;
+      border: 1px solid rgba(120,170,255,0.5); border-radius: 12px; overflow: hidden; box-shadow: 0 -8px 28px rgba(0,0,0,0.6); }
+    body.pt-mode #lsSumPanel .ms-body { overflow-y: auto; }
+    /* 場のカードを選ぶ案内: 画面の上(ターンの行に重ねる)。ボタンは短く */
+    body.pt-mode #practiceBoardPanel .field-pick-banner { top: 2px; bottom: auto; left: 6px; right: 6px; padding: 4px 6px 4px 10px; }
+    body.pt-mode #practiceBoardPanel .field-pick-banner .fpb-btns { max-width: 55%; flex-wrap: wrap; justify-content: flex-end; overflow: visible; }
+    body.pt-mode #practiceBoardPanel .field-pick-banner .fpb-btns button { min-height: 34px; padding: 4px 10px; }
+    body.pt-mode #practiceBoardPanel .field-pick-banner .fpb-btns button.cancel { min-width: 36px; padding: 4px 0; }
+    body.pt-mode.field-picking .ls-dock-toggle { visibility: hidden; }
+    /* 効果パネルのボタンが4つ以上なら2列(代償のボタンは横いっぱい) */
+    body.pt-mode #practiceBoardPanel .ls-dock .ep-auto-wrap:has(> :nth-child(4)) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
+    body.pt-mode #practiceBoardPanel .ls-dock .ep-auto-wrap:has(> :nth-child(4)) > .k-cost { grid-column: 1 / -1; }
+    body.pt-mode #practiceBoardPanel .ls-dock .ep-auto-wrap:has(> :nth-child(4)) > .ep-btn { font-size: 10.5px; padding: 4px 7px; min-height: 36px; }
+    body.pt-mode .detail-modal .modal:is(:has(.deck-list-item), :has(.rg-row)):not(:has(.detail-img-col)):not(:has(.cmp-wrap)) { width: 100%; }
+    /* カードの詳細・一覧などは、下から出るシート(横幅いっぱい) */
+    body.pt-mode .modal-backdrop.detail-modal { justify-content: center; align-items: flex-end; }
+    body.pt-mode .detail-modal .modal, body.pt-mode .detail-modal .modal:has(.detail-img-col) {
+      width: 100%; max-width: none; height: auto; max-height: calc(100% - var(--pt-head) - 8px); margin: 0;
+      border-radius: 16px 16px 0 0; padding: 12px 14px calc(12px + env(safe-area-inset-bottom, 0px)); box-shadow: 0 -10px 30px rgba(0,0,0,0.6);
+    }
+    body.pt-mode .detail-modal .modal:is(:has(.deck-list-item), :has(.rg-row)):not(:has(.detail-img-col)):not(:has(.cmp-wrap)) { margin: 0; height: calc(100% - var(--pt-head) - 8px); flex: none; border-radius: 16px 16px 0 0; }
+    body.pt-mode .detail-modal .modal:is(:has(.deck-list-item), :has(.rg-row)):not(:has(.detail-img-col)):not(:has(.cmp-wrap)) .deck-list,
+    body.pt-mode .detail-modal .modal:is(:has(.deck-list-item), :has(.rg-row)):not(:has(.detail-img-col)):not(:has(.cmp-wrap)) .rg-list { grid-template-columns: minmax(0, 1fr); }
+    body.pt-mode .detail-modal .modal:has(.cmp-wrap) { height: calc(100% - var(--pt-head) - 8px); }
+    body.pt-mode .cmp-wrap { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr) auto; grid-template-areas: "head" "bar" "list" "act"; }
+    body.pt-mode .cmp-wrap .cmp-bar { flex-direction: row; margin: 0 0 6px; padding: 0; border: none; }
+    body.pt-mode .cmp-wrap .cmp-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    body.pt-mode .cmp-wrap .cmp-actions { flex-direction: row; padding: 6px 0 0; border: none; }
+    body.pt-mode .modal-backdrop:not(.detail-modal) .modal { max-height: calc(100dvh - 24px); }
     /* ---- デッキ構築の横画面(スマホ横): 細いタブ・左に一覧・中央に画像・下にボタン・検索は右から出す ---- */
     @media (orientation: landscape) and (max-height: 500px) {
       body.tab-deck header { display: none; }
@@ -3855,7 +3967,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.97.15</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.98.0</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -6005,7 +6117,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.97.15`);
+    log(`DigiCA Tool build v0.98.0`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -7152,6 +7264,8 @@
     if (zb[0]) zb[0].addEventListener('click', (e) => openDeckPopup(e));
     if (zb[1]) zb[1].addEventListener('click', () => openTrashListView());
     practiceBoardPanel.appendChild(panel);
+    // 縦画面: 画面の下に横長で出す(吹き出しはカードの上なので重ならない)
+    if (document.body.classList.contains('pt-mode')) return;
     // 自分の山札/トラッシュの列が見えていれば、その左に出す(列は隠さない)
     const cluster = document.getElementById('selfDeckTrashCluster');
     if (cluster && cluster.offsetWidth) {
@@ -12263,7 +12377,7 @@
     const done = onDone || (() => {});
     const buttons = [];
     if (includePlayer && side === attackState.defenderOwner && attackState.targetType !== 'player') {
-      buttons.push({ label: `🛡 相手プレイヤーへ(セキュリティ${side.security.length}枚)`, onClick: () => { retargetAttack('player'); done(); } });
+      buttons.push({ label: `🛡 相手プレイヤーへ(セキュリティ${side.security.length}枚)`, shortLabel: 'プレイヤー', onClick: () => { retargetAttack('player'); done(); } });
     }
     if (!cands.length && !buttons.length) { showToast('対象にできるデジモンがいません', true); done(); return; }
     startFieldPick({
@@ -16419,7 +16533,7 @@
     const panel = document.getElementById('effectPanel');
     if (!panel) return;
     // 横画面: 効果が出た/無くなったときに右の列の開閉を合わせる(描画の後で判定する)。アタックの帯とのつなぎ目も合わせる
-    Promise.resolve().then(() => { updateFxStackClasses(); lsUpdateDock(); if (attackState && attackBarState) renderAttackBar(); });
+    Promise.resolve().then(() => { updateFxStackClasses(); lsUpdateDock(); if (attackState && attackBarState) renderAttackBar(); ptFit(); });
     if (!practiceState || !effectPanelEnabled) { panel.hidden = true; return; }
     const q = getEffectQueue();
     // 保留処理の対象(この効果で登場/進化したデジモン)を見分けるため、処理を始めた時点の盤面を覚えておく
@@ -16687,11 +16801,34 @@
     lsMoved.push({ node, parent: node.parentNode, next: node.nextSibling });
     target.appendChild(node);
   }
+  // 縦画面: 場のカードを、見えている高さに収まる一番大きいサイズにする(1列に4枚くらいまで)
+  function ptFit() {
+    if (!document.body.classList.contains('pt-mode')) return;
+    const selfB = document.getElementById('selfMatBlock'), oppB = document.getElementById('oppMatBlock');
+    if (!selfB || !oppB) return;
+    const sBat = selfB.querySelector('.battle-sub-area'), hand = selfB.querySelector('.hand-row');
+    const oBat = oppB.querySelector('.battle-sub-area');
+    const bot = (el) => el ? el.getBoundingClientRect().bottom : 0;
+    const top = (el) => el ? el.getBoundingClientRect().top : 0;
+    // 自分のバトルエリアが手札にかからない・手札が画面からはみ出さない・相手のバトルエリアが相手の枠からはみ出さない
+    const fits = () => bot(sBat) <= top(hand) + 2 && bot(hand) <= bot(selfB) + 2 && bot(oBat) <= bot(oppB) + 2;
+    for (let z = 0.86; z >= 0.4; z -= 0.04) {
+      selfB.style.setProperty('--ls-z', z.toFixed(2));
+      oppB.style.setProperty('--ls-z', (z * 0.85).toFixed(2));
+      if (fits()) return;
+    }
+  }
+  // スマホの縦画面: 横画面と同じ仕組み(ls-mode)を使い、並べ方だけ縦用(pt-mode)にする
+  function ptMediaMatches() {
+    return window.matchMedia && window.matchMedia('(orientation: portrait) and (max-width: 560px)').matches;
+  }
   function lsUpdate() {
     const boardOn = !!practiceState && practiceBoardPanel.style.display !== 'none' && document.getElementById('tab-practice').style.display !== 'none';
     const portrait = window.innerHeight > window.innerWidth;
     const rot = boardOn && lsForce && portrait;
-    const on = boardOn && (lsMediaMatches() || rot);
+    const pt = boardOn && !lsForce && ptMediaMatches();
+    const on = boardOn && (lsMediaMatches() || rot || pt);
+    document.body.classList.toggle('pt-mode', on && pt);
     document.documentElement.classList.toggle('ls-rot', rot);
     document.documentElement.classList.toggle('ls-on', on);
     document.documentElement.classList.toggle('ls-rot-rev', rot && lsForceRev);
@@ -16700,6 +16837,8 @@
     if (on === lsActive) return;
     lsActive = on;
     document.body.classList.toggle('ls-mode', on);
+    if (!on) document.body.classList.remove('pt-mode');
+    if (!(on && pt)) ['selfMatBlock', 'oppMatBlock'].forEach(id => { const b = document.getElementById(id); if (b) b.style.removeProperty('--ls-z'); });
     if (on) {
       lsShowToolbarHint(rot);
       const top = document.getElementById('lsHudTop');
@@ -17745,7 +17884,9 @@
     };
     const canFinish = fp.canFinish ? fp.canFinish(fp.selected) : fp.selected.length >= 1;
     if (multi && canFinish) add(`✅ 決定(${fp.selected.length}体)`, 'primary', () => finishFieldPick());
-    (fp.buttons || []).forEach(bt => add(bt.label, bt.primary ? 'primary' : '', () => {
+    // 縦画面は横幅が狭いので、短い名前があればそちらを使う(例:「プレイヤー」「✕」)
+    const ptNarrow = document.body.classList.contains('pt-mode');
+    (fp.buttons || []).forEach(bt => add(ptNarrow && bt.shortLabel ? bt.shortLabel : bt.label, bt.primary ? 'primary' : '', () => {
       const sel = fp.selected.slice();
       fieldPickMode = null;
       bt.onClick(sel);
@@ -17758,7 +17899,7 @@
         renderPracticeBoard();
       });
     }
-    if (!fp.noCancel) add(fp.cancelLabel || 'キャンセル', 'cancel', () => cancelFieldPick());
+    if (!fp.noCancel) add(ptNarrow ? '✕' : (fp.cancelLabel || 'キャンセル'), 'cancel', () => cancelFieldPick());
     document.body.style.setProperty('--fpb-h', `${(banner.offsetHeight || 90) + 26}px`);
   }
   document.addEventListener('keydown', (e) => {
@@ -22049,12 +22190,14 @@
       noCancel: true,
       buttons: attackState.onlyTarget === 'digimon' ? [] : [noPlayer ? {
         label: `🛡 相手プレイヤーへ(🔒 アタックできない)`,
+        shortLabel: 'プレイヤー🔒',
         onClick: () => openDecisionUi(`「${stackLabel(attackState.attackerStack)}」は${noPlayer.replace(/^ロック: /, '')}(🔒)`, [
           { label: 'やめる(対象を選び直す)', primary: true, onClick: () => showAttackTargetStep() },
           { label: 'それでもプレイヤーへアタックする', onClick: () => toPlayer() },
         ]),
       } : {
         label: `🛡 相手プレイヤーへ(セキュリティ${attackState.defenderOwner.security.length}枚)`,
+        shortLabel: 'プレイヤー',
         primary: true,
         onClick: () => toPlayer(),
       }],
