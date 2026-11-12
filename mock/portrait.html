@@ -266,6 +266,10 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .apphead .tabs{margin-left:auto;display:flex;gap:3px}
 .apphead .tabs button{height:28px;padding:0 8px;border-radius:7px;border:1px solid var(--line);background:rgba(20,35,65,.6);font-size:11px;font-weight:700;color:#9fb3d9;white-space:nowrap}
 .apphead .tabs button.on{background:rgba(59,156,255,.2);border-color:var(--own);color:#fff}
+
+.fxc .multi.col2{display:grid;grid-template-columns:1fr 1fr;gap:5px}
+.fxc .multi.col2 button{font-size:10.5px;padding:4px 7px;min-height:40px}
+.fxc .multi.col2 button.kcost{grid-column:1 / -1}
 </style>
 </head>
 <body>
@@ -324,7 +328,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     <div class="lbl">【試作用】場のカードの数</div>
     <div class="seg" id="crowdSeg"><button data-v="0" class="on">ふつう</button><button data-v="1">多め</button><button data-v="2">いっぱい</button><button data-v="3">相手すごく多い</button></div>
     <div class="lbl">【試作用】効果パネルの例</div>
-    <div class="seg" id="fxSeg"><button data-v="many">ボタン多め</button><button data-v="multi">効果3つ待ち</button></div>
+    <div class="seg" id="fxSeg"><button data-v="many">ボタン多め</button><button data-v="many2">多め(2列)</button><button data-v="multi">効果3つ待ち</button></div>
     <div class="lbl">【試作用】表向きのセキュリティ</div>
     <div class="seg" id="upSeg"><button data-v="0" class="on">なし</button><button data-v="1">1枚</button><button data-v="3">3枚</button><button data-v="5">全部</button></div>
     <div class="lbl">【試作用】画面下の余白(下のバーに隠れるときに調整)</div>
@@ -622,7 +626,7 @@ function openFx() {
   el.innerHTML = `<div class="h"><span class="who">${cur.who}</span><span class="nm2">${cur.name}</span><span class="tm">${cur.timing}</span><div class="ic"><button id="fxBig">${fxBig ? '▭' : '▣'}</button><button id="fxMin">＿</button></div></div>
     <div class="tx">${cur.text}</div>
     ${cur.ng ? `<div style="font-size:10.5px;color:#f88;margin:-2px 0 6px">✕ 条件未達: ${cur.ng}</div>` : ''}
-    ${cur.btns ? `<div class="multi">${cur.btns.map((b, k) => `<button class="${b[1] || ''}" data-k="${k}">${b[0]}</button>`).join('')}</div>` : `<button class="auto" id="fxDo">${cur.btn}</button>`}
+    ${cur.btns ? `<div class="multi${S.col2 ? ' col2' : ''}">${cur.btns.map((b, k) => `<button class="${b[1] || ''}" data-k="${k}">${b[0]}</button>`).join('')}</div>` : `<button class="auto" id="fxDo">${cur.btn}</button>`}
     <div class="two"><button class="b3" id="fxSkip">発揮しない</button><button class="g" id="fxDone">✔ 処理完了</button></div>
     ${S.fx.length > 1 ? `<div class="more">ほかに${S.fx.length - 1}件待ち: ${S.fx.slice(1).map(f => f.name + f.timing).join(' / ')}</div>` : ''}`;
   $('fxBig').onclick = (e) => { e.stopPropagation(); fxBig = !fxBig; openFx(); };
@@ -696,7 +700,8 @@ $('upSeg').querySelectorAll('button').forEach(b => b.onclick = () => {
   S.up = S.oup = +b.dataset.v; render();
 });
 $('fxSeg').querySelectorAll('button').forEach(b => b.onclick = () => {
-  if (b.dataset.v === 'many') S.fx.unshift({ who: '自分', name: '純平&輝二&輝一', timing: '【メイン開始時】【登場時】',
+  S.col2 = b.dataset.v === 'many2';
+  if (/^many/.test(b.dataset.v)) S.fx.unshift({ who: '自分', name: '純平&輝二&輝一', timing: '【メイン開始時】【登場時】',
     text: '【自分のメインフェイズ開始時】【登場時】自分の手札/トラッシュから、特徴に「ハイブリッド体」を持つ色の異なるカード2枚までをこのテイマーの下に置ける。この効果で置いたなら、≪1ドロー≫。その後、このテイマーの下に特徴に「ハイブリッド体」を持つカードが4枚以上あるなら、メモリー+2。',
     ng: 'このテイマーの下に特徴に「ハイブリッド体」を持つカードが4枚以上ある',
     btns: [['💸 代償: 手札/トラッシュから2枚をこのテイマーの下へ', 'kcost'], ['📥 手札/トラッシュから2枚をこのテイマーの下へ'], ['🃏 1枚ドロー'], ['⚡ メモリー+2', 'ng'], ['🛡 ≪リカバリー+1≫(デッキの上から1枚をセキュリティの上へ)'], ['🎯 相手のデジモン1体を選んでDP-3000(このターン)']] });
