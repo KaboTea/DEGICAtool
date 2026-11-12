@@ -1,0 +1,23 @@
+// v0.97.15: 効果パネルのボタンを効果文の順に並べる(AD1-023) / 【セキュリティ】「このカードが表向きだったなら」は裏向きからなら出さない
+import { page, ev, errs, browser } from '../head.mjs';
+await page.waitForTimeout(1500);
+const o = {};
+o.order = await ev(`(() => { const pi=practiceState.viewingIndex; const P=practiceState.players[pi]; practiceState.turn.playerIndex=pi; P.battle=[{cards:['AD1-023']}];
+  const c=cardIndexByNumber.get('AD1-023'); const line=c.effect.split('\\n').find(l=>/登場時/.test(l));
+  const e={ownerIndex:pi, stackUid:ensureStackUid(P.battle[0]), cardNumber:'AD1-023', cardName:c.name, field:'effect', lineIndex:1, text:line, timing:'登場時', event:'登場'};
+  return effectHandlersWithConds(e).handlers.map(h=>h.label).join(' / '); })()`);
+const L = o.order.split(' / ');
+o.sorted = /トラッシュ/.test(L[0]) && /ドロー/.test(L[1]) && /メモリー/.test(L[2]);
+const dm = process.env.DM || '';
+o.face = await ev(`(() => { const c=[...cardIndexByNumber.values()].find(c=>/このカードが表向きだったなら/.test(c.security_effect||'')); if(!c) return 'nocard';
+  const pi=practiceState.viewingIndex; const line=c.security_effect.split('\\n').find(l=>/表向きだったなら/.test(l));
+  const e={ownerIndex:pi, stackUid:null, lki:true, lkiUid:'sec-x', cardNumber:c.number, cardName:c.name, field:'effect', lineIndex:0, text:line, timing:'セキュリティ', event:'セキュリティチェック'};
+  const O=practiceState.players[1-pi];
+  window.attackState = attackState; attackState = { secPending: { top: c.number, faceUp: false, resolve: null }, defenderOwner: practiceState.players[pi] };
+  const down = effectHandlersWithConds(e).handlers.filter(h=>!h.isCost).length;
+  attackState.secPending.faceUp = true;
+  const up = effectHandlersWithConds(e).handlers.filter(h=>/登場/.test(h.label)).length;
+  attackState = null; return down===0 && up>0 ? true : [down, up]; })()`);
+const ng = Object.entries(o).filter(([k, x]) => k !== 'order' && x !== true).map(([k]) => k);
+console.log(JSON.stringify(o));
+await browser.close(); console.log(ng.length ? ng : errs);

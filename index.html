@@ -3855,7 +3855,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.97.14</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.97.15</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -6005,7 +6005,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.97.14`);
+    log(`DigiCA Tool build v0.97.15`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -15191,7 +15191,32 @@
       const run0 = h.run;
       h.run = () => { run0(); if (!e.oneShotDone) e.oneShotDone = {}; e.oneShotDone[key] = true; const q = getEffectQueue(); if (q.current === e) renderEffectPanel(); };
     });
+    // 「このカードが表向きだったなら」を満たさない【セキュリティ】効果は、ボタン自体を出さない
+    handlers = handlers.filter(h => !/^このカードが(表|裏)向きだった$/.test(normalizeEffectCond(h.condNg || '') || ''));
+    // ボタンを効果文に書かれている順に並べる(代償ボタンは先頭のまま)
+    try {
+      const txt = engineStripNotes(e.text || '');
+      const pos = new Map(handlers.map((h, i) => [h, h.isCost ? -1 : labelPosInText(h.label, txt)]));
+      const idx = new Map(handlers.map((h, i) => [h, i]));
+      handlers = handlers.slice().sort((a, b) => (pos.get(a) - pos.get(b)) || (idx.get(a) - idx.get(b)));
+    } catch (err) { console.warn(err); }
     return { handlers, conds };
+  }
+  // ボタン名が効果文のどこに当たるか(ボタン名と効果文で一番長く重なる部分の位置)。見つからなければ最後
+  function labelPosInText(label, text) {
+    const L = String(label || '').replace(/^✔済\s*/, '').replace(/^[^\u3000-\u9fff\uff00-\uffefA-Za-z0-9「≪]+/u, '').replace(/\([^)]*\)$/, '');
+    const T = String(text || '').replace(/^(?:[【［\[][^】］\]]*[】］\]])+/, m => ' '.repeat(m.length));
+    for (let len = Math.min(10, L.length); len >= 2; len--) {
+      let best = Infinity;
+      for (let i = 0; i + len <= L.length; i++) {
+        const sub = L.slice(i, i + len);
+        if (/^[\sのをにがはでと、。]+$/.test(sub)) continue;
+        const k = T.indexOf(sub);
+        if (k >= 0 && k < best) best = k;
+      }
+      if (best < Infinity) return best;
+    }
+    return Infinity;
   }
   // ---------- v0.96: トークン(4-20) ----------
   // 効果でゲーム外から登場するカード。カードとして登録済みのもの(BT22-TOKEN 等)はそれを使い、
@@ -20313,6 +20338,16 @@
   function evalEffectCondition(cond, holder, pi, ctx) {
     const c = normalizeEffectCond(cond);
     if (!c) return null;
+    // 【セキュリティ】「このカードが表向きだったなら」: チェックしたときに表向きでセキュリティにあったか
+    {
+      const fm = /^このカードが(表|裏)向きだった$/.exec(c);
+      if (fm) {
+        const en = ctx && ctx.entry;
+        const pend = attackState && attackState.secPending;
+        if (!en || !pend || pend.top !== en.cardNumber || pend.faceUp == null) return null;
+        return fm[1] === '表' ? !!pend.faceUp : !pend.faceUp;
+      }
+    }
     const h = evalHistoryCondition(c, holder, ctx);
     if (h !== undefined) return h;
     // 「Aがあり、Bがいる」「Aがいて、Bがある」: 両方
@@ -20356,6 +20391,7 @@
           const hist = evalHistoryCondition(norm, holder, ctx);
           if (hist === true || hist === false) { pick = { raw, k, result: hist }; break; }
           if (hist === null) { pick = pick || { raw, k, result: null, dependent: true }; break; }
+          if (/^このカードが(表|裏)向きだった$/.test(norm)) { const fr = evalEffectCondition(raw, holder, pi, ctx); pick = { raw, k, result: fr === true || fr === false ? fr : null }; break; }
           if (EFFECT_COND_DEPENDENT_RE.test(norm)) { pick = pick || { raw, k, result: null, dependent: true }; break; }
           const r = evalEffectCondition(raw, holder, pi, ctx);
           if (r === true || r === false) { pick = { raw, k, result: r }; break; }
@@ -22598,7 +22634,7 @@
       }
       snapshotPracticeState();
       const entry = defOwner.security.shift();
-      pend = attackState.secPending = { top: cardEntryNum(entry), resolve: null };
+      pend = attackState.secPending = { top: cardEntryNum(entry), faceUp: cardEntryFaceUp(entry), resolve: null };
       isNewCheck = true;
       renderPracticeBoard(); // セキュリティの枚数を更新し、「セキュリティが減ったとき」を誘発させる
       if (!attackState || attackState.secPending !== pend) return;
