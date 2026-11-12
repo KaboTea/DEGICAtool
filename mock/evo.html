@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>進化の演出 試作</title>
+<style>
+:root{--b-rgb:239,68,68}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;background:#070b14;color:#dbe7ff;font-family:"Hiragino Sans","Noto Sans JP",sans-serif;overflow:hidden}
+.stage{position:relative;height:62vh;background:radial-gradient(100% 70% at 50% 60%,#13254a,#070b14);overflow:hidden;border-bottom:1px solid rgba(120,170,255,.2)}
+.field{position:absolute;left:50%;top:58%;transform:translate(-50%,-50%);width:86vw;max-width:420px;height:150px;border:1px dashed rgba(120,170,255,.3);border-radius:10px}
+.card{position:absolute;left:50%;top:58%;width:84px;aspect-ratio:63/88;transform:translate(-50%,-50%);border-radius:6px;background:#2a3a5c center/cover no-repeat;border:1px solid #5d8be0;box-shadow:0 4px 14px rgba(0,0,0,.5)}
+.card.flash{animation:fxEvolve .75s ease-out both}
+@keyframes fxEvolve{0%{filter:brightness(3) saturate(.4);transform:translate(-50%,-50%) scale(1.14)}40%{filter:brightness(1.8);transform:translate(-50%,-50%) scale(.97)}100%{filter:brightness(1);transform:translate(-50%,-50%) scale(1)}}
+#fx{position:absolute;inset:0;pointer-events:none}
+#fx>div{position:absolute}
+/* ---- 今の演出(そのまま) ---- */
+.fx-pillar{background:linear-gradient(180deg,transparent,rgba(255,255,255,.95) 45%,rgba(var(--b-rgb),.9) 70%,transparent);filter:blur(1px);mix-blend-mode:screen;animation:fxPillar .8s ease-out forwards;transform-origin:50% 100%}
+@keyframes fxPillar{0%{transform:scaleX(.2) scaleY(0);opacity:0}25%{transform:scaleX(1) scaleY(1);opacity:1}100%{transform:scaleX(.1) scaleY(1.1);opacity:0}}
+.fx-spark{width:6px;height:6px;border-radius:50%;background:#fff;box-shadow:0 0 10px rgba(var(--b-rgb),1);animation:fxSpark .8s ease-out forwards}
+@keyframes fxSpark{0%{transform:translate(0,0) scale(1);opacity:1}100%{transform:translate(var(--dx),var(--dy)) scale(.2);opacity:0}}
+.fx-float{font-family:'JetBrains Mono','SF Mono',Consolas,monospace;font-size:16px;font-weight:900;white-space:nowrap;color:#fff;text-shadow:0 0 12px rgba(255,255,255,.8);-webkit-text-stroke:1px rgba(0,0,0,.6);transform:translateX(-50%);animation:fxFloat 1.3s cubic-bezier(.2,.8,.3,1) forwards}
+@keyframes fxFloat{0%{transform:translate(-50%,10px) scale(.6);opacity:0}18%{transform:translate(-50%,-6px) scale(1.25);opacity:1}35%{transform:translate(-50%,-10px) scale(1);opacity:1}100%{transform:translate(-50%,-48px) scale(1);opacity:0}}
+/* ---- 案A: 白い四角の列が、文字と一緒に下から上がる ---- */
+.fx-bars{overflow:visible}
+.fx-bars i{position:absolute;left:50%;height:5px;background:#fff;border-radius:1px;box-shadow:0 0 8px rgba(255,255,255,.9),0 0 14px rgba(var(--b-rgb),.6);opacity:0;animation:fxBar 1.3s cubic-bezier(.2,.8,.3,1) forwards}
+@keyframes fxBar{0%{transform:translate(-50%,0) scaleX(.3);opacity:0}18%{opacity:1;transform:translate(-50%,calc(var(--rise) * .45)) scaleX(1)}35%{opacity:1;transform:translate(-50%,calc(var(--rise) * .6)) scaleX(.95)}100%{transform:translate(-50%,var(--rise)) scaleX(.6);opacity:0}}
+/* ---- 案B: 文字でできた輪がぐるっと回る(少し斜めから見た輪) ---- */
+.fx-ring3d{perspective:500px}
+.fx-ring3d .rot{position:absolute;left:0;top:0;width:100%;height:100%;transform-style:preserve-3d;animation:fxRingSpin 1.3s cubic-bezier(.3,.6,.4,1) forwards}
+.fx-ring3d span{position:absolute;left:50%;top:50%;font-family:'JetBrains Mono','SF Mono',Consolas,monospace;font-weight:900;font-size:13px;color:#fff;text-shadow:0 0 8px rgba(255,255,255,.9),0 0 14px rgba(var(--b-rgb),.8);white-space:nowrap;backface-visibility:visible}
+.fx-ring3d span.jp{font-family:"Hiragino Sans","Noto Sans JP",sans-serif;font-size:14px}
+@keyframes fxRingSpin{0%{transform:rotateX(68deg) rotateZ(0deg) scale(.4);opacity:0}15%{opacity:1}75%{opacity:1}100%{transform:rotateX(68deg) rotateZ(300deg) scale(1.35);opacity:0}}
+/* ---- 操作 ---- */
+.ui{padding:12px 12px 20px}
+.ui h1{font-size:15px;color:#fff;margin-bottom:4px}
+.ui p{font-size:11.5px;color:#9fb3d9;line-height:1.6;margin-bottom:10px}
+.btns{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.btns button{height:48px;border-radius:10px;border:1px solid rgba(120,170,255,.35);background:#14213d;color:#fff;font-size:14px;font-weight:800}
+.btns button.on{background:linear-gradient(180deg,#ffe08a,#fbbf24);color:#1a1204;border-color:transparent}
+.opts{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.opts button{flex:1;height:38px;border-radius:9px;border:1px solid rgba(120,170,255,.3);background:#101b33;color:#cfe;font-size:12px}
+.opts button.on{border-color:#3b9cff;color:#fff;background:rgba(59,156,255,.2)}
+</style>
+</head>
+<body>
+<div class="stage" id="stage">
+  <div class="field"></div>
+  <div class="card" id="card"></div>
+  <div id="fx"></div>
+</div>
+<div class="ui">
+  <h1>進化の演出 試作(押すと再生)</h1>
+  <p>大きさ・色・長さ(約1.3秒)・文字の場所は今のまま。足すものだけ変えています。</p>
+  <div class="btns">
+    <button data-v="now">今のまま</button>
+    <button data-v="a">A: 白い四角の列</button>
+    <button data-v="b">B: 文字の輪が回る</button>
+    <button data-v="c">C: AとBの両方</button>
+  </div>
+  <div class="opts" id="ringOpt"><button data-r="en" class="on">輪: EVOLUTION</button><button data-r="name">輪: 進化先の名前</button></div>
+  <div class="opts" id="speedOpt"><button data-s="1" class="on">ふつうの速さ</button><button data-s="3">ゆっくり(3倍)</button></div>
+</div>
+<script>
+const $ = id => document.getElementById(id);
+const CARDS = [['BT1-010', 'アグモン'], ['ST1-07', 'グレイモン']];
+let step = 0, ringMode = 'en', slow = 1;
+const img = n => `url(https://images.heroi.cc/cards/ja/${n}.webp)`;
+$('card').style.backgroundImage = img(CARDS[0][0]);
+function spawn(cls, style, html, life) {
+  const el = document.createElement('div'); el.className = cls;
+  Object.assign(el.style, style || {});
+  if (html) el.innerHTML = html;
+  $('fx').appendChild(el);
+  setTimeout(() => el.remove(), life * slow + 100);
+  return el;
+}
+function rect() { const c = $('card').getBoundingClientRect(), s = $('stage').getBoundingClientRect(); return { x: c.left - s.left, y: c.top - s.top, w: c.width, h: c.height }; }
+function base(r) {
+  const pw = r.w * 0.9, ph = r.h * 2.3;
+  spawn('fx-pillar', { left: `${r.x + r.w / 2 - pw / 2}px`, top: `${r.y + r.h - ph}px`, width: `${pw}px`, height: `${ph}px` }, '', 900);
+  for (let i = 0; i < 12; i++) {
+    const a = Math.random() * Math.PI * 2, d = r.w * 0.9 * (0.6 + Math.random() * 0.6);
+    spawn('fx-spark', { left: `${r.x + r.w / 2}px`, top: `${r.y + r.h / 2}px`, '--dx': '0' }, '', 900).style.cssText += `--dx:${Math.cos(a) * d}px;--dy:${Math.sin(a) * d}px;`;
+  }
+  spawn('fx-float', { left: `${r.x + r.w / 2}px`, top: `${r.y - 44}px` }, 'EVOLUTION', 1300);
+}
+// 案A: カードの下から、白い四角の列が文字と一緒に上がっていく(下ほど幅が広い=手前から奥へ)
+function bars(r) {
+  const box = spawn('fx-bars', { left: `${r.x + r.w / 2}px`, top: `${r.y + r.h}px`, width: '0', height: '0' }, '', 1500);
+  const n = 9;
+  for (let i = 0; i < n; i++) {
+    const b = document.createElement('i');
+    const w = r.w * (1.15 - i * 0.075);
+    b.style.width = `${w}px`;
+    b.style.top = `${-i * 12}px`;
+    b.style.setProperty('--rise', `${-(r.h + 20)}px`);
+    b.style.animationDelay = `${i * 30}ms`;
+    box.appendChild(b);
+  }
+}
+// 案B: 文字でできた輪が、カードの周りを斜めから見た円でぐるっと回る
+function ring(r, name) {
+  const size = r.w * 2.2;
+  const box = spawn('fx-ring3d', { left: `${r.x + r.w / 2 - size / 2}px`, top: `${r.y + r.h / 2 - size / 2}px`, width: `${size}px`, height: `${size}px` }, '', 1300);
+  const rot = document.createElement('div'); rot.className = 'rot'; box.appendChild(rot);
+  const text = ringMode === 'name' ? (name + ' ・ ').repeat(3) : 'EVOLUTION ・ EVOLUTION ・ ';
+  const chars = [...text];
+  const R = size / 2 - 6;
+  chars.forEach((ch, i) => {
+    const s = document.createElement('span');
+    if (/[^\x00-\x7f]/.test(ch)) s.className = 'jp';
+    s.textContent = ch;
+    const ang = i / chars.length * 360;
+    s.style.transform = `translate(-50%,-50%) rotate(${ang}deg) translateY(${-R}px)`;
+    rot.appendChild(s);
+  });
+}
+function play(v) {
+  document.querySelectorAll('.btns button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
+  $('fx').innerHTML = '';
+  document.querySelectorAll('#fx, .card').forEach(e => e.style.animationDuration = '');
+  document.documentElement.style.setProperty('--slow', slow);
+  $('stage').style.setProperty('animation-duration', '');
+  // 進化: 次のカードに切り替えて光らせる
+  step = 1 - step;
+  const [num, name] = CARDS[step];
+  const card = $('card');
+  card.style.backgroundImage = img(num);
+  card.classList.remove('flash'); void card.offsetWidth; card.classList.add('flash');
+  const r = rect();
+  base(r);
+  if (v === 'a' || v === 'c') bars(r);
+  if (v === 'b' || v === 'c') ring(r, name);
+  // ゆっくり再生: 全部のアニメーションを引き延ばす
+  if (slow !== 1) document.querySelectorAll('#fx *, #fx, .card').forEach(e => { const cs = getComputedStyle(e); if (cs.animationName !== 'none') { e.style.animationDuration = cs.animationDuration.split(',').map(d => parseFloat(d) * slow + 's').join(','); e.style.animationDelay = cs.animationDelay.split(',').map(d => parseFloat(d) * slow + 's').join(','); } });
+}
+document.querySelectorAll('.btns button').forEach(b => b.onclick = () => play(b.dataset.v));
+document.querySelectorAll('#ringOpt button').forEach(b => b.onclick = () => { ringMode = b.dataset.r; document.querySelectorAll('#ringOpt button').forEach(x => x.classList.toggle('on', x === b)); });
+document.querySelectorAll('#speedOpt button').forEach(b => b.onclick = () => { slow = +b.dataset.s; document.querySelectorAll('#speedOpt button').forEach(x => x.classList.toggle('on', x === b)); });
+$('stage').onclick = () => { const on = document.querySelector('.btns button.on'); play(on ? on.dataset.v : 'c'); };
+</script>
+</body>
+</html>
