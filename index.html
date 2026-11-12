@@ -3855,7 +3855,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.97.13</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.97.14</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -6005,7 +6005,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.97.13`);
+    log(`DigiCA Tool build v0.97.14`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -19969,7 +19969,7 @@
         }
         // 「AとB1枚ずつ」: それぞれ1枚ずつの手順にする
         if (m[4]) {
-          const parts = expandEachConds(cond) || cond.replace(/「[^」]*」/g, q => q.replace(/と/g, '\u0002')).split(/と(?=[「特名赤青黄緑黒紫白]|Lv)/).map(x => x.replace(/\u0002/g, 'と'));
+          const parts = expandEachConds(cond) || cond.replace(/「[^」]*」/g, q => q.replace(/と/g, '\u0002')).split(/(?<=カード)と|と(?=[「特名赤青黄緑黒紫白≪]|Lv|進化元効果|DP|コスト)/).map(x => x.replace(/\u0002/g, 'と'));
           if (parts.length > 1) { parts.forEach(pc => push(pc, n, m[3], m[6], m[7], m[5])); continue; }
         }
         push(cond, n, m[3], m[6], m[7], m[5], altOf);
