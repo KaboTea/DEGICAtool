@@ -2676,6 +2676,37 @@
     25% { transform: scaleX(1) scaleY(1); opacity: 1; }
     100% { transform: scaleX(0.1) scaleY(1.1); opacity: 0; }
   }
+  /* 進化: 文字(カード中央から上へ)+文字の上の白い帯+文字の輪 */
+  .fx-float.fx-evo-text { animation-name: fxEvoText; }
+  @keyframes fxEvoText {
+    0% { transform: translate(-50%, 10px) scale(0.6); opacity: 0; }
+    18% { transform: translate(-50%, -6px) scale(1.25); opacity: 1; }
+    35% { transform: translate(-50%, calc(var(--rise) * 0.3)) scale(1); opacity: 1; }
+    100% { transform: translate(-50%, var(--rise)) scale(1); opacity: 0; }
+  }
+  .fx-evo-bars { width: 0; height: 0; overflow: visible; animation: fxEvoBars 1.3s cubic-bezier(.2,.8,.3,1) forwards; }
+  @keyframes fxEvoBars {
+    0% { transform: translateY(10px); opacity: 0; }
+    18% { transform: translateY(-6px); opacity: 1; }
+    35% { transform: translateY(calc(var(--rise) * 0.3)); opacity: 1; }
+    100% { transform: translateY(var(--rise)); opacity: 0; }
+  }
+  .fx-evo-bars i { position: absolute; left: 0; height: 5px; background: #fff; border-radius: 1px; opacity: 0;
+    box-shadow: 0 0 8px rgba(255,255,255,0.9), 0 0 14px rgba(var(--b-rgb),0.6); animation: fxEvoBar .9s ease-out forwards; }
+  @keyframes fxEvoBar {
+    0% { transform: translate(-50%, 8px) scaleX(0.3); opacity: 0; }
+    25% { transform: translate(-50%, 0) scaleX(1); opacity: 1; }
+    100% { transform: translate(-50%, -14px) scaleX(0.8); opacity: 0; }
+  }
+  .fx-evo-ring { animation: fxEvoRing 1.3s cubic-bezier(.3,.6,.4,1) forwards; }
+  .fx-evo-ring span { position: absolute; left: 50%; top: 50%; font-family: 'JetBrains Mono', 'SF Mono', Consolas, monospace; font-weight: 900; color: #fff; white-space: nowrap;
+    text-shadow: 0 0 8px rgba(255,255,255,0.9), 0 0 14px rgba(var(--b-rgb),0.8); }
+  @keyframes fxEvoRing {
+    0% { transform: rotate(0deg) scale(0.6); opacity: 0; }
+    15% { opacity: 1; }
+    75% { opacity: 1; }
+    100% { transform: rotate(240deg) scale(1.08); opacity: 0; }
+  }
   .fx-spark {
     width: 6px; height: 6px;
     border-radius: 50%;
@@ -3986,7 +4017,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.98.2</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.98.3</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -6136,7 +6167,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.98.2`);
+    log(`DigiCA Tool build v0.98.3`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -10589,9 +10620,32 @@
     const r = fxViewRect(cur.rect);
     const pw = r.w * 0.9;
     const ph = r.h * 2.3;
-    fxSpawn('fx-pillar', { left: `${r.x + r.w / 2 - pw / 2}px`, top: `${r.y + r.h - ph}px`, width: `${pw}px`, height: `${ph}px` }, '', 900, rgb);
     fxBurst('fx-spark', r.x + r.w / 2, r.y + r.h / 2, 12, rgb, r.w * 0.9, 900);
-    fxSpawn('fx-float neutral', { left: `${r.x + r.w / 2}px`, top: `${r.y - 44}px` }, 'EVOLUTION', 1300);
+    // EVOLUTIONの文字はカードの中央から出て上へ抜ける。文字の上には白い四角の列(帯)が一緒に上がる
+    const rise = `${-(r.h / 2 + 46)}px`;
+    const cx = r.x + r.w / 2, cy = r.y + r.h / 2 - 12;
+    const t = fxSpawn('fx-float neutral fx-evo-text', { left: `${cx}px`, top: `${cy}px`, '--rise': rise }, 'EVOLUTION', 1300);
+    const bars = fxSpawn('fx-evo-bars', { left: `${cx}px`, top: `${cy}px`, '--rise': rise }, '', 1400, rgb);
+    for (let i = 0; i < 8; i++) {
+      const b = document.createElement('i');
+      b.style.width = `${r.w * (1.05 - i * 0.09)}px`;
+      b.style.top = `${-8 - i * 11}px`;
+      b.style.animationDelay = `${120 + i * 55}ms`;
+      bars.appendChild(b);
+    }
+    // カードに重なる大きさの「EVOLUTION」の文字の輪が、回りながら少し広がって消える
+    const size = r.w * 1.25;
+    const ring = fxSpawn('fx-evo-ring', { left: `${cx - size / 2}px`, top: `${r.y + r.h / 2 - size / 2}px`, width: `${size}px`, height: `${size}px` }, '', 1300, rgb);
+    const chars = [...'EVOLUTION ・ EVOLUTION ・ '];
+    const fs = Math.max(8, Math.round(r.w * 0.12));
+    chars.forEach((ch, i) => {
+      const sp = document.createElement('span');
+      sp.textContent = ch;
+      sp.style.fontSize = `${fs}px`;
+      sp.style.transform = `translate(-50%,-50%) rotate(${i / chars.length * 360}deg) translateY(${-(size / 2 - 6)}px)`;
+      ring.appendChild(sp);
+    });
+    void t; void pw; void ph;
   }
   function fxFloatAt(r, text, mood) {
     fxSpawn(`fx-float ${mood}`, { left: `${r.x + r.w / 2}px`, top: `${r.y - 48}px` }, escapeHtml(text), 1350);
