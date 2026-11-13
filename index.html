@@ -4017,7 +4017,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.98.3</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.98.4</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -6167,7 +6167,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.98.3`);
+    log(`DigiCA Tool build v0.98.4`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -6463,6 +6463,23 @@
   }
   let fieldGrantBusy = false;
   // stack が場の常在効果から受けているもの: [{ dp, kws, srcName }]
+  let fieldGrantCache = null;
+  // 場の全カードの「〜全てに≪〜≫を与える」系の行を読み解いた一覧(どのカードを対象にするかには関係しない部分)
+  function fieldGrantLines() {
+    const out = [];
+    practiceState.players.forEach((p, hpi) => {
+      const holders = [...p.battle.map(s => [s, 'battle']), ...(p.raising ? [[p.raising, 'raising']] : [])];
+      holders.forEach(([holder, zone]) => {
+        getStackEffectSources(holder).forEach(src => {
+          parseFieldStaticGrants(src.text).forEach(r => {
+            if (!lineAllowedInZone({ prefix: r.prefix }, zone) || !engineTurnLabelOk(r.labels, hpi)) return;
+            out.push({ holder, hpi, src, r });
+          });
+        });
+      });
+    });
+    return out;
+  }
   function fieldStaticGrantsOn(stack) {
     if (fieldGrantBusy || !practiceState || !stack) return [];
     const f = findStackOwnerAndZone(stack);
@@ -6473,12 +6490,13 @@
     fieldGrantBusy = true;
     const out = [];
     try {
-      practiceState.players.forEach((p, hpi) => {
-        const holders = [...p.battle.map(s => [s, 'battle']), ...(p.raising ? [[p.raising, 'raising']] : [])];
-        holders.forEach(([holder, zone]) => {
-          getStackEffectSources(holder).forEach(src => {
-            parseFieldStaticGrants(src.text).forEach(r => {
-              if (!lineAllowedInZone({ prefix: r.prefix }, zone) || !engineTurnLabelOk(r.labels, hpi)) return;
+      let lines;
+      if (fieldGrantCache && fieldGrantCache.stateRef === practiceState) lines = fieldGrantCache.list || (fieldGrantCache.list = fieldGrantLines());
+      else lines = fieldGrantLines();
+      lines.forEach(({ holder, hpi, src, r }) => {
+        {
+          {
+            {
               const sj = r.subj;
               if (sj.type === 'self') {
                 if (holder !== stack || top.category !== 'tamer') return;
@@ -6503,9 +6521,9 @@
               }
               if (r.cond) { let ok = null; try { ok = evalExtraCond(r.cond, holder, hpi); } catch (e) { ok = null; } if (ok !== true) return; }
               out.push({ dp: r.dp, kws: r.kws, srcName: src.card.name, text: r.text, holder });
-            });
-          });
-        });
+            }
+          }
+        }
       });
     } catch (e) { /* 読めなければ何も付けない */ } finally { fieldGrantBusy = false; }
     return out;
@@ -10764,7 +10782,14 @@
     };
   }
 
+  // 演出の位置記録と差分の演出は、描き直しの直後ではなく、画面に出す直前(ブラウザが配置を計算するとき)にまとめて行う。
+  // 描き直しの途中でカードの位置を測ると、そのたびに画面全体の配置計算が走って重くなるため。同じフレームの描き直しは1回にまとめる
+  let arenaFxRaf = 0;
   function arenaFxAfterRender() {
+    if (arenaFxRaf) return;
+    arenaFxRaf = requestAnimationFrame(() => { arenaFxRaf = 0; arenaFxAfterRenderNow(); });
+  }
+  function arenaFxAfterRenderNow() {
     const panel = practiceBoardPanel;
     if (!practiceState || panel.style.display === 'none' || panel.offsetParent === null) { fxPrev = null; return; }
     const snap = collectArenaSnapshot(panel);
@@ -16784,6 +16809,10 @@
 
     renderMemoryLine();
 
+    // 場のカードを描く間だけ、場の効果文の読み解き(「自分のデジモン全てに≪〜≫」など)を使い回す。
+    // 使い回すのは読み解いた一覧だけで、対象のカードの条件(色・Lv・レスト・ターン)は毎回確かめる
+    fieldGrantCache = { stateRef: practiceState, list: null };
+    try {
     renderPlayerZones(opp, {
       handClusterEl: document.getElementById('opponentHandCluster'),
       eggClusterEl: document.getElementById('opponentEggCluster'),
@@ -16805,6 +16834,7 @@
       isSelf: true,
       allowEvolveTarget: !!evolveMode || !!materialTargetMode || !!linkTargetMode || deckToTamerMode || !!artsEvolveMode,
     });
+    } finally { fieldGrantCache = null; }
 
     renderRaisingPhaseActions();
     renderUtilityActions();
@@ -16875,10 +16905,20 @@
     target.appendChild(node);
   }
   // 縦画面: 場のカードを、見えている高さに収まる一番大きいサイズにする(1列に4枚くらいまで)
+  // 画面の大きさ・場や手札の枚数が前回と同じなら、前回のカードの大きさをそのまま使う(測り直しは重いため)
+  let ptFitMemo = null;
   function ptFit() {
     if (!document.body.classList.contains('pt-mode')) return;
     const selfB = document.getElementById('selfMatBlock'), oppB = document.getElementById('oppMatBlock');
     if (!selfB || !oppB) return;
+    const sh = (p) => p.battle.map(st => (getStackTopCard(st) || {}).category === 'digimon' ? 'd' : 't').join('') + (p.raising ? 'r' : '');
+    const self = practiceState.players[practiceState.viewingIndex], opp = practiceState.players[1 - practiceState.viewingIndex];
+    const key = `${window.innerWidth}x${window.innerHeight}|${sh(self)}|${sh(opp)}|${self.hand.length}|${document.body.className}|${self.security.length}|${opp.security.length}`;
+    if (ptFitMemo && ptFitMemo.key === key) {
+      selfB.style.setProperty('--ls-z', ptFitMemo.z);
+      oppB.style.setProperty('--ls-z', ptFitMemo.oz);
+      return;
+    }
     const sBat = selfB.querySelector('.battle-sub-area'), hand = selfB.querySelector('.hand-row');
     const oBat = oppB.querySelector('.battle-sub-area');
     const bot = (el) => el ? el.getBoundingClientRect().bottom : 0;
@@ -16888,7 +16928,7 @@
     for (let z = 0.86; z >= 0.4; z -= 0.04) {
       selfB.style.setProperty('--ls-z', z.toFixed(2));
       oppB.style.setProperty('--ls-z', (z * 0.85).toFixed(2));
-      if (fits()) return;
+      if (fits()) { ptFitMemo = { key, z: z.toFixed(2), oz: (z * 0.85).toFixed(2) }; return; }
     }
   }
   // スマホの縦画面: 横画面と同じ仕組み(ls-mode)を使い、並べ方だけ縦用(pt-mode)にする
@@ -17376,16 +17416,28 @@
   }
   // 手札の枚数と表示幅から重なり具合を決める(少ないときは軽く重ね、多いときは
   // はみ出さないよう重なりを深くする)。
+  // 手札の重なり具合。画面の大きさ・表示モード・枚数が前回と同じなら、測り直さずに前回の値を使う
+  // (描き直しの途中で大きさを測ると、そのたびに画面全体の配置計算が走って重くなるため)
+  let handFanMemo = null;
   function layoutHandFan(handRow, cardsWrap, cardEls) {
     if (cardEls.length === 0) return;
+    const n = cardEls.length;
+    const zb = document.getElementById('selfMatBlock');
+    const key = `${window.innerWidth}x${window.innerHeight}|${document.body.className}|${handRow.className}|${n}|${zb ? zb.style.cssText : ''}`;
+    if (handFanMemo && handFanMemo.key === key && handFanMemo.row === handRow) {
+      cardEls.forEach((el, i) => { el.style.marginLeft = i === 0 ? '0px' : handFanMemo.ml; });
+      return;
+    }
     const cardW = cardEls[0].offsetWidth || 90;
     const style = getComputedStyle(handRow);
     const avail = handRow.clientWidth - parseFloat(style.paddingLeft || 0) - parseFloat(style.paddingRight || 0);
-    const n = cardEls.length;
     const relaxedStep = cardW * 0.62; // 余裕があるときの1枚あたりのずらし幅
     const fitStep = n > 1 ? (avail - cardW) / (n - 1) : cardW;
     const step = Math.max(cardW * 0.18, Math.min(relaxedStep, fitStep));
-    cardEls.forEach((el, i) => { el.style.marginLeft = i === 0 ? '0px' : `${Math.round(step - cardW)}px`; });
+    const ml = `${Math.round(step - cardW)}px`;
+    cardEls.forEach((el, i) => { el.style.marginLeft = i === 0 ? '0px' : ml; });
+    // 大きさが取れなかったとき(非表示中など)は覚えない
+    if (cardEls[0].offsetWidth && avail > 0) handFanMemo = { key, row: handRow, ml };
   }
   function positionHandActionBar(handRow, cardEl, bar) {
     if (!cardEl) return;
