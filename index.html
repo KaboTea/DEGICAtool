@@ -4017,7 +4017,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.98.4</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.98.5</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -6167,7 +6167,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.98.4`);
+    log(`DigiCA Tool build v0.98.5`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -7700,6 +7700,24 @@
         op.hand.push(...nums);
         renderPracticeBoard();
         showToast(`相手のセキュリティを上から${nums.length}枚、相手の手札に加えました`);
+      } });
+    }
+    // 「自分の裏向き(表向き)のセキュリティを上から1枚手札に加える」: 上から見て、その向きのカードだけを数える
+    const fre = /(?<!相手の)自分の(裏|表)向きのセキュリティ(?:の)?(?:を)?上から(\d+)枚(?:を)?手札に加え(?!(?:る|て)?ことで)/g;
+    while ((sm = fre.exec(st0))) {
+      const ud = sm[1], up = ud === '表', n = parseInt(sm[2], 10);
+      secTop.push({ label: `🛡 ${ud}向きのセキュリティを上から${n}枚手札へ`, run: () => {
+        if (e.ownerIndex !== practiceState.viewingIndex) { showToast('この自動処理は、その効果を持つプレイヤーの視点に切り替えてから実行してください', true); return; }
+        const p = practiceState.players[e.ownerIndex];
+        const idx = [];
+        p.security.forEach((en, i) => { if (idx.length < n && cardEntryFaceUp(en) === up) idx.push(i); });
+        if (!idx.length) { showToast(`${ud}向きのセキュリティがありません`, true); return; }
+        snapshotPracticeState();
+        const nums = idx.map(i => cardEntryNum(p.security[i]));
+        idx.slice().reverse().forEach(i => p.security.splice(i, 1));
+        p.hand.push(...nums);
+        renderPracticeBoard();
+        showToast(`${ud}向きのセキュリティを上から${nums.length}枚、手札に加えました`);
       } });
     }
     while ((sm = sre.exec(st0))) {
@@ -12163,7 +12181,7 @@
     if (!practiceState) return [];
     const t = engineStripNotes(e.text || '');
     const out = [];
-    const re = /(相手|自分)の裏向きのセキュリティを上から(\d+)枚表向きにする/g;
+    const re = /(相手|自分)の裏向きのセキュリティを上から(\d+)枚表向きにし(?:、|て|た|ます|)/g;
     let m;
     while ((m = re.exec(t))) {
       const side = m[1], n = parseInt(m[2], 10);
