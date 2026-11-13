@@ -4017,7 +4017,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.98.6</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.98.7</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -6167,7 +6167,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.98.6`);
+    log(`DigiCA Tool build v0.98.7`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -7825,9 +7825,12 @@
     const out = [];
     // 「このデジモンの進化元から、Lv.3とLv.4のデジモンカード1枚ずつを登場」は🧩(1枚ずつを数える方)だけ出す
     const eachSrc = parseSourcePlays(e.text).some(x => x.who === 'self' && x.parts.length > 1);
-    [...parsePlayFromZone(e.text), ...parsePlayFromLink(e.text)].forEach(pz => pz.zones.forEach(zone => {
-      if (zone === 'sources' && eachSrc) return;
-      const zoneLabel = ZONE_JA[zone];
+    // 手札/トラッシュなど複数の場所から選べる効果も、ボタンは1つ。選ぶ画面に全部の場所のカードを並べる
+    [...parsePlayFromZone(e.text), ...parsePlayFromLink(e.text)].forEach(pz => {
+      const zones = pz.zones.filter(z => !(z === 'sources' && eachSrc));
+      if (!zones.length) return;
+      const zone = zones[0];
+      const zoneLabel = zones.map(z => ZONE_JA[z]).join('/');
       out.push({
         label: `${ZONE_ICON[zone]} ${zoneLabel}から${pz.toRaising ? '育成エリアに' : ''}${pz.verb}(${PLAY_RULE_LABEL(pz.costRule)})`,
         run: () => {
@@ -7840,7 +7843,7 @@
             showToast(k == null ? `「${pz.costRule.per}」を数えられませんでした。コストは手で調整してください` : `${pz.costRule.per}が${k}なので、登場コスト-${pz.costRule.n * k}`);
           }
           const list = [];
-          listZoneCards(zone, p, holderStack).forEach(x => {
+          zones.flatMap(z => listZoneCards(z, p, holderStack).map(x => (zones.length > 1 && !x.tag ? Object.assign(x, { tag: `[${ZONE_JA[x.zone] || ZONE_JA[z]}]` }) : x))).forEach(x => {
             const c = cardIndexByNumber.get(x.num);
             if (!c || c.category === 'digi-egg') return;
             const canVerb = pz.verb === '使用' ? (c.category === 'option' || !!c.dual) : (c.category === 'digimon' || c.category === 'tamer');
@@ -7859,7 +7862,7 @@
                 if (cost && !canPayMemoryCost(e.ownerIndex, cost)) { showToast('メモリーが上限(10)に達するため、このコストでは登場できません', true); return; }
                 snapshotPracticeState();
                 const [num] = takeZoneCards([pick]);
-                p.raising = { cards: [num], rested: false, enteredTurn: practiceState.turn.count, pendingEntry: { fromZone: zone, byEffect: true } };
+                p.raising = { cards: [num], rested: false, enteredTurn: practiceState.turn.count, pendingEntry: { fromZone: pick.zone, byEffect: true } };
                 if (cost) payMemory(e.ownerIndex, cost);
                 cardDetailModal.classList.remove('open');
                 renderPracticeBoard();
@@ -7872,7 +7875,7 @@
             pz.verb === '使用' ? '⚡使用' : '📥登場');
         },
       });
-    }));
+    });
     return out;
   }
 
@@ -7881,39 +7884,44 @@
     const out = [];
     parseEvolveFromZone(e.text).forEach(ev => {
       const ruleLabel = ev.costRule && ev.costRule.type !== 'normal' ? `(${EVOLVE_COST_RULE_LABEL(ev.costRule).replace(/で$|に$/, '')})` : '';
-      // 手札/トラッシュの両方から選べる効果は、場所ごとにボタンを分ける
-      (ev.jogress ? ['hand'] : ev.zones).forEach(zone => {
-        const zoneLabel = zone === 'trash' ? 'トラッシュ' : '手札';
-        out.push({
-          label: ev.jogress ? `🧬 手札の${ev.cond}にジョグレス進化` : `🧬 ${zoneLabel}から進化${ruleLabel}`,
-          run: () => {
-            if (e.ownerIndex !== practiceState.viewingIndex) { showToast('この自動処理は、その効果を持つプレイヤーの視点に切り替えてから実行してください', true); return; }
-            const p = practiceState.players[e.ownerIndex];
-            const list = [];
-            (zone === 'trash' ? p.trash : p.hand).forEach((entry, idx) => {
-              const num = cardEntryNum(entry);
-              const c = cardIndexByNumber.get(num);
-              if (c && c.category === 'digimon') list.push({ zone, idx, num, card: c, ok: evolveCondMatches(c, ev.cond, e.cardNumber) });
-            });
-            const go = (pick) => {
-              if (ev.jogress) { enterMultiEvolveMode(pick.idx, pick.num, 'jogress'); return; }
-              const own = [...p.battle, ...(p.raising ? [p.raising] : [])].filter(st => isDigimonLikeStack(st) || (/テイマー/.test(ev.subj) && (getStackTopCard(st) || {}).category === 'tamer'));
-              let allowed = null;
-              let fixed = null;
-              if (ev.who === 'self' && holderStack && findStackOwnerAndZone(holderStack)) fixed = holderStack;
-              else if (ev.who === 'raising' && p.raising) fixed = p.raising;
-              else {
-                const cond = { filters: parseSubjectFilters(ev.subj), colors: parseSubjectColors(ev.subj) };
-                allowed = own.filter(st => cardMatchesSubject(getStackTopCard(st), cond) && !(/他の/.test(ev.subj) && st === holderStack));
-                if (!allowed.length) allowed = null; // 条件に合うものがいなければ全て選べる
-              }
-              enterEvolveMode(pick.idx, pick.num, false, { source: pick.zone, costRule: ev.costRule, ignoreCond: ev.ignoreCond, allowedTargets: allowed, effectName: e.cardName });
-              if (fixed) performEvolve(fixed);
-            };
-            if (!list.length) { showToast(`${zoneLabel}に進化できるデジモンカードがありません`, true); return; }
-            openEffectEvolvePicker(`🧬「${e.cardName}」の効果: ${zoneLabel}から進化${ruleLabel}`, `条件: ${ev.cond}`, list, go);
-          },
-        });
+      // 手札/トラッシュの両方から選べる効果も、ボタンは1つ。選ぶ画面に両方のカードを並べる
+      const zones = ev.jogress ? ['hand'] : ev.zones;
+      const zoneLabel = zones.map(z => z === 'trash' ? 'トラッシュ' : '手札').join('/');
+      out.push({
+        label: ev.jogress ? `🧬 手札の${ev.cond}にジョグレス進化` : `🧬 ${zoneLabel}から進化${ruleLabel}`,
+        run: () => {
+          if (e.ownerIndex !== practiceState.viewingIndex) { showToast('この自動処理は、その効果を持つプレイヤーの視点に切り替えてから実行してください', true); return; }
+          const p = practiceState.players[e.ownerIndex];
+          // 進化先の候補(「このデジモン」「育成エリアの」「〜のデジモン1体」)
+          const own = [...p.battle, ...(p.raising ? [p.raising] : [])].filter(st => isDigimonLikeStack(st) || (/テイマー/.test(ev.subj) && (getStackTopCard(st) || {}).category === 'tamer'));
+          let fixed = null, targets = own;
+          if (ev.who === 'self' && holderStack && findStackOwnerAndZone(holderStack)) { fixed = holderStack; targets = [holderStack]; }
+          else if (ev.who === 'raising' && p.raising) { fixed = p.raising; targets = [p.raising]; }
+          else {
+            const cond = { filters: parseSubjectFilters(ev.subj), colors: parseSubjectColors(ev.subj) };
+            const allowed = own.filter(st => cardMatchesSubject(getStackTopCard(st), cond) && !(/他の/.test(ev.subj) && st === holderStack));
+            if (allowed.length) targets = allowed; // 条件に合うものがいなければ全て選べる
+          }
+          // 「進化条件を無視して」がなければ、場の候補のどれかに進化できるカードだけを出す(Lv・色・進化元の条件など)
+          const ontoOf = (c) => ev.ignoreCond || ev.jogress ? targets : targets.filter(st => canEvolveOntoStack(c, st));
+          const list = [];
+          let hidden = 0;
+          zones.forEach(zone => (zone === 'trash' ? p.trash : p.hand).forEach((entry, idx) => {
+            const num = cardEntryNum(entry);
+            const c = cardIndexByNumber.get(num);
+            if (!c || c.category !== 'digimon') return;
+            if (!ev.jogress && !ontoOf(c).length) { hidden++; return; }
+            list.push({ zone, idx, num, card: c, ok: evolveCondMatches(c, ev.cond, e.cardNumber), tag: zones.length > 1 ? (zone === 'trash' ? '[トラッシュ]' : '[手札]') : '' });
+          }));
+          const go = (pick) => {
+            if (ev.jogress) { enterMultiEvolveMode(pick.idx, pick.num, 'jogress'); return; }
+            const onto = ontoOf(pick.card);
+            enterEvolveMode(pick.idx, pick.num, false, { source: pick.zone, costRule: ev.costRule, ignoreCond: ev.ignoreCond, allowedTargets: fixed ? null : onto, effectName: e.cardName });
+            if (fixed) performEvolve(fixed);
+          };
+          if (!list.length) { showToast(`${zoneLabel}に進化できるデジモンカードがありません${hidden ? '(場のデジモンの進化条件に合うカードがありません)' : ''}`, true); return; }
+          openEffectEvolvePicker(`🧬「${e.cardName}」の効果: ${zoneLabel}から進化${ruleLabel}`, `条件: ${ev.cond}${ev.ignoreCond ? '(進化条件を無視)' : '(進化条件に合うカードだけ)'}`, list, go);
+        },
       });
     });
     return out;
