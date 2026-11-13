@@ -4017,7 +4017,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.98.5</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.98.6</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -6167,7 +6167,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.98.5`);
+    log(`DigiCA Tool build v0.98.6`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -12181,7 +12181,7 @@
     if (!practiceState) return [];
     const t = engineStripNotes(e.text || '');
     const out = [];
-    const re = /(相手|自分)の裏向きのセキュリティを上から(\d+)枚表向きにし(?:、|て|た|ます|)/g;
+    const re = /(相手|自分)の裏向きのセキュリティを上から(\d+)枚表向きに(?:する|し)/g;
     let m;
     while ((m = re.exec(t))) {
       const side = m[1], n = parseInt(m[2], 10);
