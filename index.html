@@ -4017,7 +4017,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.98.9</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.98.10</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -6167,7 +6167,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.98.9`);
+    log(`DigiCA Tool build v0.98.10`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -13054,7 +13054,13 @@
       [...cardIndexByNumber.values()].some(c => c.category === 'digimon' && c.name === name) ? `${side}の「${name}」のデジモン${n}体を` : all);
   }
   function targetHandlersFor(e, holderStack) {
-    return parseTargetActions(normalizeNamedTargets(e.text)).map(ta => ({
+    // 「置いたカードと同じLv.の相手のデジモン」: 代償で置いたカードのLv.に置き換える(払う前は読めないので、そのまま)
+    let tx = e.text;
+    if (e.costMovedNums && e.costMovedNums.length) {
+      const lv = (cardIndexByNumber.get(e.costMovedNums[0]) || {}).level;
+      if (lv != null) tx = String(tx).replace(/置いたカードと同じLv\.の/g, `Lv.${lv}の`);
+    }
+    return parseTargetActions(normalizeNamedTargets(tx)).map(ta => ({
       label: (() => {
         // 長い条件文は省略するが、DPの持続期間(末尾の括弧)は必ず残す
         const full = `🎯 ${targetActionLabel(ta)}`;
@@ -13610,7 +13616,7 @@
           else pl.security.unshift(...order.slice().reverse().map(x => o.faceUp ? { n: x, u: true } : x));
           showToast(`進化元${order.map(x => `「${miniCardName(x)}」`).join('')}を${SRC_DEST_JA[o.dest].replace(/戻す$/, '戻しました').replace(/置く$/, '置きました')}`);
           void nums;
-          if (o.onDone) o.onDone(); else { renderPracticeBoard(); renderEffectPanel(); }
+          if (o.onDone) o.onDone(order); else { renderPracticeBoard(); renderEffectPanel(); }
         } }],
       });
     };
@@ -13782,6 +13788,8 @@
     let body = text;
     extractEffectCosts(text).slice().sort((a, b) => b.from - a.from).forEach(c => { body = body.slice(0, c.from) + '\u0002'.repeat(Math.max(0, c.to - c.from)) + body.slice(c.to); });
     body = body.replace(/^(?:[【［\[][^】］\]]*[】］\]])+/, '').replace(/（[^）]*）/g, '');
+    // 「≪1ドロー≫し、自分の手札1枚を破棄する」: ドローのあとの動きも1つの文として読む
+    body = body.replace(/(≪\d+ドロー≫)し、/g, '$1。');
     body.split(/。|、その後、/).forEach(seg => {
       const cl = seg.replace(/\u0002+(?:ことで)?、?/g, '').replace(/^その後、/, '').replace(/^.*?(?:とき|なら|場合)、/, '').trim();
       if (!cl || /\u0002|ごとに|の間|ターン終了時|まで、|その中|そのカード|そのデジモン|この効果で|選んだ|オープンした|残り|相手は|代わりに/.test(cl)) return;
@@ -13820,7 +13828,8 @@
     const out = [];
     const pi = e.ownerIndex;
     const guard = () => { if (pi !== practiceState.viewingIndex) { showToast('この自動処理は、その効果を持つプレイヤーの視点に切り替えてから実行してください', true); return false; } return true; };
-    const paid = () => { e.costPaid = true; renderPracticeBoard(); renderEffectPanel(); };
+    // nums: 代償で動かしたカード(「置いたカードと同じLv.の」で使う)
+    const paid = (nums) => { e.costPaid = true; if (Array.isArray(nums)) e.costMovedNums = nums.slice(); renderPracticeBoard(); renderEffectPanel(); };
     extractEffectCosts(e.text).forEach(({ cost: rawCost }) => {
       // 書き方の揺れをそろえる: 「進化元に置く」→「進化元の下に置く」、「進化元の下に好きな順番で置く」→「好きな順番で〜進化元の下に置く」
       let cost = rawCost.replace(/進化元に置く$/, '進化元の下に置く').replace(/進化元の下に好きな順番で置く$/, '進化元の下に置く');
@@ -14522,7 +14531,7 @@
               const entries = nums.map(x => (faceDown ? { n: x, d: true } : x));
               if (onTop) st.cards.splice(st.cards.length - 1, 0, ...entries); else st.cards.unshift(...entries);
               showToast(`代償: ${nums.length}枚を「${stackLabel(st)}」の${toTamer ? '下' : '進化元'}に置きました`);
-              paid();
+              paid(nums);
             };
             const chooseTarget = (nums, restore) => {
               const alive = targets.filter(st => findStackOwnerAndZone(st));
@@ -18802,8 +18811,21 @@
       const names = (bareNameMatch[1].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
       clauses.push(names.some(n => cardHasName(topCard, n)));
     }
+    // 「特徴に「ハイブリッド体」を持つカードが下に5枚ある「源輝二」」(テイマーの下のカードの枚数)
+    const underRe = /特徴に?((?:「[^」]+」\/?)+)を持つカードが下に(\d+)枚(以上)?ある((?:「[^」]+」\/?)+)/g;
+    let underHit = false;
+    while ((m = underRe.exec(text))) {
+      underHit = true;
+      matchedSpan += m[0].length;
+      const traits = (m[1].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
+      const names = (m[4].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
+      const nameOk = names.some(n => cardHasName(topCard, n));
+      if (!targetStack) { if (nameOk) return null; clauses.push(false); continue; }
+      const have = targetStack.cards.slice(0, -1).map(x => cardIndexByNumber.get(cardEntryNum(x))).filter(c => c && traits.some(t => [...getCardTraits(c), c.form || '', c.attribute || ''].some(ct => ct.includes(t)))).length; // 「ハイブリッド体」は形態の欄にある
+      clauses.push(nameOk && have >= parseInt(m[2], 10));
+    }
     // 「「クロノモン」の記述があるLv.6/「巨神兵器」」のように、他の条件と「/」で並んだ名称だけの条件
-    if (!bareNameMatch) {
+    if (!bareNameMatch && !underHit) {
       remainingText.replace(mentionRe, '').replace(lvNameRe, '').replace(nameRe, '').replace(traitRe, '').split('/').forEach(seg => {
         const bm = /^「([^」]+)」(?::|から)?$/.exec(seg.trim());
         if (!bm) return;
