@@ -4017,7 +4017,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.98.11</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.98.12</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -6167,7 +6167,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.98.11`);
+    log(`DigiCA Tool build v0.98.12`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -7820,9 +7820,20 @@
     return out;
   }
   const PLAY_RULE_LABEL = (r) => !r ? '' : r.type === 'free' ? 'コストなし' : r.type === 'minus' && r.per ? `${r.per}ごとにコスト-${r.n}` : r.type === 'minus' ? `コスト-${r.n}` : r.type === 'fixed' ? `コスト${r.n}` : 'コストを支払って';
-  function playFromHandHandlersFor(e, holderStack) {
+  // 「この効果で破棄した1枚ごとに、この効果のDP上限-2000」(BT20-077): 破棄した枚数(まだなら0)で条件の数字を変えて読む
+  function applyDiscardCountLimit(e, text) {
+    const m = /。?この効果で破棄した(?:カード)?1枚ごとに、この効果(?:の|で選べる)(DP|登場コスト|Lv\.)(?:の)?(?:上限)?([+\-])(\d+)。?/.exec(text || '');
+    if (!m) return text;
+    const k = e.costDiscardCount || 0;
+    const d = (m[2] === '-' ? -1 : 1) * parseInt(m[3], 10) * k;
+    const re = m[1] === 'DP' ? /DP(\d+)以下/ : m[1] === 'Lv.' ? /Lv\.(\d+)以下/ : /登場コスト(\d+)以下/;
+    return text.replace(m[0], '。').replace(re, (x, n) => x.replace(n, String(Math.max(0, parseInt(n, 10) + d))));
+  }
+  function playFromHandHandlersFor(e0, holderStack) {
     if (!practiceState) return [];
     const out = [];
+    const tx = applyDiscardCountLimit(e0, e0.text);
+    const e = tx === e0.text ? e0 : new Proxy(e0, { get: (o, k) => k === 'text' ? tx : o[k] });
     // 「このデジモンの進化元から、Lv.3とLv.4のデジモンカード1枚ずつを登場」は🧩(1枚ずつを数える方)だけ出す
     const eachSrc = parseSourcePlays(e.text).some(x => x.who === 'self' && x.parts.length > 1);
     // 手札/トラッシュなど複数の場所から選べる効果も、ボタンは1つ。選ぶ画面に全部の場所のカードを並べる
@@ -13811,6 +13822,8 @@
       Object.defineProperty(sub, 'text', { value: cost + 'ことで、≪1ドロー≫。' });
       // 動かし終わったら「済」にする(同じボタンをうっかり2回押さないように)
       Object.defineProperty(sub, 'costPaid', { get: () => false, set: (v) => { if (v) { if (!e.moveDone) e.moveDone = {}; e.moveDone[ci] = true; } } });
+      // 破棄した枚数・動かしたカードは元の効果に残す(「この効果で破棄した1枚ごとに」「置いたカードと同じLv.」で使う)
+      ['costDiscardCount', 'costMovedNums'].forEach(k => Object.defineProperty(sub, k, { get: () => e[k], set: (v) => { e[k] = v; } }));
       let hs = [];
       try { hs = costHandlersForSingle(sub, holderStack); } catch (er) { hs = []; }
       const done = !!(e.moveDone && e.moveDone[ci]);
@@ -15119,18 +15132,36 @@
         } });
         return;
       }
+      // BT26-083「自分のセキュリティを全て破棄する」
+      if ((m = /^自分のセキュリティを(?:(全て)|上から(\d+)枚)破棄する$/.exec(cost))) {
+        const all = !!m[1], n = all ? 0 : +m[2];
+        out.push({ isCost: true, label: `💸 代償: 自分のセキュリティを${all ? '全て' : `上から${n}枚`}破棄`, run: () => {
+          if (!guard()) return;
+          const p = practiceState.players[pi];
+          snapshotPracticeState();
+          const nums = p.security.splice(0, all ? p.security.length : n).map(cardEntryNum);
+          nums.forEach(x => p.trash.push(x));
+          e.costDiscardCount = nums.length;
+          showToast(`セキュリティを${nums.length}枚破棄しました`);
+          paid();
+        } });
+        return;
+      }
       let hd = null;
       if (!/進化元|トラッシュ/.test(cost)) {
         if ((m = /^(?:自分の)?手札(?:(\d+)枚を|を(\d+)枚(まで)?)破棄する$/.exec(cost))) hd = { n: +(m[1] || m[2]), upTo: !!m[3], cond: '' };
+        // BT20-077「自分の手札が4枚になるように破棄する」: 残す枚数から捨てる枚数を決める(多くなければ0枚)
+        else if ((m = /^(?:自分の)?手札が(\d+)枚になるように破棄する$/.exec(cost))) hd = { n: Math.max(0, practiceState.players[pi].hand.length - +m[1]), upTo: false, cond: '', keep: +m[1] };
         else if ((m = /^(?:自分の)?手札(?:の|から、?)(.+?)を?(\d+)枚(まで)?を?破棄する$/.exec(cost))) hd = { n: +m[2], upTo: !!m[3], cond: m[1].replace(/^、/, '') };
       }
       if (hd) {
         const n = hd.n;
         const cond = hd.cond;
         m = [null, null, null, null, hd.upTo];
-        out.push({ isCost: true, label: `💸 代償: 手札${cond ? `の${cond.length > 18 ? cond.slice(0, 18) + '…' : cond}` : ''}を${n}枚破棄`, run: () => {
+        out.push({ isCost: true, label: hd.keep != null ? `💸 代償: 手札が${hd.keep}枚になるように破棄(${n}枚)` : `💸 代償: 手札${cond ? `の${cond.length > 18 ? cond.slice(0, 18) + '…' : cond}` : ''}を${n}枚${m[4] ? 'まで' : ''}破棄`, run: () => {
           if (!guard()) return;
           const p = practiceState.players[pi];
+          if (hd.keep != null && n === 0) { e.costDiscardCount = 0; showToast(`手札が${hd.keep}枚以下なので、破棄するカードはありません`); paid(); return; }
           const list = p.hand.map((x, i) => ({ num: cardEntryNum(x), i, ok: !cond || revealCondMatches(cardIndexByNumber.get(cardEntryNum(x)), cond) }));
           if (!list.length) { showToast('手札がありません', true); return; }
           openCardMultiPicker({
@@ -15142,6 +15173,7 @@
               snapshotPracticeState();
               const nums = spliceMany(p.hand, idxs.map(i => list[i].i)).map(cardEntryNum);
               nums.forEach(x => p.trash.push(x));
+              e.costDiscardCount = nums.length; // 「この効果で破棄した1枚ごとに」で数える
               showToast(`代償: ${nums.map(x => `「${miniCardName(x)}」`).join('')}を破棄しました`);
               paid();
             } }],
@@ -15159,6 +15191,35 @@
     const notCost = (idx, len) => !/^(?:する|できる|し|す|る)?ことで/.test(t.slice(idx + len, idx + len + 8));
     const guard = () => { if (pi !== practiceState.viewingIndex) { showToast('この自動処理は、その効果を持つプレイヤーの視点に切り替えてから実行してください', true); return false; } return true; };
     let m;
+    // P-089/RB1-014/RB1-016「この効果で破棄した1枚ごとに、相手のデジモンかテイマーの下から選んで1枚破棄できる」
+    const ubm = /(?:(この効果で破棄した(?:カード)?1枚)ごとに、)?相手の(デジモンかテイマー|デジモン|テイマー)の下から選んで(\d+)枚破棄(する|できる)/.exec(t);
+    if (ubm && notCost(ubm.index, ubm[0].length - ubm[4].length)) {
+      const per = !!ubm[1], each = +ubm[3], kinds = ubm[2];
+      const total = () => per ? (e.costDiscardCount == null ? null : e.costDiscardCount * each) : each;
+      const tn = total();
+      out.push({ textPos: ubm.index, label: `🗑 相手の${kinds}の下から選んで${tn == null ? `(破棄した枚数×${each})` : tn}枚破棄`, ...(per && e.costDiscardCount == null ? { condNg: '先に手札を破棄', ngMsg: '先に手札を破棄してください(破棄した枚数だけ選べます)' } : {}), run: () => {
+        if (!guard()) return;
+        const opi = 1 - pi;
+        let left = total() == null ? each : total();
+        if (left <= 0) { showToast('破棄した枚数が0なので、選ぶカードはありません'); return; }
+        const okKind = (st) => kinds === 'デジモンかテイマー' || (kinds === 'デジモン' ? isDigimonLikeStack(st) : !isDigimonLikeStack(st));
+        const step = () => {
+          const cands = battleStacksOf(opi).filter(st => st.cards.length > 1 && okKind(st));
+          if (left <= 0 || !cands.length) { if (!cands.length && left > 0) showToast('下にカードがある相手のデジモン/テイマーがいません'); renderPracticeBoard(); renderEffectPanel(); return; }
+          startFieldPick({ title: `🗑 下のカードを破棄する相手の${kinds}をタップ(残り${left}枚)`, candidates: cands, extra: [], max: 1,
+            onDone: (sel) => {
+              if (!sel.length) return;
+              const st = sel[0];
+              const list = st.cards.slice(0, -1).map((x, i) => ({ zone: 'sources', idx: i, num: cardEntryNum(x), card: cardIndexByNumber.get(cardEntryNum(x)), ok: true, tag: cardEntryFaceDown(x) ? '[裏向き]' : '' }));
+              openEffectEvolvePicker(`🗑「${e.cardName}」: 「${stackLabel(st)}」の下から1枚破棄`, `(残り${left}枚)`, list, (pick) => {
+                snapshotPracticeState();
+                removeCardFromStackAt(st, pick.idx, 'trash', undefined, () => { left--; showToast(`「${miniCardName(pick.num)}」を破棄しました`); step(); });
+              }, '破棄する', { cancelLabel: 'ここでやめる', onCancel: () => { renderPracticeBoard(); renderEffectPanel(); } });
+            }, onCancel: () => renderPracticeBoard() });
+        };
+        step();
+      } });
+    }
     // このデジモンをアクティブにする/できる
     const am = /(?<!その)(?<!相手の)このデジモンをアクティブに(する|できる)/.exec(t);
     if (am && notCost(am.index, am[0].length - 2)) {
@@ -15449,7 +15510,7 @@
     // ボタンを効果文に書かれている順に並べる(代償ボタンは先頭のまま)
     try {
       const txt = engineStripNotes(e.text || '');
-      const pos = new Map(handlers.map((h, i) => [h, h.isCost ? -1 : labelPosInText(h.label, txt)]));
+      const pos = new Map(handlers.map((h, i) => [h, h.isCost ? -1 : h.textPos != null ? h.textPos : labelPosInText(h.label, txt)]));
       const idx = new Map(handlers.map((h, i) => [h, i]));
       handlers = handlers.slice().sort((a, b) => (pos.get(a) - pos.get(b)) || (idx.get(a) - idx.get(b)));
     } catch (err) { console.warn(err); }
