@@ -4017,7 +4017,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.98.12</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.98.13</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -6167,7 +6167,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.98.12`);
+    log(`DigiCA Tool build v0.98.13`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -12580,7 +12580,8 @@
   function parseTargetActions(text) {
     const t = engineStripNotes(text || '').replace(/[＋]/g, '+').replace(/[－]/g, '-')
       .replace(/(1体)を選ぶ。その(?:デジモン|テイマー)は((?:次の)?(?:相手|自分)の)ターン終了時まで/g, '$1は、$2ターン終了まで、') // ST2-14
-      .replace(/(1体)のDPを、?([^、。]{1,40}?ごとに)、?([+\-]\d+)する/g, '$1を、$2、DP$3'); // BT7-040「相手のデジモン1体のDPを〜1枚ごとに-3000する」
+      .replace(/(1体)のDPを、?([^、。]{1,40}?ごとに)、?([+\-]\d+)する/g, '$1を、$2、DP$3') // BT7-040「相手のデジモン1体のDPを〜1枚ごとに-3000する」
+      .replace(/(\d+体)のDPを([+\-]\d+)(する|し(?=、))/g, '$1をDP$2$3'); // 古い弾の書き方「相手のデジモン1体のDPを-1000する」(63枚)
     const out = [];
     let lastChoose = null; // 「〜1体を選び、選んだデジモン以外の〜」の「選ぶ」側(次の文にまたがることもある)
     t.split('。').forEach(sent => {
@@ -13362,6 +13363,15 @@
     m.forEach((n, x) => { for (let i = 0; i < n; i++) out.push(x); });
     return out;
   }
+  // ≪デジバースト≫で破棄したカードか(同じターン・同じプレイヤー。1枚ずつ使い切る)
+  function burstTook(pi, num) {
+    const b = practiceState && practiceState.lastDigiburst;
+    if (!b || b.pi !== pi || b.turn !== practiceState.turn.count) return false;
+    const i = b.nums.indexOf(num);
+    if (i < 0) return false;
+    b.nums.splice(i, 1);
+    return true;
+  }
   function collectDiscardTriggers(prev, snap) {
     if (!prev.zones || !snap.zones) return [];
     const res = [];
@@ -13401,7 +13411,7 @@
             const ok = from === 'security' ? /セキュリティから/.test(where)
               : from === 'hand' ? /手札から/.test(where)
               : from === 'deck' ? /デッキ(?:か[^から]*)?から/.test(where) || /デッキかセキュリティから/.test(where)
-              : from === 'material' ? (/進化元から/.test(where) || /≪デジバースト≫で/.test(body) || (/^で$|^$/.test(where) && field === 'inherited'))
+              : from === 'material' ? (/≪デジバースト≫で/.test(body) ? burstTook(pi, num) : (/進化元から/.test(where) || (/^で$|^$/.test(where) && field === 'inherited')))
               : /バトルエリアから/.test(where);
             if (!ok) return;
             if (parsed.labels.length && parsed.labels.some(l => /ターン$/.test(l)) && !engineTurnLabelOk(parsed.labels, pi)) return;
@@ -13839,7 +13849,7 @@
     const guard = () => { if (pi !== practiceState.viewingIndex) { showToast('この自動処理は、その効果を持つプレイヤーの視点に切り替えてから実行してください', true); return false; } return true; };
     // nums: 代償で動かしたカード(「置いたカードと同じLv.の」で使う)
     const paid = (nums) => { e.costPaid = true; if (Array.isArray(nums)) e.costMovedNums = nums.slice(); renderPracticeBoard(); renderEffectPanel(); };
-    extractEffectCosts(e.text).forEach(({ cost: rawCost }) => {
+    extractEffectCosts(e.text).forEach(({ cost: rawCost, digiburst: isBurst }) => {
       // 書き方の揺れをそろえる: 「進化元に置く」→「進化元の下に置く」、「進化元の下に好きな順番で置く」→「好きな順番で〜進化元の下に置く」
       let cost = rawCost.replace(/進化元に置く$/, '進化元の下に置く').replace(/進化元の下に好きな順番で置く$/, '進化元の下に置く');
       // 「進化元の上か下だけに置く」は、上・下の2つのボタンにする
@@ -13922,6 +13932,8 @@
             const nums = spliceMany(holder.cards, sel).map(cardEntryNum);
             trashNums(nums, owner);
             e.costDiscardCount = nums.length; // 「この効果で破棄したカード1枚ごとに」で数える
+            // 「このデジモンが発揮した≪デジバースト≫でこのカードが破棄されたとき」は、この破棄のときだけ
+            if (isBurst) practiceState.lastDigiburst = { pi: practiceState.players.indexOf(owner), nums: nums.slice(), turn: practiceState.turn.count };
             showToast(`代償: 進化元${nums.map(x => `「${miniCardName(x)}」`).join('')}を破棄しました`);
             paid();
           };
@@ -16365,7 +16377,8 @@
   // 🛡「【消滅時】(〜なら、)このデジモンをセキュリティの下に表向きで置く」「このカードを手札に戻す」など:
   // 場を離れてトラッシュにあるこのカードを動かす(条件は効果パネルの判定・自分の確認で)
   function leftSelfMoveHandlersFor(e) {
-    if (!practiceState || !e.lki || e.event === 'セキュリティチェック' || securityPendingOf(e) || /^【セキュリティ】/.test((e.text || '').trim())) return [];
+    // 破棄されたときの効果(e.event === '破棄')は discardedSelfHandlersFor が同じボタンを出す
+    if (!practiceState || !e.lki || e.event === '破棄' || e.event === 'セキュリティチェック' || securityPendingOf(e) || /^【セキュリティ】/.test((e.text || '').trim())) return [];
     const t = engineStripNotes(e.text || '');
     const m = /この(?:デジモン|カード)を、?(セキュリティの(上|下)に(表向きで|裏向きで)?置く|手札に(?:戻す|加える)|デッキの(上|下)に戻す)/.exec(t);
     if (!m || /ことで/.test(t.slice(m.index + m[0].length, m.index + m[0].length + 4))) return [];
