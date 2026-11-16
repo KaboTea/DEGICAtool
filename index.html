@@ -4017,7 +4017,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.98.7</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.98.8</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -6167,7 +6167,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.98.7`);
+    log(`DigiCA Tool build v0.98.8`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -7903,7 +7903,8 @@
             if (allowed.length) targets = allowed; // 条件に合うものがいなければ全て選べる
           }
           // 「進化条件を無視して」がなければ、場の候補のどれかに進化できるカードだけを出す(Lv・色・進化元の条件など)
-          const ontoOf = (c) => ev.ignoreCond || ev.jogress ? targets : targets.filter(st => canEvolveOntoStack(c, st));
+          // テイマーを進化させる効果(「このテイマーを手札の「X」に進化」)は、進化条件では絞らない
+          const ontoOf = (c) => ev.ignoreCond || ev.jogress ? targets : targets.filter(st => !isDigimonLikeStack(st) || canEvolveOntoStack(c, st));
           const list = [];
           let hidden = 0;
           zones.forEach(zone => (zone === 'trash' ? p.trash : p.hand).forEach((entry, idx) => {
@@ -18759,6 +18760,15 @@
       matchedSpan += text.trim().length;
       const names = (bareNameMatch[1].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
       clauses.push(names.some(n => cardHasName(topCard, n)));
+    }
+    // 「「クロノモン」の記述があるLv.6/「巨神兵器」」のように、他の条件と「/」で並んだ名称だけの条件
+    if (!bareNameMatch) {
+      remainingText.replace(mentionRe, '').replace(lvNameRe, '').replace(nameRe, '').replace(traitRe, '').split('/').forEach(seg => {
+        const bm = /^「([^」]+)」(?::|から)?$/.exec(seg.trim());
+        if (!bm) return;
+        matchedSpan += bm[0].length;
+        clauses.push(cardHasName(topCard, bm[1]));
+      });
     }
     if (clauses.length === 0) return null;
     if (matchedSpan < text.length * 0.6) return null; // 未知の文言が多く残っている場合は判定を諦める
