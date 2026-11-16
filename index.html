@@ -4017,7 +4017,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.98.10</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.98.11</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -6167,7 +6167,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.98.10`);
+    log(`DigiCA Tool build v0.98.11`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -6675,11 +6675,7 @@
       .filter(Boolean);
     if (!materials.length) return false;
     const COLOR_JA_TO_EN_LOCAL = { 青: 'blue', 赤: 'red', 黄: 'yellow', 緑: 'green', 黒: 'black', 紫: 'purple', 白: 'white' };
-    const getCardTraits = (card) => {
-      const traits = (card.type || '').split('/');
-      if (card.form) traits.push(...card.form.split('/'));
-      return traits;
-    };
+    const getCardTraits = (card) => [card.type, card.form, card.attribute].filter(Boolean).join('/').split('/').filter(Boolean);
     let m = condText.match(/^特徴に「([^」]+)」を持つ(?:デジモンカード|カード)?(?:か([青赤黄緑黒紫白])の(?:テイマーカード|テイマー))?$/);
     if (m) {
       const trait = m[1];
@@ -6777,7 +6773,7 @@
     const targetCard = getStackTopCard(stack);
     if (!targetCard) return 0;
     const COLOR_JA_TO_EN_BC = { 青: 'blue', 赤: 'red', 黄: 'yellow', 緑: 'green', 黒: 'black', 紫: 'purple', 白: 'white' };
-    const getTraitsBC = (card) => { const t = (card.type || '').split('/'); if (card.form) t.push(...card.form.split('/')); return t; };
+    const getTraitsBC = (card) => [card.type, card.form, card.attribute].filter(Boolean).join('/').split('/').filter(Boolean);
     const keywordChecker = (keyword) => {
       if (keyword === 'ブロッカー') return hasBlockerKeyword;
       if (keyword === '道連れ') return hasCompanionKeyword;
@@ -18475,13 +18471,8 @@
   function evaluateSpecialCondition(conditionText, topCard, targetStack) {
     if (!conditionText || !topCard) return null;
     const text = conditionText;
-    const getCardTraits = (card) => {
-      const traits = (card.type || '').split('/');
-      // 「アプモン」はDB上、通常の特徴欄(type)ではなくform欄(本来は進化段階を表す欄)に
-      // 記録されていることがあるため(heroi.ccの生データで確認済み)、その場合も拾う。
-      if (card.form && card.form.includes('アプモン')) traits.push('アプモン');
-      return traits;
-    };
+    // 特徴は「特徴」の欄だけでなく、形態(「ハイブリッド体」「アーマー体」「アプモン」等)・属性(「フリー」「ワクチン種」等)の欄も見る
+    const getCardTraits = (card) => [card.type, card.form, card.attribute].filter(Boolean).join('/').split('/').filter(Boolean);
     // デジモンカードは「以上」「以下」を意図する場合、必ずテキストにそう明記される
     // (DB全体で確認済み: 進化条件のLv指定で「以上」が付くのは790件中2件のみで、
     // その2件もどちらも明記されている)。そのため、条件文に「以上」の記載がなければ
@@ -18821,7 +18812,7 @@
       const names = (m[4].match(/「([^」]+)」/g) || []).map(s => s.slice(1, -1));
       const nameOk = names.some(n => cardHasName(topCard, n));
       if (!targetStack) { if (nameOk) return null; clauses.push(false); continue; }
-      const have = targetStack.cards.slice(0, -1).map(x => cardIndexByNumber.get(cardEntryNum(x))).filter(c => c && traits.some(t => [...getCardTraits(c), c.form || '', c.attribute || ''].some(ct => ct.includes(t)))).length; // 「ハイブリッド体」は形態の欄にある
+      const have = targetStack.cards.slice(0, -1).map(x => cardIndexByNumber.get(cardEntryNum(x))).filter(c => c && traits.some(t => getCardTraits(c).some(ct => ct.includes(t)))).length;
       clauses.push(nameOk && have >= parseInt(m[2], 10));
     }
     // 「「クロノモン」の記述があるLv.6/「巨神兵器」」のように、他の条件と「/」で並んだ名称だけの条件
@@ -20076,9 +20067,7 @@
   // (DB検証済み: BT15-075/BT6-078/BT9-077/P-011の4件)
   const COST_TRIGGER_DP_RE = /^(?:([青赤黄緑黒紫白])の自分のテイマーがいるなら、)?(?:自分の手札を(\d+)枚|自分の手札から、特徴に((?:「[^」]+」[か\/]?)+)を持つカード(\d+)枚を|自分のデッキの上から(\d+)枚)破棄することで、(ターン終了まで|このターンの間|次の相手のターン終了まで|相手のターン終了まで)、このデジモン(?:をDP|のDPを)([+\-＋－]\d+)(?:する)?$/;
   function getCardTraitsForCostTrigger(card) {
-    const traits = (card.type || '').split('/');
-    if (card.form) traits.push(...card.form.split('/'));
-    return traits;
+    return [card.type, card.form, card.attribute].filter(Boolean).join('/').split('/').filter(Boolean);
   }
   const COLOR_JA_TO_EN_A3 = { 青: 'blue', 赤: 'red', 黄: 'yellow', 緑: 'green', 黒: 'black', 紫: 'purple', 白: 'white' };
   function hasOwnTamerOfColorA3(player, colorEn) {
