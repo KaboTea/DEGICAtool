@@ -4017,7 +4017,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.98.8</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.98.9</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -6167,7 +6167,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.98.8`);
+    log(`DigiCA Tool build v0.98.9`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -6443,7 +6443,10 @@
         let s = sent0.trim(), cond = null, m;
         if ((m = /^(.+?)(?:の)?間、/.exec(s))) { cond = m[1]; s = s.slice(m[0].length); }
         let subj = null;
-        if ((m = /^(.*?)(自分|相手)の(デジモン|テイマー|(?:「[^」]+」\/?)+)(?:とテイマー)?全て(?:は|に)、?/.exec(s)) && !/このデジモン(?!と同じ)/.test(m[1])) {
+        // BT18-083「このデジモンのDP以下のデジモン全ては≪衝突≫を得る」: お互いのデジモンのうち、DPがこのデジモン以下のもの
+        if ((m = /^このデジモンのDP以下のデジモン全て(?:は|に)、?/.exec(s))) {
+          subj = { type: 'all', side: 'both', kind: 'デジモン', filter: '', other: false, rested: null, dpLeHolder: true };
+        } else if ((m = /^(.*?)(自分|相手)の(デジモン|テイマー|(?:「[^」]+」\/?)+)(?:とテイマー)?全て(?:は|に)、?/.exec(s)) && !/このデジモン(?!と同じ)/.test(m[1])) {
           const pre = m[1] + (/^「/.test(m[3]) ? m[3] : '');
           subj = { type: 'all', side: m[2], kind: /^「/.test(m[3]) ? 'any' : m[3], filter: pre.replace(/の$/, ''), other: /他の/.test(m[1]),
             rested: /レスト状態の/.test(m[1]) ? true : /アクティブ状態の/.test(m[1]) ? false : null };
@@ -6501,7 +6504,7 @@
               if (sj.type === 'self') {
                 if (holder !== stack || top.category !== 'tamer') return;
               } else {
-                if (sj.side === '自分' ? tpi !== hpi : tpi === hpi) return;
+                if (sj.side !== 'both' && (sj.side === '自分' ? tpi !== hpi : tpi === hpi)) return;
                 if (sj.other && holder === stack) return;
                 if (sj.rested != null && !!stack.rested !== sj.rested) return;
                 const isTamer = top.category === 'tamer';
@@ -6518,6 +6521,7 @@
                   if (mats && !(stack.cards.length - 1 >= +mats[1])) return;
                 }
                 if (r.dp != null && !isTamer) return; // 「デジモン・DPNとしても扱い」はテイマーだけ
+                if (sj.dpLeHolder && !(isDigimonLikeStack(holder) && getEffectiveDP(stack) <= getEffectiveDP(holder))) return;
               }
               if (r.cond) { let ok = null; try { ok = evalExtraCond(r.cond, holder, hpi); } catch (e) { ok = null; } if (ok !== true) return; }
               out.push({ dp: r.dp, kws: r.kws, srcName: src.card.name, text: r.text, holder });
@@ -12568,7 +12572,8 @@
   }
   function parseTargetActions(text) {
     const t = engineStripNotes(text || '').replace(/[＋]/g, '+').replace(/[－]/g, '-')
-      .replace(/(1体)を選ぶ。その(?:デジモン|テイマー)は((?:次の)?(?:相手|自分)の)ターン終了時まで/g, '$1は、$2ターン終了まで、'); // ST2-14
+      .replace(/(1体)を選ぶ。その(?:デジモン|テイマー)は((?:次の)?(?:相手|自分)の)ターン終了時まで/g, '$1は、$2ターン終了まで、') // ST2-14
+      .replace(/(1体)のDPを、?([^、。]{1,40}?ごとに)、?([+\-]\d+)する/g, '$1を、$2、DP$3'); // BT7-040「相手のデジモン1体のDPを〜1枚ごとに-3000する」
     const out = [];
     let lastChoose = null; // 「〜1体を選び、選んだデジモン以外の〜」の「選ぶ」側(次の文にまたがることもある)
     t.split('。').forEach(sent => {
@@ -12747,8 +12752,10 @@
   }
   // 「〜ごとに」の数を盤面から数える。数えられないもの(「この効果で破棄した1枚」等)はnull
   // target: 対象のデジモン(「そのデジモンの〜」用)
-  function countPerUnit(per, ownerIndex, holderStack, target) {
+  function countPerUnit(per, ownerIndex, holderStack, target, e) {
     if (!practiceState) return null;
+    // 「この効果で破棄した(カード)1枚ごとに」: 代償(≪デジバースト≫など)で破棄した枚数。払う前なら数えられない
+    if (/^この効果で破棄した(?:カード|セキュリティ)?1枚$/.test(per)) return e && e.costDiscardCount != null ? e.costDiscardCount : null;
     const me = practiceState.players[ownerIndex];
     const holder = holderStack && findStackOwnerAndZone(holderStack) ? holderStack : null;
     const colorsOf = (cards) => new Set(cards.flatMap(c => (c && c.color) || []));
@@ -12804,7 +12811,8 @@
       runTargetAction(Object.assign({}, ta, { action: Object.assign({}, a, { perResolved: true, perEach: (s) => countPerUnit(a.per, e.ownerIndex, holderStack, s) }) }), e, targets);
       return;
     }
-    const auto = countPerUnit(a.per, e.ownerIndex, holderStack, null);
+    // 「この効果で破棄したカード1枚ごとに」: 代償(≪デジバースト≫など)で破棄した枚数
+    const auto = countPerUnit(a.per, e.ownerIndex, holderStack, null, e);
     let n = auto == null ? 0 : auto;
     const names = targets.map(s => (getStackTopCard(s) || {}).name || '?').join('、');
     const show = () => {
@@ -12889,7 +12897,7 @@
     if (a.type === 'degen' && a.per && !a.perResolved) {
       // 「〜1枚ごとに、≪退化1≫」: 数えた数 × N 枚の≪退化≫にする(0なら何もしない)
       const holderStack = ta.holder || (e.stackUid != null ? findStackByUid(e.stackUid) : null);
-      const k = countPerUnit(a.per, e.ownerIndex, holderStack && holderStack.stack ? holderStack.stack : holderStack, targets[0]);
+      const k = countPerUnit(a.per, e.ownerIndex, holderStack && holderStack.stack ? holderStack.stack : holderStack, targets[0], e);
       if (k == null) { showToast(`「${a.per}ごとに」を数えられませんでした。≪退化${a.n}≫として処理します`, true); runTargetAction(Object.assign({}, ta, { action: Object.assign({}, a, { perResolved: true }) }), e, targets); return; }
       if (k <= 0) { showToast(`${a.per}が0なので、≪退化≫はしません`); return; }
       showToast(`${a.per}が${k}なので、≪退化${a.n * k}≫`);
@@ -12932,7 +12940,7 @@
     ta = Object.assign({}, ta, { holder: holderStack || null });
     // 「〜ごとに、相手のデジモン1体を〜」: 数えて対象の数を決める(0なら何もしない)
     if (ta.countPer && !ta.countResolved) {
-      const k = countPerUnit(ta.countPer, e.ownerIndex, holderStack, null);
+      const k = countPerUnit(ta.countPer, e.ownerIndex, holderStack, null, e);
       if (k == null) showToast(`「${ta.countPer}」を数えられませんでした。${ta.count}体として選びます`, true);
       else if (k <= 0) { showToast(`${ta.countPer}が0なので、対象はいません`); return; }
       else { showToast(`${ta.countPer}が${k}なので、${ta.count * k}体まで選べます`); ta = Object.assign({}, ta, { count: ta.count * k, upTo: true }); }
@@ -12940,7 +12948,7 @@
     }
     // 「〜ごとに、この効果の登場コスト上限+2」: 条件の数字を増やす
     if (ta.raise && !ta.raiseResolved) {
-      const k = countPerUnit(ta.raise.per, e.ownerIndex, holderStack, null);
+      const k = countPerUnit(ta.raise.per, e.ownerIndex, holderStack, null, e);
       if (k == null) showToast(`「${ta.raise.per}」を数えられませんでした。上限は増やさずに選びます`, true);
       else if (k > 0) {
         const re = ta.raise.what === 'Lv.' ? /Lv\.(\d+)以下/ : /登場コスト(\d+)以下/;
@@ -13885,7 +13893,7 @@
       // このデジモンの進化元を破棄する(上/下からN枚・選んでN枚・条件に合うカードN枚・裏向き)
       if (holder && (m = /^このデジモンの(裏向きの)?進化元を、?(?:選んで)?(?:(上|下)から)?(\d+)枚(まで)?破棄する$/.exec(cost))) {
         const faceDownOnly = !!m[1], ud = m[2], n = +m[3], upTo = !!m[4];
-        out.push({ isCost: true, label: `💸 代償: このデジモンの${faceDownOnly ? '裏向きの' : ''}進化元を${ud ? ud + 'から' : '選んで'}${n}枚破棄`, run: () => {
+        out.push({ isCost: true, label: `💸 代償: このデジモンの${faceDownOnly ? '裏向きの' : ''}進化元を${ud ? ud + 'から' : '選んで'}${n}枚${upTo ? 'まで' : ''}破棄`, run: () => {
           if (!guard()) return;
           if (!findStackOwnerAndZone(holder)) { showToast('このデジモンはもう場にいません', true); return; }
           const idxs = holder.cards.slice(0, -1).map((x, i) => i).filter(i => !faceDownOnly || cardEntryFaceDown(holder.cards[i]));
@@ -13895,6 +13903,7 @@
             const owner = findStackOwnerAndZone(holder).player;
             const nums = spliceMany(holder.cards, sel).map(cardEntryNum);
             trashNums(nums, owner);
+            e.costDiscardCount = nums.length; // 「この効果で破棄したカード1枚ごとに」で数える
             showToast(`代償: 進化元${nums.map(x => `「${miniCardName(x)}」`).join('')}を破棄しました`);
             paid();
           };
@@ -16008,6 +16017,10 @@
       out.push({ key, label: m[1], base: parseInt(m[2], 10), kinds: m[3], act, verb: m[4],
         up: up ? { what: up[1].replace(/^.*?、/, '').trim(), n: parseInt(up[2], 10), unit: up[3], add: parseInt(up[4], 10) } : null });
     }
+    // BT8-070「このデジモンの進化元に、赤のカードがあるなら相手のデジモンを、黒のカードがあるなら相手のテイマーを、あわせて登場コスト合計6まで選び、選んだカード全てを消滅させる」
+    const cg = /このデジモンの進化元に、([赤青黄緑黒紫白])のカードがあるなら相手のデジモンを、([赤青黄緑黒紫白])のカードがあるなら相手のテイマーを、あわせて(登場コスト|DP|Lv\.)合計(\d+)まで選び、選んだカード全てを(消滅させる)/.exec(t);
+    if (cg) out.push({ key: cg[3] === '登場コスト' ? 'cost' : cg[3] === 'DP' ? 'dp' : 'lv', label: cg[3], base: parseInt(cg[4], 10), kinds: 'デジモンとテイマー', act: { type: 'destroy' }, verb: cg[5], up: null,
+      matColorGate: { digimon: cg[1], tamer: cg[2] } });
     return out;
   }
   function stackTotalValue(st, key) {
@@ -16030,16 +16043,29 @@
           if (k == null) upNote = `(上限の増える分「${tr.up.what}${tr.up.n}${tr.up.unit}ごとに+${tr.up.add}」は数えられないので、選ぶときに足してください)`;
           else { const add = Math.floor(k / tr.up.n) * tr.up.add; budget += add; upNote = `(上限+${add}: ${tr.up.what} ${k}${tr.up.unit})`; }
         }
+        // 進化元の色で選べる種類が決まる(赤があればデジモン、黒があればテイマー)
+        let gateNote = '';
+        const gate = tr.matColorGate ? (() => {
+          const mats = holderStack && findStackOwnerAndZone(holderStack) ? holderStack.cards.slice(0, -1).filter(x => !cardEntryFaceDown(x)).map(x => cardIndexByNumber.get(cardEntryNum(x))).filter(Boolean) : null;
+          if (!mats) return null;
+          const has = (ja) => mats.some(c => (c.color || []).includes(({ 青: 'blue', 赤: 'red', 黄: 'yellow', 緑: 'green', 黒: 'black', 紫: 'purple', 白: 'white' })[ja]));
+          return { digimon: has(tr.matColorGate.digimon), tamer: has(tr.matColorGate.tamer) };
+        })() : null;
+        if (gate) {
+          if (!gate.digimon && !gate.tamer) { showToast(`進化元に${tr.matColorGate.digimon}のカードも${tr.matColorGate.tamer}のカードもないため、選べるものがありません`, true); return; }
+          gateNote = `(進化元: ${tr.matColorGate.digimon}${gate.digimon ? 'あり→デジモン可' : 'なし'}・${tr.matColorGate.tamer}${gate.tamer ? 'あり→テイマー可' : 'なし'})`;
+        }
         const cands = battleStacksOf(opi).filter(st => {
           const c = getStackTopCard(st);
           if (!c) return false;
+          if (gate) return (gate.digimon && isDigimonLikeStack(st)) || (gate.tamer && c.category === 'tamer' && !isDigimonLikeStack(st));
           if (tr.kinds === 'テイマー') return c.category === 'tamer';
           if (tr.kinds === 'デジモンとテイマー') return isDigimonLikeStack(st) || c.category === 'tamer';
           return isDigimonLikeStack(st);
         });
         if (!cands.length) { showToast(`相手の${tr.kinds}がいません`, true); return; }
         const pick = (initial) => startFieldPick({
-          title: `🧮 ${tr.label}合計${budget}までの相手の${tr.kinds}をタップ(何体でも)${upNote}`,
+          title: `🧮 ${tr.label}合計${budget}までの相手の${tr.kinds}をタップ(何体でも)${upNote}${gateNote}`,
           candidates: cands, max: Infinity, initialSelected: initial || [],
           onDone: (sel) => {
             if (!sel.length) return;
@@ -16262,7 +16288,7 @@
     if (!m) return [];
     const per = m[1] ? cleanPerPhrase(m[1]) : null, n = parseInt(m[2], 10);
     let k = null;
-    if (per) { try { k = countPerUnit(per, e.ownerIndex, holderStack, null); } catch (er) { k = null; } }
+    if (per) { try { k = countPerUnit(per, e.ownerIndex, holderStack, null, e); } catch (er) { k = null; } }
     const total = per ? (k == null ? null : n * k) : n;
     const label = per
       ? `📋 下の効果から選んで発揮: ${per}ごとに${n}つ → ${total == null ? '数えられません(自分で数えてください)' : `今は${total}つ`}`
@@ -16299,7 +16325,10 @@
   // (代償の「〜リンクさせることで」は costHandlersFor が扱う)
   function linkEffectHandlersFor(e, holderStack) {
     if (!practiceState) return [];
-    const t = engineStripNotes(e.text || '');
+    // BT25-101「このカードか、自分のトラッシュの特徴「TS」を持つカード1枚を〜リンクできる」: 選ぶ画面にこのカードも並べる
+    let t0 = engineStripNotes(e.text || '');
+    const orSelf = /このカードか、(?:自分の)?(?=(?:手札|トラッシュ)の)/.test(t0);
+    const t = t0.replace(/このカードか、(自分の)?(?=(?:手札|トラッシュ)の)/g, '$1');
     const out = [];
     const RE = /(?:自分の)?((?:手札|トラッシュ)(?:\/(?:手札|トラッシュ))*(?:か(?:この)?デジモンの進化元)?|(?:この)?デジモンの進化元|このカード)(?:から、?|の|を)(?:([^。]*?)(\d+)枚(まで)?を、?)?((?:他の)?(?:エリアの)?(?:自分の)?デジモン(?:1体)?|このデジモン|そのデジモン1体)に(コストを支払わずに?|支払う(?:リンク)?コスト[-－](\d+)で)リンク(?:でき|させ|する)/g;
     let m;
@@ -16320,7 +16349,7 @@
         return Math.max(0, base - minus);
       };
       const whereLabel = selfCard ? 'このカード' : where.replace(/\//g, '・').replace(/か/g, '・');
-      out.push({ label: `🔗 ${selfCard ? 'このカード' : `${whereLabel}から`}${cond ? cond : ''}${selfCard ? '' : `${n}枚${upTo ? 'まで' : ''}`}を${toSelf ? 'このデジモン' : 'デジモン'}にリンク(${free ? 'コストなし' : `コスト-${minus}`})`, run: () => {
+      out.push({ label: `🔗 ${selfCard ? 'このカード' : `${orSelf ? 'このカード・' : ''}${whereLabel}から`}${cond ? cond : ''}${selfCard ? '' : `${n}枚${upTo ? 'まで' : ''}`}を${toSelf ? 'このデジモン' : 'デジモン'}にリンク(${free ? 'コストなし' : `コスト-${minus}`})`, run: () => {
         if (e.ownerIndex !== practiceState.viewingIndex) { showToast('この自動処理は、その効果を持つプレイヤーの視点に切り替えてから実行してください', true); return; }
         const pi = e.ownerIndex, P = practiceState.players[pi];
         const holder = holderStack && findStackOwnerAndZone(holderStack) ? holderStack : null;
@@ -16371,15 +16400,27 @@
           return;
         }
         const list = [];
+        // このカード(使用中のオプション=バトルエリア・トラッシュ・手札の順に探す)
+        const selfOpt = (() => {
+          if (!orSelf) return null;
+          const num = e.cardNumber;
+          const st = P.battle.find(s2 => s2.cards.length === 1 && cardEntryNum(s2.cards[0]) === num);
+          if (st) return { z: 'selfBattle', st, num };
+          const ti = P.trash.lastIndexOf(num);
+          if (ti >= 0) return { z: 'trash', ref: P.trash[ti], num };
+          return null;
+        })();
+        if (selfOpt) list.push(Object.assign({ tag: '[このカード]', self: true }, selfOpt));
         if (useHand) P.hand.forEach((x) => list.push({ z: 'hand', ref: x, num: cardEntryNum(x), tag: '[手札]' }));
         srcStacks.forEach(st => st.cards.slice(0, -1).forEach((x) => { if (!cardEntryFaceDown(x)) list.push({ z: 'src', st, ref: x, num: cardEntryNum(x), tag: useAllSrc ? `[${stackLabel(st)}の進化元]` : '[進化元]' }); }));
-        if (useTrash) P.trash.forEach((x) => list.push({ z: 'trash', ref: x, num: cardEntryNum(x), tag: '[トラッシュ]' }));
+        if (useTrash) P.trash.forEach((x) => { if (!(selfOpt && selfOpt.ref === x)) list.push({ z: 'trash', ref: x, num: cardEntryNum(x), tag: '[トラッシュ]' }); });
         if (!list.length) { showToast('リンクできるカードがありません', true); return; }
         const arrOf = (x) => x.z === 'hand' ? P.hand : x.z === 'trash' ? P.trash : x.st.cards;
         // 同じ番号が並んでいても、選んだその1枚を抜く(参照で探し、見つからなければ番号で)
-        const takeOf = (x) => () => { const a = arrOf(x); let i = a.indexOf(x.ref); if (i < 0) i = a.findIndex(y => cardEntryNum(y) === x.num); if (i >= 0) a.splice(i, 1); };
+        const takeOf = (x) => x.z === 'selfBattle' ? () => { const i = P.battle.indexOf(x.st); if (i >= 0) P.battle.splice(i, 1); }
+          : () => { const a = arrOf(x); let i = a.indexOf(x.ref); if (i < 0) i = a.findIndex(y => cardEntryNum(y) === x.num); if (i >= 0) a.splice(i, 1); };
         openCardMultiPicker({ title: `🔗「${e.cardName}」: リンクさせるカード`, sub: `${cond ? `条件: ${cond}(` : '('}${n}枚${upTo ? 'まで' : ''}・${free ? 'コストなし' : `コスト-${minus}`})`,
-          entries: list.map(x => ({ num: x.num, ok: !cond || revealCondMatches(cardIndexByNumber.get(x.num), cond), tag: x.tag })), max: n, min: 1,
+          entries: list.map(x => ({ num: x.num, ok: x.self || !cond || revealCondMatches(cardIndexByNumber.get(x.num), cond), tag: x.tag })), max: n, min: 1,
           actions: [{ label: 'リンクさせる', primary: true, onClick: (sel) => {
             cardDetailModal.classList.remove('open');
             attach(sel.map(k => Object.assign({}, list[k], { take: takeOf(list[k]) })), () => {});
@@ -18916,10 +18957,14 @@
     // 効果による進化: ルートのコストを効果の書き方に合わせて変え、「進化条件を無視」なら条件に関係なく進化できるルートを先頭に出す
     let routesOverride = null;
     let manualDefault = null;
-    const rule = evolveMode.costRule;
+    let rule = evolveMode.costRule;
+    // BT7-040「自分のデジモンが手札のこのカードに進化するとき、支払う進化コストは自分のセキュリティ枚数と同じになる。ただし、0枚のときは1」
+    const ownFixed = !rule && (!evolveMode.source || evolveMode.source === 'hand')
+      && /自分のデジモンが手札のこのカードに進化するとき、支払う進化コストは自分のセキュリティ枚数と同じになる/.test(evolveMode.card.effect || '');
+    if (ownFixed) rule = { type: 'fixed', n: Math.max(1, self.security.length) };
     if (rule || evolveMode.ignoreCond) {
       const base = buildEvolveRoutes(evolveMode.card, topCard);
-      const effName = evolveMode.effectName ? `「${evolveMode.effectName}」の効果` : '効果';
+      const effName = ownFixed ? `「${evolveMode.card.name}」自身の効果(セキュリティ${self.security.length}枚)` : evolveMode.effectName ? `「${evolveMode.effectName}」の効果` : '効果';
       const ruleText = rule && rule.type === 'minus' ? `${effName} -${rule.n}` : rule && rule.type === 'free' ? `${effName} コストを支払わない` : rule && rule.type === 'fixed' ? `${effName} コスト${rule.n}` : '';
       routesOverride = base.map(r => Object.assign({}, r, { cost: applyEvolveCostRule(rule, r.cost), origCost: r.cost, ruleText, reductionText: ruleText ? '➖ ' + ruleText : '' }));
       const evoCosts = (evolveMode.card.evo || []).map(x => x.cost ?? 0);
