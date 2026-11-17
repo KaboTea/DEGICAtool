@@ -35,13 +35,15 @@ o.secTrigger = await ev(`(() => { const pi=practiceState.viewingIndex; const P=p
   return !!h && none; })()`);
 // 7 EX10-061: 表向きのダークマスターズ(名称が異なるもの)を下に置いて1枚ごとに-4
 const dms = await ev(`(() => { const seen=new Set(); return [...cardIndexByNumber.values()].filter(c=>/ダークマスターズ/.test(c.type||'') && c.number!=='EX10-061' && !seen.has(c.name) && seen.add(c.name)).slice(0,2).map(c=>c.number); })()`);
-o.ex10061 = await ev(`(() => { const pi=practiceState.viewingIndex; const P=practiceState.players[pi]; practiceState.turn.playerIndex=pi; P.battle=[]; P.security=[{n:'${dms[0]}',u:1},{n:'${dms[1]}',u:1},'BT1-010'];
-  const r=collectCostReductions('play', cardIndexByNumber.get('EX10-061'), {pi}).find(x=>/下に置く/.test(x.label)); if(!r) return 'nored';
-  if (r.n!==8) return 'n='+r.n; r.onPick(); P.hand=['EX10-061']; return 'ok'; })()`);
-// 登場まで流す(軽減の行を選ぶ)
+o.ex10061 = await ev(`(() => { const pi=practiceState.viewingIndex; const P=practiceState.players[pi]; practiceState.turn.playerIndex=pi; practiceState.memory=0; P.battle=[]; P.security=[{n:'${dms[0]}',u:1},{n:'${dms[1]}',u:1},'BT1-010'];
+  P.hand=['EX10-061']; const pc=parsePayCostLines(cardIndexByNumber.get('EX10-061'), 'play')[0]; return pc && pc.mode==='per' && pc.n===4 ? 'ok' : JSON.stringify(pc); })()`);
+o.ex10061 = o.ex10061 === 'ok';
+// 登場まで流す(💸 代償の行 → 表向きのセキュリティを自分で選ぶ)
 await ev(`appearFromHand(0, 'EX10-061', centerPoint(), false)`);
 await page.waitForTimeout(300);
-await page.evaluate(() => { const b=[...document.querySelectorAll('button')].find(x=>x.offsetParent && /下に置く/.test(x.textContent)); b && b.click(); });
+await page.evaluate(() => document.querySelector('#evolveRouteModal.open .eri-pay').click());
+await page.waitForTimeout(200);
+await page.evaluate(() => { document.querySelectorAll('#detailBody .cmp-row').forEach(r => r.click()); const b=[...document.querySelectorAll('#detailBody button')].find(x=>/下に置く/.test(x.textContent) && !x.disabled); b && b.click(); });
 await page.waitForTimeout(400);
 o.ex10061played = await ev(`(() => { const P=practiceState.players[practiceState.viewingIndex]; const st=P.battle.find(s=>cardEntryNum(s.cards[s.cards.length-1])==='EX10-061'); return !!st && st.cards.length===3 && P.security.length===1; })()`);
 // 8 BT19-053: ローヤルベースのデジモンがバトル以外で離れるとき、代わりにセキュリティの下に表向きで

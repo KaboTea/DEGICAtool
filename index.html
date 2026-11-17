@@ -3506,6 +3506,9 @@
     #evolveRouteNote .ern-line + .ern-line { margin-top: 3px; }
     #evolveRouteNote .ern-go { margin-top: 6px; font-size: 11px; padding: 5px 10px; }
     .evolve-route-item .eri-red { display: block; font-size: 10.5px; color: #8fe3c0; margin-top: 2px; }
+    .evolve-route-item.eri-pay { border-color: #b8892a; background: linear-gradient(180deg, rgba(255, 207, 90, .10), rgba(255, 207, 90, .02)); }
+    .evolve-route-item.eri-pay .eri-red { color: #ffe08a; }
+    .evolve-route-item .eri-paytag { display: inline-block; font-size: 10.5px; font-weight: 700; background: #b8892a; color: #1b1b1b; border-radius: 4px; padding: 0 5px; margin-right: 6px; }
     .evolve-route-item .eri-red.warn { color: #ffd27a; }
     #evolveExtraRow .btn { flex: 1; }
     body.ls-mode #evolveRouteModal #evolveRouteList { gap: 5px !important; max-height: none !important; }
@@ -4017,7 +4020,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.98.13</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.99.0</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -6167,7 +6170,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.98.13`);
+    log(`DigiCA Tool build v0.99.0`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -13992,7 +13995,7 @@
               spliceMany(P0.trash, sel.map(k => list[k].i));
               if (ud === '下') P0.library.push(...order); else P0.library.unshift(...order.slice().reverse());
               showToast(`代償: ${order.map(x => `「${miniCardName(x)}」`).join('')}をデッキの${ud}に戻しました`);
-              paid();
+              paid(order); // 「戻した1枚ごとに」で数える
             } }],
           });
         } });
@@ -14838,6 +14841,7 @@
                 sel.forEach(st => { st.rested = act === 'レストさせる'; });
                 showToast(`代償: ${sel.map(st => `「${stackLabel(st)}」`).join('')}を${act === 'レストさせる' ? 'レスト' : 'アクティブに'}しました`);
               }
+              e.costRestCount = sel.length; // 「この効果でレストした1体ごとに」(BT17-048)
               paid();
             }, onCancel: () => renderPracticeBoard() });
         } }));
@@ -18957,6 +18961,7 @@
         const origHtml = r.origCost != null && r.origCost !== r.cost ? `<s style="opacity:.6;margin-right:3px;">${r.origCost}</s>` : '';
         const redHtml = r.reductionText ? `<span class="eri-red${/^❓/.test(r.reductionText) ? ' warn' : ''}">${escapeHtml(r.reductionText)}</span>` : '';
         btn.innerHTML = `<span class="eri-cost">コスト${origHtml}${r.cost}</span>${mainText}${redHtml}${scalingHtml}`;
+        btn._cost = r.scalingNote ? null : r.cost;
         if (r.scalingNote) {
           btn.disabled = true;
           btn.style.opacity = '0.55';
@@ -19003,6 +19008,37 @@
         toggleWrap.appendChild(toggleBtn);
         evolveRouteList.appendChild(toggleWrap);
       }
+    }
+    // 💸 代償を払って登場/進化: 一番安いルートのコストから引く。押すと画面を閉じて代償を選び、払い終わったらそのまま確定する
+    if ((mo.payCosts || []).length) {
+      const costs = [...evolveRouteList.querySelectorAll('.evolve-route-item:not([disabled])')].map(b => b._cost).filter(x => x != null);
+      const baseCost = costs.length ? Math.min(...costs) : null;
+      const verbL = label;
+      [...mo.payCosts].reverse().forEach(({ pc, pay }) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'evolve-route-item eri-pay';
+        const after = baseCost == null ? null : pc.mode === 'zero' ? 0 : pc.mode === 'fixed' ? Math.max(0, baseCost - pc.n) : null;
+        const costHtml = after != null ? `<s style="opacity:.6;margin-right:3px;">${baseCost}</s>${after}` : `${baseCost != null ? baseCost : '?'}`;
+        const effTxt = pc.mode === 'zero' ? 'コストを0にする' : pc.mode === 'fixed' ? `コスト-${pc.n}` : pc.mode === 'per' ? `1枚(体)ごとにコスト-${pc.n}` : '消滅させたデジモンの登場コスト分マイナス';
+        btn.innerHTML = `<span class="eri-cost">コスト${costHtml}</span><span class="eri-paytag">💸 代償</span>${pc.keyword ? escapeHtml(pc.keyword) + ' ' : ''}代償を払って${escapeHtml(verbL)}<span class="eri-red">${escapeHtml(pc.cost)} → ${escapeHtml(effTxt)}</span>`;
+        btn.disabled = baseCost == null;
+        btn.addEventListener('click', () => {
+          const resolve = pendingEvolveResolve;
+          // 軽減してもメモリーの上限を超えると分かっているときは、払う前に止める
+          if (after != null && !canPayMemoryCost(practiceState.turn.playerIndex, after)) { showToast(`代償を払ってもコスト${after}で、メモリーが上限(10)を超えるため${verbL}できません`, true); return; }
+          evolveRouteModal.classList.remove('open');
+          const started = pay((res) => {
+            const red = pc.mode === 'zero' ? baseCost : payCostReduction(pc, res);
+            const finalCost = Math.max(0, baseCost - red);
+            if (!canPayMemoryCost(practiceState.turn.playerIndex, finalCost)) { showToast(`代償を払いましたが、コスト${finalCost}ではメモリーが上限(10)を超えるため${verbL}できません(「1手戻す」で代償を払う前に戻せます)`, true); renderPracticeBoard(); return; }
+            showToast(`💸 代償を払いました(コスト-${red}) → コスト${finalCost}で${verbL}します`);
+            if (resolve) resolve(finalCost);
+          });
+          if (started === false) evolveRouteModal.classList.add('open');
+        });
+        evolveRouteList.insertBefore(btn, evolveRouteList.firstChild);
+      });
     }
     document.getElementById('evolveSpecialRow').style.display = showSpecialOptions ? '' : 'none';
     // 手入力は普段はたたむ(効果のコストはルートに反映済み)。選べるルートが無いときだけ最初から開く
@@ -19067,7 +19103,15 @@
       `「${topCard ? topCard.name : '?'}」→${evolveMode.source === 'trash' ? 'トラッシュの' : ''}「${evolveMode.card.name}」に進化(進化元: ${topCard ? topCard.name : '?'})${rule ? ` — 効果: ${EVOLVE_COST_RULE_LABEL(rule)}` : ''}`,
       (cost) => finalizeEvolve(cost),
       !isRaisingTarget, null, routesOverride, targetStack,
-      { manualFromRoutes: true, reductions: rule && rule.type === 'free' ? [] : collectCostReductions('evolve', evolveMode.card, { pi: practiceState.viewingIndex, target: targetStack, source: evolveMode.source }) }
+      { manualFromRoutes: true, reductions: rule && rule.type === 'free' ? [] : collectCostReductions('evolve', evolveMode.card, { pi: practiceState.viewingIndex, target: targetStack, source: evolveMode.source }),
+        // 💸「このカードに進化するとき、〜ことで、支払う進化コスト-N」・≪吸収進化≫: 払ってそのまま進化する行(払う間は盤面の選択を進化先選びと取り違えないよう進化の状態をよけておく)
+        payCosts: (rule && rule.type === 'free') || (evolveMode.source && evolveMode.source !== 'hand') ? [] : parsePayCostLines(evolveMode.card, 'evolve').map(pc => ({ pc, pay: (onPaid) => {
+          const em = evolveMode, tgt = evolveRouteTarget;
+          evolveMode = null;
+          const ok = runPayCost(pc, em.card, practiceState.viewingIndex, (res) => { evolveMode = em; evolveRouteTarget = tgt; onPaid(res); });
+          if (ok === false) { evolveMode = em; evolveRouteTarget = tgt; }
+          return ok;
+        } })) }
     );
   }
 
@@ -19707,7 +19751,7 @@
       const under = pendingPlayUnder && pendingPlayUnder.num === handNumber && pendingPlayUnder.pi === practiceState.viewingIndex ? pendingPlayUnder.entries : [];
       pendingPlayUnder = null;
       const underNums = [];
-      under.forEach(en => { const i = self.security.indexOf(en); if (i >= 0) { self.security.splice(i, 1); underNums.push(cardEntryNum(en)); } });
+      under.forEach(en => { if (typeof en === 'string') { underNums.push(en); return; } const i = self.security.indexOf(en); if (i >= 0) { self.security.splice(i, 1); underNums.push(cardEntryNum(en)); } });
       self.battle.push({ cards: [...underNums, handNumber], rested: false, enteredTurn: practiceState.turn.count, dualAsOption: isDualUse || undefined,
         pendingEntry: { fromZone: opts && opts.source === 'ref' && opts.ref ? opts.ref.zone : (opts && opts.source) || 'hand', byEffect: opts && opts.effectName ? true : undefined } });
       // 効果で登場: その効果の「レスト状態で」「【登場時】効果は発揮しない」「進化できず」「≪速攻≫を得る」を付ける(効果のルートで出したときだけ)
@@ -19750,10 +19794,17 @@
     const catJa = isDualUse ? 'デュアル・オプション側' : ({ digimon: 'デジモン', tamer: 'テイマー', option: 'オプション' }[card.category] || '');
     const EN_JA = Object.fromEntries(Object.entries(JA_COLOR_EN).map(([k, v]) => [v, k]));
     const colJa = (card.color || []).map(c => EN_JA[c] || c).join('/');
+    // 💸「このカードが登場するとき、〜ことで、支払う登場コスト-N」: 払ってそのまま登場する行
+    const payCosts = (!isOption && !(rule && rule.type === 'free') && !(opts && opts.source && opts.source !== 'hand'))
+      ? parsePayCostLines(card, 'play').map(pc => ({ pc, pay: (onPaid) => runPayCost(pc, card, pi, (res) => {
+          if (res.underNums && res.underNums.length) pendingPlayUnder = { num: card.number, entries: res.underNums.slice(), pi };
+          onPaid(res);
+        }) }))
+      : [];
     closeZonePopup();
     openEvolveRouteModal(card, null, `「${displayName}」(${[catJa, colJa].filter(Boolean).join('・')})を${verb}`,
       (cost) => finalize(cost), false, verb, routes, null,
-      { notes, reductions, extraButtons, gateLabel, manualFromRoutes: true });
+      { notes, reductions, extraButtons, gateLabel, manualFromRoutes: true, payCosts });
   }
 
   function trashFromHand(handIndex) {
@@ -20913,6 +20964,173 @@
   // 返り値: [{ n, label, holds(true/null), scaling(注記|null), once(発揮記録用エントリ|null) }]
   // 登場コストの軽減で「〜をこのカードの下に置くことで」を選んだとき、登場したスタックの下に入れるカード
   let pendingPlayUnder = null;
+
+  // ---------- 登場/進化するときに払う代償(💸 代償を払って登場/進化) ----------
+  // 「このカードが登場するとき、〜ことで、支払う登場コスト-N」「(自分のデジモンが手札の)このカードに進化するとき、〜ことで、支払う進化コスト-N」
+  // ≪吸収進化-N≫(16-10)もここで扱う。返す形: [{ cost, mode:'fixed'|'per'|'zero'|'destroyedCost', n, label }]
+  function parsePayCostLines(card, kind) {
+    if (!card) return [];
+    const out = [];
+    (card.effect || '').split('\n').forEach(line => {
+      let body = line.trim();
+      const ab = /^≪吸収進化-?(\d+)≫(?:[（(](.+)[）)])?$/.exec(body);
+      if (ab) body = ab[2] || `自分のデジモンが手札のこのカードに進化するとき、自分のデジモン1体をレストさせることで、支払う進化コスト-${ab[1]}`;
+      const head = kind === 'evolve'
+        ? /^(?:(?:自分の)?デジモンが)?(?:手札の)?このカードに進化する(?:とき|際)、/
+        : /^この(?:カード|デジモン)が(?:手札から)?登場する(?:とき|際)、/;
+      const hm = head.exec(body);
+      if (!hm) return;
+      // 「〜なら、支払う登場コスト-6。自分のトラッシュから〜ことで、支払う登場コスト-6。」(BT16-065): 代償のある文だけ
+      const sent = body.slice(hm[0].length).split('。').find(x => /ことで、/.test(x));
+      if (!sent) return;
+      const m = /^(.+?)ことで、(.*)$/.exec(sent);
+      if (!m) return;
+      const cost = m[1], rest = m[2];
+      let r;
+      if ((r = /(?:(置いた|戻した|この効果でレストした|レストした|破棄した)(?:カード)?1(?:枚|体)ごとに、)?支払う(?:登場|進化)?コスト(?:を)?[-－](\d+)/.exec(rest))) {
+        out.push({ cost, mode: r[1] ? 'per' : 'fixed', n: parseInt(r[2], 10), keyword: ab ? `≪吸収進化-${ab[1]}≫` : null });
+      } else if (/支払う(?:登場|進化)?コストを0にする/.test(rest)) {
+        out.push({ cost, mode: 'zero', n: 0 });
+      } else if (/消滅させたデジモンの登場コスト分、支払うコストをマイナス/.test(rest)) {
+        out.push({ cost, mode: 'destroyedCost', n: 0 });
+      }
+    });
+    return out;
+  }
+
+  // 払った結果から軽減する数を決める
+  function payCostReduction(pc, res) {
+    if (pc.mode === 'fixed') return pc.n;
+    if (pc.mode === 'per') return pc.n * (res.count || 0);
+    if (pc.mode === 'destroyedCost') return res.destroyedCost || 0;
+    return 0;
+  }
+
+  // 代償を払う。払い終わったら onPaid({ count, underNums, destroyedCost })。zero の軽減は呼び出し側で扱う
+  function runPayCost(pc, card, pi, onPaid) {
+    const P = practiceState.players[pi];
+    const cost = pc.cost;
+    let m;
+    // (1) このカードの下に置く: 自分の「X」1体(BT21-030) / バトルエリア・トラッシュの〜名称の異なるカードN枚まで(BT15-102) / セキュリティの表向きの〜1枚ずつ(EX10-061)
+    if ((m = /^自分の「([^」]+)」1体をこのカードの下に置く$/.exec(cost))) {
+      const name = m[1];
+      const cands = battleStacksOf(pi).filter(st => { const t = getStackTopCard(st); return t && cardHasName(t, name); });
+      if (!cands.length) { showToast(`下に置ける「${name}」がいません`, true); return false; }
+      startFieldPick({ title: `💸 「${card.name}」の下に置く自分の「${name}」をタップ`, candidates: cands, extra: [], max: 1,
+        onDone: (sel) => {
+          const st = sel[0]; if (!st) return;
+          snapshotPracticeState();
+          const top = cardEntryNum(st.cards[st.cards.length - 1]);
+          const rest = [...st.cards.slice(0, -1).map(cardEntryNum), ...(st.links || [])];
+          P.battle.splice(P.battle.indexOf(st), 1);
+          rest.forEach(x => P.trash.push(x)); // 一番上だけが動き、下のカードとリンクカードは破棄(4-6-7)
+          onPaid({ count: 1, underNums: [top] });
+        }, onCancel: () => renderPracticeBoard() });
+      return true;
+    }
+    if ((m = /^自分のバトルエリア\/トラッシュの(.+?)を持ち、名称の異なるカード(\d+)枚までをこのカードの下に置く$/.exec(cost))) {
+      const cond = m[1].replace(/特徴に/, '特徴に') + 'を持つ', max = parseInt(m[2], 10);
+      const ok = (c) => c && revealCondMatches(c, cond + 'カード') !== false;
+      const list = [];
+      battleStacksOf(pi).forEach(st => { const t = getStackTopCard(st); if (ok(t)) list.push({ z: 'battle', st, num: t.number, tag: '[バトルエリア]' }); });
+      P.trash.forEach((x, i) => { const c = cardIndexByNumber.get(cardEntryNum(x)); if (ok(c)) list.push({ z: 'trash', ref: x, num: cardEntryNum(x), tag: '[トラッシュ]' }); });
+      if (!list.length) { showToast('下に置けるカードがありません', true); return false; }
+      openCardMultiPicker({ title: `💸 「${card.name}」の下に置くカード`, sub: `(名称の異なるカード${max}枚まで・1枚ごとに登場コスト-${pc.n})`,
+        entries: list.map(x => ({ num: x.num, ok: true, tag: x.tag })), max, min: 1,
+        actions: [{ label: '下に置く', primary: true, onClick: (idxs) => {
+          const picks = idxs.map(i => list[i]);
+          const names = picks.map(x => (cardIndexByNumber.get(x.num) || {}).name);
+          if (new Set(names).size !== names.length) { showToast('名称の異なるカードを選んでください', true); return false; }
+          snapshotPracticeState();
+          const under = [];
+          picks.forEach(x => {
+            if (x.z === 'battle') { const rest = [...x.st.cards.slice(0, -1).map(cardEntryNum), ...(x.st.links || [])]; P.battle.splice(P.battle.indexOf(x.st), 1); rest.forEach(y => P.trash.push(y)); }
+            else { const i = P.trash.indexOf(x.ref); if (i >= 0) P.trash.splice(i, 1); }
+            under.push(x.num);
+          });
+          cardDetailModal.classList.remove('open');
+          onPaid({ count: under.length, underNums: under });
+        } }] });
+      return true;
+    }
+    if ((m = /^自分のセキュリティから、名称の異なる(.+?)表向きのカード1枚ずつをこのカードの下に置く$/.exec(cost))) {
+      const cond = m[1].replace(/の$/, '');
+      const list = [];
+      P.security.forEach(en => { if (!cardEntryFaceUp(en)) return; const c = cardIndexByNumber.get(cardEntryNum(en)); if (c && revealCondMatches(c, cond + 'カード') !== false) list.push({ en, num: c.number }); });
+      if (!list.length) { showToast('条件に合う表向きのセキュリティがありません', true); return false; }
+      openCardMultiPicker({ title: `💸 「${card.name}」の下に置く表向きのセキュリティ`, sub: `(名称の異なるもの1枚ずつ・1枚ごとに登場コスト-${pc.n})`,
+        entries: list.map(x => ({ num: x.num, ok: true, tag: '[セキュリティ]' })), max: list.length, min: 1,
+        actions: [{ label: '下に置く', primary: true, onClick: (idxs) => {
+          const picks = idxs.map(i => list[i]);
+          const names = picks.map(x => (cardIndexByNumber.get(x.num) || {}).name);
+          if (new Set(names).size !== names.length) { showToast('名称の異なるカードを選んでください', true); return false; }
+          snapshotPracticeState();
+          picks.forEach(x => { const i = P.security.indexOf(x.en); if (i >= 0) P.security.splice(i, 1); });
+          cardDetailModal.classList.remove('open');
+          onPaid({ count: picks.length, underNums: picks.map(x => x.num) });
+        } }] });
+      return true;
+    }
+    // (2) デスモン(BT25-076): 進化元に「ネガーモン」を持つ、「ネガーモン」の記述がある登場コスト11以下の自分のデジモン1体を消滅
+    if ((m = /^進化元に「([^」]+)」を持つ、「([^」]+)」の記述がある登場コスト(\d+)以下の自分のデジモン1体を消滅させる$/.exec(cost))) {
+      const [, srcName, mention, maxCost] = m;
+      const cands = battleStacksOf(pi).filter(st => {
+        const t = getStackTopCard(st);
+        if (!t || !isDigimonLikeStack(st) || !(t.play_cost <= +maxCost)) return false;
+        if (!st.cards.slice(0, -1).some(x => { const c = cardIndexByNumber.get(cardEntryNum(x)); return c && cardHasName(c, srcName); })) return false;
+        return [t.effect, t.inherited, t.security_effect].some(f => (f || '').includes(`「${mention}」`));
+      });
+      if (!cands.length) { showToast('消滅させられるデジモンがいません', true); return false; }
+      startFieldPick({ title: `💸 消滅させる自分のデジモンをタップ(その登場コスト分、登場コストをマイナス)`, candidates: cands, extra: [], max: 1,
+        onDone: (sel) => {
+          const st = sel[0]; if (!st) return;
+          const pc0 = (getStackTopCard(st) || {}).play_cost || 0;
+          snapshotPracticeState();
+          resolveDestructionQueue([st], () => onPaid({ count: 1, destroyedCost: pc0 }));
+        }, onCancel: () => renderPracticeBoard() });
+      return true;
+    }
+    // (3) リーパー(EX2-055): 自分の「マザー デ・リーパー」1体の進化元を下から7枚以上破棄する
+    if ((m = /^自分の「([^」]+)」1体の進化元を下から(\d+)枚以上破棄する$/.exec(cost))) {
+      const name = m[1], need = parseInt(m[2], 10);
+      const cands = battleStacksOf(pi).filter(st => { const t = getStackTopCard(st); return t && cardHasName(t, name) && st.cards.length - 1 >= need; });
+      if (!cands.length) { showToast(`進化元が${need}枚以上ある「${name}」がいません`, true); return false; }
+      startFieldPick({ title: `💸 進化元を下から${need}枚以上破棄する「${name}」をタップ`, candidates: cands, extra: [], max: 1,
+        onDone: (sel) => {
+          const st = sel[0]; if (!st) return;
+          const have = st.cards.length - 1;
+          const go = (k) => {
+            snapshotPracticeState();
+            st.cards.splice(0, k).forEach(x => P.trash.push(cardEntryNum(x)));
+            renderPracticeBoard();
+            onPaid({ count: k });
+          };
+          if (have === need) { go(need); return; }
+          openDecisionUi(`「${stackLabel(st)}」の進化元を下から何枚破棄しますか?(${need}枚以上)`, [
+            { label: `${need}枚`, primary: true, onClick: () => go(need) },
+            { label: `全部(${have}枚)`, onClick: () => go(have) },
+          ]);
+        }, onCancel: () => renderPracticeBoard() });
+      return true;
+    }
+    // (4) それ以外: 効果パネルの💸代償ボタンと同じ処理を使う
+    const e = { ownerIndex: pi, stackUid: null, cardNumber: card.number, cardName: card.name, field: 'effect', lineIndex: -1, text: `${cost}ことで、`, timing: '登場', event: 'pay' };
+    let done = false;
+    Object.defineProperty(e, 'costPaid', { get: () => done, set: (v) => {
+      if (!v || done) return;
+      done = true;
+      // 数は paid() が costPaid のあとに入れるので、少し待ってから読む
+      setTimeout(() => onPaid({ count: e.costDiscardCount != null ? e.costDiscardCount : e.costMovedNums ? e.costMovedNums.length : e.costRestCount != null ? e.costRestCount : 1 }), 0);
+    } });
+    const hs = costHandlersForSingle(e, null).filter(h => h.isCost);
+    if (!hs.length) { showToast('この代償は自動で払えません。手で払ってからコストを手入力してください', true); return false; }
+    if (hs.length === 1) { hs[0].run(); return true; }
+    openDecisionUi(`💸 「${card.name}」: どちらで払いますか?`, [
+      ...hs.map((h, i) => ({ label: h.label.replace(/^💸 代償: /, ''), primary: i === 0, onClick: () => h.run() })),
+      { label: 'やめる', onClick: () => renderPracticeBoard() },
+    ]);
+    return true;
+  }
   function collectCostReductions(kind, card, ctx) {
     const out = [];
     if (!card || !practiceState) return out;
@@ -20990,36 +21208,18 @@
         }
       });
     }
-    // (2a)「このカードが登場するとき、自分のセキュリティから、名称の異なる〜を持つ表向きのカード1枚ずつをこのカードの下に置くことで、置いたカード1枚ごとに、支払う登場コスト-4」(EX10-061)
+    // (2a) 表向きのセキュリティを下に置く軽減(EX10-061)は「💸 代償を払って登場」の行で自分で選ぶ(parsePayCostLines)
     if (kind !== 'evolve') pendingPlayUnder = null;
-    if (kind !== 'evolve') {
-      const sm = /このカードが登場するとき、自分のセキュリティから、名称の異なる(.+?)表向きのカード1枚ずつをこのカードの下に置くことで、置いたカード1枚ごとに、支払う(?:登場)?コスト[-－](\d+)/.exec(engineStripNotes(card.effect || ''));
-      if (sm) {
-        const cond = sm[1].replace(/の$/, '');
-        const P = practiceState.players[pi];
-        const names = new Set();
-        const picks = [];
-        P.security.forEach(en => {
-          if (!cardEntryFaceUp(en)) return;
-          const c = cardIndexByNumber.get(cardEntryNum(en));
-          if (!c || names.has(c.name) || revealCondMatches(c, cond + 'カード') === false) return;
-          names.add(c.name);
-          picks.push(en);
-        });
-        if (picks.length) {
-          out.push({ n: nOf(sm[2]) * picks.length, label: `このカードの効果(表向きのセキュリティ${picks.length}枚「${picks.map(en => (cardIndexByNumber.get(cardEntryNum(en)) || {}).name).join('」「')}」を下に置く)`, holds: null, cond: '',
-            scaling: null, onPick: () => { pendingPlayUnder = { num: card.number, entries: picks.slice(), pi }; } });
-        }
-      }
-    }
     // (2) このカード自身の効果(「このカードが登場するとき、〜なら、支払う登場コスト-N」)
     const own = (card.effect || '').split('\n');
     own.forEach(line => {
       const parsed = parseEffectLine(line);
       if (parsed.prefix) return;
       if (parsed.labels.some(l => !/^(自分のターン|お互いのターン)$/.test(l))) return;
-      const body = stripHead(parsed.text);
-      if (/この効果で|ことで/.test(body)) return;
+      let body = stripHead(parsed.text);
+      // 「〜なら、支払う登場コスト-6。自分のトラッシュから〜ことで、支払う登場コスト-6。」(BT16-065): 代償のない最初の文だけを読む(代償の文は💸の行)
+      if (/ことで/.test(body)) { const first = body.split('。')[0]; if (/ことで|この効果で/.test(first)) return; body = first + '。'; }
+      if (/この効果で/.test(body)) return;
       let m;
       if (kind === 'evolve') {
         // 「このカードを登場させるときか、このカードに進化するとき、〜なら、支払う登場/進化コスト-N」
