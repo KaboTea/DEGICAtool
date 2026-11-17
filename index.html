@@ -4020,7 +4020,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.99.0</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.99.1</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -6170,7 +6170,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.99.0`);
+    log(`DigiCA Tool build v0.99.1`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -19031,6 +19031,14 @@
           const started = pay((res) => {
             const red = pc.mode === 'zero' ? baseCost : payCostReduction(pc, res);
             const finalCost = Math.max(0, baseCost - red);
+            // ほかの代償の行が残っていれば、払った分を軽減にして画面に戻る(続けて払うか、そのまま確定するかを選べる。≪吸収進化≫の重ねがけ 16-10-4)
+            const others = mo.payCosts.filter(x => x.pc !== pc);
+            if (others.length && finalCost > 0) {
+              showToast(`💸 代償を払いました(コスト-${red})。ほかの代償も払えます`);
+              openEvolveRouteModal(card, topCardForMatching, subtitleText, resolve, showSpecialOptions, actionLabel, routesOverride, targetStackForMatching,
+                Object.assign({}, mo, { payCosts: others, reductions: [...(mo.reductions || []), { n: red, label: `💸 払った代償(${pc.keyword || pc.cost.slice(0, 16)})`, holds: true, cond: '' }] }));
+              return;
+            }
             if (!canPayMemoryCost(practiceState.turn.playerIndex, finalCost)) { showToast(`代償を払いましたが、コスト${finalCost}ではメモリーが上限(10)を超えるため${verbL}できません(「1手戻す」で代償を払う前に戻せます)`, true); renderPracticeBoard(); return; }
             showToast(`💸 代償を払いました(コスト-${red}) → コスト${finalCost}で${verbL}します`);
             if (resolve) resolve(finalCost);
@@ -19198,6 +19206,13 @@
       n++;
     });
     (mm.restedTamers || []).forEach(uid => { const f = findStackByUid(uid); if (f) f.stack.rested = false; });
+    // 代償で下に置こうとしたデジモンを場に戻す(破棄した進化元・リンクもトラッシュから戻す)
+    if (mm.payPlace) {
+      mm.payPlace.trashed.forEach(x => { const i = self.trash.lastIndexOf(x); if (i >= 0) self.trash.splice(i, 1); });
+      self.battle.push(mm.payPlace.stack);
+      mm.payPlace = null;
+      n++;
+    }
     mm.handMaterials = []; mm.materialOrigins = []; mm.restedTamers = [];
     if (n) showToast('選択していた材料を元の場所に戻しました');
   }
@@ -19213,6 +19228,13 @@
       if (!/このカード/.test(body)) return;
       const cm = /^(.+?)間、/.exec(body);
       const costm = /、(.+?)ことで、/.exec(body);
+      // 「(自分の)「シャウトモン」1体をこのカードの下に置くことで、支払う登場コスト-1し、〜」(BT12-112/BT21-030): デジクロスの画面で払う
+      const placeM = costm && /^(?:自分の)?「([^」]+)」1体を(?:このデジモンの進化元|このカードの下)に置く$/.exec(costm[1]);
+      if (placeM) {
+        const redN = parseInt((/支払う登場コスト-(\d+)/.exec(body) || [])[1] || '0', 10);
+        out.push({ kind: 'payPlace', name: placeM[1], redN, label: `💸「${placeM[1]}」1体を下に置いて${redN ? `(コスト-${redN})` : ''}、トラッシュから選ぶ`, reason: `「${card.name}」の効果(代償: 「${placeM[1]}」1体を下に置く)`, max: Infinity, condText });
+        return;
+      }
       const h = costm ? null : cm ? evalEffectCondition(cm[1], null, pi) : true;
       if (h === false) return;
       out.push({ kind: 'trash', label: `🗑 トラッシュから材料を選ぶ${h == null ? ' ❓' : ''}`, reason: `「${card.name}」の効果${cm ? `(${cm[1]}間)` : ''}${costm ? `(代償: ${costm[1]}は手で処理)` : ''}${h == null && !costm ? ' ※条件を確認' : ''}`, max: Infinity, condText });
@@ -19339,11 +19361,28 @@
       flat.forEach(src => {
         const usedN = mm.materialOrigins.filter(o => o.key === src.key).length;
         buttons.push({
-          label: src.label.replace(/^👤「([^」]+)」をレストして/, mm.restedTamers.includes(src.holderUid) ? '👤「$1」(レスト済み): ' : '👤「$1」をレストして') + (usedN ? `(${usedN}枚選択中)` : ''),
+          label: (src.kind === 'payPlace' && mm.payPlace ? `🗑 トラッシュから材料を選ぶ(「${mm.payPlace.name}」を下に置いた)` : src.label).replace(/^👤「([^」]+)」をレストして/, mm.restedTamers.includes(src.holderUid) ? '👤「$1」(レスト済み): ' : '👤「$1」をレストして') + (usedN ? `(${usedN}枚選択中)` : ''),
           onClick: (sel) => {
             mm.selected = sel;
             if (src.kind === 'tamer') openTamer(src);
-            else {
+            else if (src.kind === 'payPlace' && !mm.payPlace) {
+              // 代償: 自分の「シャウトモン」1体をこのカードの下に置く(一番上だけが動き、下のカードとリンクは破棄 4-6-7)。取りやめたら元に戻す
+              const stacks = battleStacksOf(practiceState.viewingIndex).filter(st => { const t = getStackTopCard(st); return t && cardHasName(t, src.name); });
+              if (!stacks.length) { showToast(`下に置ける「${src.name}」がいません`, true); return; }
+              openEffectEvolvePicker(`💸「${mm.card.name}」の下に置く「${src.name}」`, `(登場コスト-${src.redN}・このあとトラッシュのカードもデジクロスで置ける)`,
+                stacks.map((st, i) => ({ zone: 'battle', idx: i, num: cardEntryNum(st.cards[st.cards.length - 1]), card: getStackTopCard(st), ok: true, tag: st.cards.length > 1 ? `(進化元${st.cards.length - 1}枚は破棄)` : '' })),
+                (pick) => {
+                  const st = stacks[pick.idx];
+                  const trashed = [...st.cards.slice(0, -1).map(cardEntryNum), ...(st.links || [])];
+                  self.battle.splice(self.battle.indexOf(st), 1);
+                  mm.selected = (mm.selected || []).filter(x => x !== st);
+                  trashed.forEach(x => self.trash.push(x));
+                  mm.payPlace = { stack: st, trashed, under: [cardEntryNum(st.cards[st.cards.length - 1])], red: src.redN, name: src.name };
+                  showToast(`💸「${stackLabel(st)}」を「${mm.card.name}」の下に置きます(登場コスト-${src.redN})`);
+                  renderPracticeBoard();
+                  openTrash(src);
+                }, '下に置く', { cancelLabel: 'やめる', onCancel: () => showMultiEvolvePicker() });
+            } else {
               if (src.needRest && !mm.restedTamers.includes(src.needRest)) {
                 const f = findStackByUid(src.needRest);
                 if (!f || f.stack.rested) { showToast('このテイマーはレストできません', true); return; }
@@ -19380,12 +19419,15 @@
     const stackNames = multiEvolveMode.selected.map(s => { const c = getStackTopCard(s); return c ? c.name : '?'; });
     const handNames = multiEvolveMode.handMaterials.map(n => miniCardName(n));
     const namesText = [...stackNames, ...handNames].join('・');
+    const pp = multiEvolveMode.payPlace;
     openEvolveRouteModal(
       multiEvolveMode.card, refTopCard,
-      `「${multiEvolveMode.card.name}」→ 材料: ${namesText}`,
+      `「${multiEvolveMode.card.name}」→ 材料: ${namesText}${pp ? `(代償: 「${pp.name}」を下に置く)` : ''}`,
       (cost) => finalizeMultiEvolve(cost),
       false,
-      multiEvolveMode.mode === 'jogress' ? '進化' : '登場'
+      multiEvolveMode.mode === 'jogress' ? '進化' : '登場',
+      null, null,
+      pp && pp.red ? { reductions: [{ n: pp.red, label: `💸 代償(「${pp.name}」を下に置いた)`, holds: true, cond: '' }] } : undefined
     );
   }
 
@@ -19410,6 +19452,8 @@
       }
     });
     mergedCards = mergedCards.concat(handMaterials);
+    // 代償で下に置いた「シャウトモン」(BT12-112/BT21-030)は一番下
+    if (multiEvolveMode.payPlace) mergedCards = multiEvolveMode.payPlace.under.concat(mergedCards);
     mergedCards.push(handNumber);
     const newStack = { cards: mergedCards, rested: false };
 
@@ -20520,6 +20564,11 @@
     if (!card) return true;
     const c = (cond || '').trim().replace(/の、/g, 'の');
     if (!c) return true;
+    // 色だけ(「黒」「青/緑」「赤か青」): 「黒の自分のテイマーがいる」から主語を外した残り。「の」がないと下で読めず、何でも合う扱いになっていた
+    if (/^[赤青黄緑黒紫白](?:(?:\/|か)[赤青黄緑黒紫白])*$/.test(c)) {
+      const COL = { 赤: 'red', 青: 'blue', 黄: 'yellow', 緑: 'green', 黒: 'black', 紫: 'purple', 白: 'white' };
+      return c.split(/\/|か/).some(j => (card.color || []).includes(COL[j]));
+    }
     // 「「城木明日奈」1枚かLv.4以下の〜デジモンカード」: 枚数で区切った並記はどれか
     const byCount = c.split(/\d+枚か、?/);
     if (byCount.length > 1) return byCount.some(x => revealCondMatches(card, x));
@@ -21009,10 +21058,14 @@
   // 代償を払う。払い終わったら onPaid({ count, underNums, destroyedCost })。zero の軽減は呼び出し側で扱う
   function runPayCost(pc, card, pi, onPaid) {
     const P = practiceState.players[pi];
-    const cost = pc.cost;
+    let cost = pc.cost;
+    // ケレスモン(BT3-056)「自分の≪吸収進化≫でレストさせるデジモンを相手のデジモンにできる」が場にあれば、相手のデジモンも選べる
+    if (pc.keyword && /≪吸収進化/.test(pc.keyword) && battleStacksOf(pi).some(st => getStackEffectSources(st).some(src => /≪吸収進化≫でレストさせるデジモンを相手のデジモンにできる/.test(src.text || '')))) {
+      cost = cost.replace(/^自分のデジモン1体/, 'デジモン1体');
+    }
     let m;
     // (1) このカードの下に置く: 自分の「X」1体(BT21-030) / バトルエリア・トラッシュの〜名称の異なるカードN枚まで(BT15-102) / セキュリティの表向きの〜1枚ずつ(EX10-061)
-    if ((m = /^自分の「([^」]+)」1体をこのカードの下に置く$/.exec(cost))) {
+    if ((m = /^(?:自分の)?「([^」]+)」1体を(?:このカードの下|このデジモンの進化元)に置く$/.exec(cost))) {
       const name = m[1];
       const cands = battleStacksOf(pi).filter(st => { const t = getStackTopCard(st); return t && cardHasName(t, name); });
       if (!cands.length) { showToast(`下に置ける「${name}」がいません`, true); return false; }
