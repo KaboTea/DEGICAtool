@@ -35,7 +35,9 @@ o.smRoute = await page.evaluate(() => document.getElementById('evolveRouteModal'
 await page.evaluate(() => { const b=[...document.querySelectorAll('#evolveRouteModal.open .evolve-route-item:not(.eri-pay)')].find(x=>/代償/.test(x.textContent)) || document.querySelector('#evolveRouteModal.open .evolve-route-item:not(.eri-pay)'); b.click(); });
 await page.waitForTimeout(300);
 o.sm = await ev(`(() => { const P=practiceState.players[${pi}]; const st=P.battle[0]; return st ? st.cards.map(cardEntryNum).join('+')+' trash='+P.trash.join() : 'none'; })()`);
-o.ok_sm = /💸 代償/.test(o.smRoute) && o.smMid === `battle=0 trash=BT1-009 mats=${xmat}` && o.sm === `BT10-008+${xmat}+BT21-030 trash=BT1-009`;
+o.smBase = await ev(`cardIndexByNumber.get('BT21-030').play_cost`);
+o.smPaid = await spent() + 9; // 自分側9から始めたので、払ったコスト
+o.ok_sm = o.smPaid === Math.max(0, o.smBase - 2) && /デジクロス1枚 × -1/.test(o.smRoute) && /💸 代償/.test(o.smRoute) && o.smMid === `battle=0 trash=BT1-009 mats=${xmat}` && o.sm === `BT10-008+${xmat}+BT21-030 trash=BT1-009`;
 
 // 3b 取りやめたらシャウトモンが場に戻る
 await setup(`P.hand=['BT21-030']; P.battle=[{cards:['BT1-009','BT10-008']}]; P.trash=['${xmat}']`);

@@ -4020,7 +4020,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.99.1</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.99.2</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -6170,7 +6170,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.99.1`);
+    log(`DigiCA Tool build v0.99.2`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -19420,15 +19420,24 @@
     const handNames = multiEvolveMode.handMaterials.map(n => miniCardName(n));
     const namesText = [...stackNames, ...handNames].join('・');
     const pp = multiEvolveMode.payPlace;
-    openEvolveRouteModal(
-      multiEvolveMode.card, refTopCard,
-      `「${multiEvolveMode.card.name}」→ 材料: ${namesText}${pp ? `(代償: 「${pp.name}」を下に置く)` : ''}`,
-      (cost) => finalizeMultiEvolve(cost),
-      false,
-      multiEvolveMode.mode === 'jogress' ? '進化' : '登場',
-      null, null,
-      pp && pp.red ? { reductions: [{ n: pp.red, label: `💸 代償(「${pp.name}」を下に置いた)`, holds: true, cond: '' }] } : undefined
-    );
+    const subtitle = `「${multiEvolveMode.card.name}」→ 材料: ${namesText}${pp ? `(代償: 「${pp.name}」を下に置く)` : ''}`;
+    if (multiEvolveMode.mode === 'jogress') {
+      openEvolveRouteModal(multiEvolveMode.card, refTopCard, subtitle, (cost) => finalizeMultiEvolve(cost), false, '進化');
+      return;
+    }
+    // デジクロス(7-2-2-1): 登場コストから、デジクロスで下に置いた1枚ごとに条件の数値分を引く(0未満にはしない 1-3-9)。
+    // 代償で下に置いたカード(シャウトモンX7:SM)はデジクロスの枚数に数えない。ほかの登場コストの軽減もいつもどおり足す
+    const card = multiEvolveMode.card;
+    const per = parseInt((/≪≪デジクロス-(\d+)≫≫/.exec(card.effect || '') || [])[1] || '0', 10);
+    const placed = multiEvolveMode.selected.length + multiEvolveMode.handMaterials.length;
+    const base = card.play_cost || 0;
+    const dxCost = Math.max(0, base - per * placed);
+    const routes = [{ label: 'デジクロスで登場', sub: `デジクロス${placed}枚 × -${per}(登場コスト${base})`, cost: dxCost, origCost: dxCost !== base ? base : undefined }];
+    const reductions = [
+      ...collectCostReductions('play', card, { pi: practiceState.viewingIndex, source: 'hand' }),
+      ...(pp && pp.red ? [{ n: pp.red, label: `💸 代償(「${pp.name}」を下に置いた)`, holds: true, cond: '' }] : []),
+    ];
+    openEvolveRouteModal(card, null, subtitle, (cost) => finalizeMultiEvolve(cost), false, '登場', routes, null, { reductions, manualFromRoutes: true });
   }
 
   function finalizeMultiEvolve(cost) {
