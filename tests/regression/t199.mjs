@@ -29,7 +29,7 @@ o.noBurst = await pend();
 o.noBurstOk = o.noBurst === '' && await ev(`practiceState.players[${pi}].trash.includes('BT7-003')`);
 // 3 BT1-104「相手のデジモン1体のDPを-2000する」→ ボタンで相手のDPが下がる
 await ev(`(() => { const O=practiceState.players[1-${pi}]; O.battle=[{cards:['BT1-015']}]; renderPracticeBoard(); })()`); await settle();
-o.dp = await ev(`(() => { const P=practiceState.players[${pi}], O=practiceState.players[1-${pi}]; const c=cardIndexByNumber.get('BT1-104'); const line=c.effect.split('\\n').find(l=>/DPを-/.test(l)); const pl=parseEffectLine(line);
+o.dp = await ev(`(() => { const P=practiceState.players[${pi}], O=practiceState.players[1-${pi}]; const c=cardIndexByNumber.get('BT1-104'); const pl=parseEffectLine('【メイン】このターンの間、相手のデジモン1体のDPを-2000する。'); // 古い弾の書き方(BT1-104 自体は「」の中なので使わない)
   const h=getEffectHandlers({ownerIndex:${pi}, stackUid:null, cardNumber:'BT1-104', cardName:c.name, field:'effect', lineIndex:0, text:pl.text, timing:'メイン', event:'使用'}).find(h=>/DP-2000/.test(h.label));
   if (!h) return 'nobtn'; const before=getEffectiveDP(O.battle[0]); h.run(); if (fieldPickMode) { fieldPickMode.selected=[O.battle[0]]; finishFieldPick(); } return before - getEffectiveDP(O.battle[0]); })()`);
 o.dpOk = o.dp === 2000;
