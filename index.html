@@ -4020,7 +4020,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.99.3</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.99.4</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -6170,7 +6170,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.99.3`);
+    log(`DigiCA Tool build v0.99.4`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -12847,6 +12847,15 @@
   }
   function runTargetAction(ta, e, targets) {
     if (!targets.length) return;
+    // ⛨「相手の効果を受けない」等を持つものは、選べても効果の影響を受けない(15-15-5-1/15-15-5-3)
+    if (e && practiceState) {
+      const blocked = targets.map(st => ({ st, r: resistBlockReason(st, ta.action, e.ownerIndex, e.cardNumber) })).filter(x => x.r);
+      if (blocked.length) {
+        showToast(`⛨ ${blocked.map(b => `「${stackLabel(b.st)}」(${b.r})`).join('、')}は効果を受けません`);
+        targets = targets.filter(st => !blocked.some(b => b.st === st));
+        if (!targets.length) { renderPracticeBoard(); renderEffectPanel(); return; }
+      }
+    }
     const names = targets.map(s => (getStackTopCard(s) || {}).name || '?').join('、');
     const a = ta.action;
     if (a.type === 'move') {
@@ -13001,9 +13010,8 @@
     }
     // 進化元を破棄する効果は、進化元を持つデジモンだけを候補にする
     if (ta.action.type === 'matTrash') cands = cands.filter(st => st.cards.length > 1);
-    // ⛨耐性でこの効果を受けないものは候補から外す(「条件外も選ぶ」からは選べる)
-    const rs = splitByResist(cands, ta.action, e);
-    cands = rs.ok;
+    // ⛨耐性でこの効果を受けないものも選べる(15-15-5-3)。受けないかどうかは runTargetAction で決める
+    const rs = { ok: cands, blocked: [], note: '' };
     const extra = targetPoolAll(ta, e.ownerIndex).filter(st => !cands.includes(st) && !keep.includes(st));
     if (!cands.length && !extra.length) { showToast(keep.length ? '選んだもの以外に対象がいません' : '対象にできるカードがいません', true); return; }
     if (ta.count === Infinity) {
@@ -13286,8 +13294,13 @@
       return {
         label: `✨ ${names}を付与${g.dp ? `・DP${g.dp > 0 ? '+' : ''}${g.dp}` : ''}${lockLabel}${g.target === 'all' ? '(全て)' : ''}${durLabel}`,
         run: () => {
-          const apply = (targets) => {
-            if (!targets.length) { showToast('対象にできるデジモンがいません', true); return; }
+          const apply = (targets0) => {
+            if (!targets0.length) { showToast('対象にできるデジモンがいません', true); return; }
+            // ⛨ 相手の効果を受けないものには付与しない(15-15-5-4)
+            const blocked = targets0.filter(st => resistBlockReason(st, { type: 'grant', amount: g.dp }, e.ownerIndex, e.cardNumber));
+            if (blocked.length) showToast(`⛨ ${blocked.map(st => `「${stackLabel(st)}」`).join('、')}は効果を受けません`);
+            const targets = targets0.filter(st => !blocked.includes(st));
+            if (!targets.length) { renderPracticeBoard(); renderEffectPanel(); return; }
             snapshotPracticeState();
             targets.forEach(st => { grantKeywordsTo(st, g, e.ownerIndex); applyLocks(st, g.locks); });
             if (g.dp) {
@@ -13303,7 +13316,8 @@
           const kinds = g.ta ? g.ta.kinds : ['digimon'];
           // 種類(デジモン/テイマー)だけ合う全員。対象の条件が読み取れたら、そのうち条件に合うものを候補にする
           const pool = targetPoolAll({ side: g.side, kinds }, e.ownerIndex).filter(st => sides.includes(practiceState.players.indexOf(findStackOwnerAndZone(st).player)));
-          const rsG = splitByResist(g.ta ? targetCandidates(g.ta, e.ownerIndex, holderStack) : pool, { type: 'grant' }, e);
+          // 耐性を持つものも選べるが、付与は受けない(apply で外す)
+          const rsG = { ok: g.ta ? targetCandidates(g.ta, e.ownerIndex, holderStack) : pool, note: '' };
           const cands = rsG.ok;
           if (g.target === 'all') {
             if (rsG.note) showToast(rsG.note);
