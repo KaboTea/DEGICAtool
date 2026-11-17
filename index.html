@@ -4020,7 +4020,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.99.6</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.99.7</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -6170,7 +6170,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.99.6`);
+    log(`DigiCA Tool build v0.99.7`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -12645,7 +12645,8 @@
         }
         if (m[7] === 'の進化元を') {
           // 「相手のデジモン1体の進化元を上から2枚破棄する」
-          if ((am = /^、?(上|下)から(\d+)枚破棄/.exec(rest))) action = { type: 'matTrash', from: am[1] === '上' ? 'top' : 'bottom', n: parseInt(am[2], 10) };
+          // 「〜の進化元を、下から2枚まで破棄」「〜の進化元を、(X)1体ごとに、上から2枚破棄」(4-26-2: 数の分だけ上から)
+          if ((am = /^、?(?:([^、。]{1,50}?)ごとに、?)?(上|下)から(\d+)枚(まで)?破棄/.exec(rest))) action = { type: 'matTrash', from: am[2] === '上' ? 'top' : 'bottom', n: parseInt(am[3], 10), upTo: !!am[4], per: am[1] ? cleanPerPhrase(am[1]) : null };
           else if (/^、?全て破棄/.test(rest)) action = { type: 'matTrash', from: 'top', n: 99 };
         }
         // 「相手のデジモン1体を、ターン終了まで、DP-3000」のように期間が対象のあとに来る形も読む
@@ -12767,6 +12768,12 @@
     if (!practiceState) return null;
     // 「この効果で破棄した(カード)1枚ごとに」: 代償(≪デジバースト≫など)で破棄した枚数。払う前なら数えられない
     if (/^この効果で破棄した(?:カード|セキュリティ)?1枚$/.test(per)) return e && e.costDiscardCount != null ? e.costDiscardCount : null;
+    // 「特徴に「ロイヤルナイツ」を持つ自分のデジモンか青の自分のテイマー1体」: 2つの主語の数を足す(デジモンとテイマーは重ならない)
+    const orm = /^(.+?自分の(?:デジモン|テイマー))か(.+?自分の(?:デジモン|テイマー))1体$/.exec(per);
+    if (orm) {
+      const a1 = countPerUnit(orm[1] + '1体', ownerIndex, holderStack, target, e), a2 = countPerUnit(orm[2] + '1体', ownerIndex, holderStack, target, e);
+      return a1 == null || a2 == null ? null : a1 + a2;
+    }
     const me = practiceState.players[ownerIndex];
     const holder = holderStack && findStackOwnerAndZone(holderStack) ? holderStack : null;
     const colorsOf = (cards) => new Set(cards.flatMap(c => (c && c.color) || []));
@@ -12875,6 +12882,20 @@
     }
     if (a.type === 'trash') {
       runSequentially(targets, (s, next) => trashStackWithLeaveCheck(s, next), () => renderPracticeBoard());
+      return;
+    }
+    if (a.type === 'matTrash' && a.per && !a.perResolved) {
+      const k = countPerUnit(a.per, e.ownerIndex, ta.holder || null, null, e);
+      if (k == null) showToast(`「${a.per}」を数えられませんでした。${a.n}枚として破棄します`, true);
+      runTargetAction(Object.assign({}, ta, { action: Object.assign({}, a, { perResolved: true, n: k == null ? a.n : a.n * k }) }), e, targets);
+      return;
+    }
+    if (a.type === 'matTrash' && a.upTo && !a.nChosen && a.n < 99) {
+      // 「N枚まで」: 何枚破棄するかを選ぶ
+      openDecisionUi(`🎯 ${names} の進化元を何枚破棄しますか?(${a.from === 'top' ? '上' : '下'}から${a.n}枚まで)`, [
+        ...Array.from({ length: a.n }, (_, i) => a.n - i).map((k, i) => ({ label: `${k}枚`, primary: i === 0, onClick: () => runTargetAction(Object.assign({}, ta, { action: Object.assign({}, a, { nChosen: true, n: k }) }), e, targets) })),
+        { label: '破棄しない', onClick: () => renderPracticeBoard() },
+      ]);
       return;
     }
     if (a.type === 'matTrash') {
@@ -13057,7 +13078,7 @@
       : a.type === 'move' ? MOVE_LABEL[a.dest] + (a.faceUp ? '(表向き)' : '')
       : a.type === 'trash' ? '破棄'
       : a.type === 'lock' ? '🔒' + a.locks.map(k => LOCK_LABELS[k]).join('・')
-      : a.type === 'matTrash' ? (a.n >= 99 ? '進化元を全て破棄' : `進化元を${a.from === 'top' ? '上' : '下'}から${a.n}枚破棄`) : '';
+      : a.type === 'matTrash' ? (a.n >= 99 ? '進化元を全て破棄' : `進化元を${a.per ? `${a.per}ごとに` : ''}${a.from === 'top' ? '上' : '下'}から${a.n}枚${a.upTo ? 'まで' : ''}破棄`) : '';
     if (a.type === 'matTrash') return `${(ta.prefix || '').replace(/【[^】]*】/g, '').replace(/[［\[][^］\]]*[］\]]/g, '').replace(/^[・\s]+/, '').trim()}${ta.phrase}の${what}`;
     const pre = (ta.prefix || '').replace(/【[^】]*】/g, '').replace(/[［\[][^］\]]*[］\]]/g, '').replace(/^[・\s]+/, '').trim();
     const dur = a.type === 'dp' && DURATION_LABELS[ta.duration] ? `(${DURATION_LABELS[ta.duration]})` : '';
@@ -15221,6 +15242,106 @@
     const notCost = (idx, len) => !/^(?:する|できる|し|す|る)?ことで/.test(t.slice(idx + len, idx + len + 8));
     const guard = () => { if (pi !== practiceState.viewingIndex) { showToast('この自動処理は、その効果を持つプレイヤーの視点に切り替えてから実行してください', true); return false; } return true; };
     let m;
+    // ---- 1〜5枚ずつの書き方(2026-11-17の抜け探し) ----
+    const perOf = (phrase) => { if (!phrase) return 1; const k = countPerUnit(cleanPerPhrase(phrase), pi, holderStack || null, null, e); return k == null ? null : k; };
+    const traitOk = (st, cond) => !cond || stackMatchesFilterText(st, cond);
+    // (a) 「(条件の)相手のデジモンN体に重ねられているカードを上からM枚 破棄する/デッキの上に戻す/相手のセキュリティの上に置ける」(4-6-1: 一番上も含む)
+    const pm = /(?:([^、。]*?)を持つ)?相手のデジモン(\d+)体に重ねられているカードを上から(\d+)枚(破棄|デッキの上に戻|相手のセキュリティの上に置)(?:す|する|ける|く)/.exec(t);
+    if (pm) {
+      const cond = pm[1] ? pm[1] + 'を持つ' : '', cnt = +pm[2], n = +pm[3];
+      const destJa = pm[4] === '破棄' ? '破棄' : pm[4].startsWith('デッキ') ? 'デッキの上へ' : 'セキュリティの上へ';
+      out.push({ textPos: pm.index, label: `🎯 相手のデジモン${cnt}体の重ねられているカードを上から${n}枚${destJa}`, run: () => {
+        if (!guard()) return;
+        const op = practiceState.players[1 - pi];
+        const cands = battleStacksOf(1 - pi).filter(st => isDigimonLikeStack(st) && st.cards.length >= 2 && traitOk(st, cond)); // 4-6-2: 1枚だけは重ねられていない
+        if (!cands.length) { showToast('重ねられているカードを持つ相手のデジモンがいません', true); return; }
+        startFieldPick({ title: `🎯 重ねられているカードを上から${n}枚${destJa}する相手のデジモンをタップ(${cnt}体まで)`, candidates: cands, extra: [], max: cnt, upTo: true,
+          onDone: (sel) => {
+            const ok = sel.filter(st => !resistBlockReason(st, { type: 'pile' }, pi, e.cardNumber));
+            if (ok.length < sel.length) showToast('⛨ 耐性を持つデジモンは効果を受けません');
+            if (!ok.length) return;
+            snapshotPracticeState();
+            const moved = [];
+            ok.forEach(st => {
+              const take = st.cards.splice(Math.max(0, st.cards.length - n)).reverse(); // 上から
+              take.forEach(x => {
+                const num = cardEntryNum(x); moved.push(num);
+                if (pm[4] === '破棄') op.trash.push(num);
+                else if (pm[4].startsWith('デッキ')) op.library.unshift(num);
+                else op.security.unshift(num);
+              });
+              if (!st.cards.length) { (st.links || []).forEach(x => op.trash.push(x)); op.battle.splice(op.battle.indexOf(st), 1); }
+            });
+            renderPracticeBoard(); renderEffectPanel();
+            showToast(`🎯 ${moved.length}枚を${destJa}しました`);
+            checkAllBattleAreaRuleViolations();
+          }, onCancel: () => renderPracticeBoard() });
+      } });
+    }
+    // (b) 「お互いは、デッキ(の上)からカードを1枚引く」
+    const bdm = /お互いは、?デッキ(?:の上)?からカードを(\d+)枚引く/.exec(t);
+    if (bdm) out.push({ textPos: bdm.index, label: `🃏 お互いに${bdm[1]}枚ドロー`, run: () => { if (!guard()) return; drawCardsFor(pi, +bdm[1], e.cardName); drawCardsFor(1 - pi, +bdm[1], e.cardName); renderPracticeBoard(); } });
+    // (c) 「自分のデッキの上からN枚(まで)破棄できる」/「(Xごとに、)相手のデッキを上からN枚破棄する」/「(Xごとに、)相手のセキュリティを1枚破棄する」
+    const ddm = /(?:([^、。】］\]]{1,30}?)ごとに、)?(自分|相手)のデッキ(?:の上から|を上から)(\d+)枚(まで)?破棄(する|できる)/.exec(t);
+    if (ddm && notCost(ddm.index, ddm[0].length)) {
+      const who = ddm[2] === '自分' ? pi : 1 - pi, n0 = +ddm[3], upTo = !!ddm[4];
+      out.push({ textPos: ddm.index, label: `🗑 ${ddm[2]}のデッキを上から${ddm[1] ? `(${ddm[1]}ごとに)` : ''}${n0}枚${upTo ? 'まで' : ''}破棄`, run: () => {
+        if (!guard()) return;
+        const k = perOf(ddm[1]);
+        if (k == null) { showToast(`「${ddm[1]}」を数えられませんでした`, true); return; }
+        const total = n0 * k;
+        const go = (n) => {
+          const P2 = practiceState.players[who];
+          snapshotPracticeState();
+          const nums = P2.library.splice(0, n);
+          nums.forEach(x => P2.trash.push(x));
+          renderPracticeBoard(); renderEffectPanel();
+          showToast(`🗑 ${ddm[2]}のデッキを上から${nums.length}枚破棄しました${ddm[1] ? `(${ddm[1]} ${k})` : ''}`);
+        };
+        if (!upTo) { go(total); return; }
+        openDecisionUi(`🗑 ${ddm[2]}のデッキを上から何枚破棄しますか?`, [...Array.from({ length: total }, (_, i) => total - i).map((x, i) => ({ label: `${x}枚`, primary: i === 0, onClick: () => go(x) })), { label: '破棄しない', onClick: () => {} }]);
+      } });
+    }
+    const sdm = /([^、。】］\]]{1,30}?)ごとに、相手のセキュリティを(?:上から)?(\d+)枚破棄する/.exec(t);
+    if (sdm) out.push({ textPos: sdm.index, label: `🛡 相手のセキュリティを(${sdm[1]}ごとに)${sdm[2]}枚破棄`, run: () => {
+      if (!guard()) return;
+      const k = perOf(sdm[1]);
+      if (k == null) { showToast(`「${sdm[1]}」を数えられませんでした`, true); return; }
+      const op = practiceState.players[1 - pi];
+      snapshotPracticeState();
+      const nums = op.security.splice(0, +sdm[2] * k).map(cardEntryNum);
+      nums.forEach(x => op.trash.push(x));
+      renderPracticeBoard(); renderEffectPanel();
+      showToast(`🛡 相手のセキュリティを${nums.length}枚破棄しました(${sdm[1]} ${k})`);
+    } });
+    // (d) 「お互いはそれぞれ手札がN枚になるように破棄する」: 自分 → 相手の順に選ぶ
+    const bhm = /お互いはそれぞれ手札が(\d+)枚になるように破棄する/.exec(t);
+    if (bhm) out.push({ textPos: bhm.index, label: `🗑 お互いの手札が${bhm[1]}枚になるように破棄`, run: () => {
+      if (!guard()) return;
+      const keep = +bhm[1];
+      const step = (who, next) => {
+        const P2 = practiceState.players[who];
+        const n = P2.hand.length - keep;
+        if (n <= 0) { next(); return; }
+        openCardMultiPicker({ title: `🗑 ${who === pi ? '自分' : '相手'}の手札から${n}枚破棄(${keep}枚にする)`, entries: P2.hand.map(x => ({ num: cardEntryNum(x), ok: true })), max: n, min: n,
+          actions: [{ label: '破棄する', primary: true, onClick: (idxs) => { snapshotPracticeState(); spliceMany(P2.hand, idxs).map(cardEntryNum).forEach(x => P2.trash.push(x)); cardDetailModal.classList.remove('open'); renderPracticeBoard(); next(); } }] });
+      };
+      step(pi, () => step(1 - pi, () => { renderEffectPanel(); showToast(`お互いの手札を${keep}枚にしました`); }));
+    } });
+    // (e) 「自分の「X」が置かれていないとき、自分の手札から「X」1枚をバトルエリアに置ける」(四大竜の試練)
+    const pbm = /自分の手札から、?「([^」]+)」1枚をバトルエリアに置ける/.exec(t);
+    if (pbm) out.push({ textPos: pbm.index, label: `📥 手札の「${pbm[1]}」をバトルエリアに置く`, run: () => {
+      if (!guard()) return;
+      const P2 = practiceState.players[pi];
+      if (battleStacksOf(pi).some(st => { const c = getStackTopCard(st); return c && cardHasName(c, pbm[1]); })) { showToast(`「${pbm[1]}」はもう置かれています`, true); return; }
+      const i = P2.hand.findIndex(x => { const c = cardIndexByNumber.get(cardEntryNum(x)); return c && cardHasName(c, pbm[1]); });
+      if (i < 0) { showToast(`手札に「${pbm[1]}」がありません`, true); return; }
+      snapshotPracticeState();
+      const [num] = P2.hand.splice(i, 1);
+      P2.battle.push({ cards: [cardEntryNum(num)], rested: false });
+      renderPracticeBoard(); renderEffectPanel();
+      showToast(`📥 「${pbm[1]}」をバトルエリアに置きました`);
+    } });
     // 「相手は相手の手札を1枚破棄する」「相手は自身の手札1枚を破棄する」(相手が選ぶ) / 「相手の手札を1枚見ないで破棄する」(無作為)
     const ohm = /相手は、?(?:相手の|自身の)手札(?:を)?(\d+)枚(?:を)?破棄する|相手の手札を(\d+)枚見ないで破棄する/.exec(t);
     if (ohm) {
@@ -16641,8 +16762,22 @@
       startFieldPick({ title: `🦖 デジモンにするテイマーをタップ${name ? `(「${name}」)` : ''}`, candidates: cands, extra: tamers.filter(st => !cands.includes(st)), onDone: (sel) => { if (sel[0]) go(sel[0]); } });
     } }];
   }
+  // 条件の途中の読点をつなぐ: 「名称に「X」を含むか、特徴に「Y」を持つ」「黄のLv.3のデジモンカードか、特徴に〜」(BT13-090・BT5-045)
+  // 「同じ名称の自分のテイマーがいない、「X」の記述がある」(BT16-072/073)は、同じ名称のテイマーがいないものだけを選ぶ注意として外す
+  function normalizeCondCommas(text) {
+    return String(text || '')
+      .replace(/(を含む|を持つ|(?<!この)カード|がある)か、(?=[^。]*?\d+枚)/g, '$1か') // 「このカードか、トラッシュの〜」(BT25-101)は別の意味なのでつながない
+      .replace(/同じ名称の自分のテイマーがいない、/g, '');
+  }
   function getEffectHandlers(e) {
     if (e.deferred) return deferredHandlersFor(e);
+    if (!e._condNorm) {
+      const nt = normalizeCondCommas(e.text);
+      if (nt !== (e.text || '')) {
+        const eN = new Proxy(e, { get: (o, k) => k === 'text' ? nt : k === '_condNorm' ? true : o[k] });
+        return getEffectHandlers(eN);
+      }
+    }
     // 「〜は「【消滅時】…」の効果を得る」: カギかっこの中は、あとで発揮する効果。今の効果のボタンにしない(与えるボタンだけ元の文から作る)
     if (!e._quotesMasked && /「【/.test(e.text || '')) {
       const q = extractQuotedEffects(e.text || '');
