@@ -4020,7 +4020,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.99.4</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.99.5</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -6170,7 +6170,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.99.4`);
+    log(`DigiCA Tool build v0.99.5`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -15221,6 +15221,58 @@
     const notCost = (idx, len) => !/^(?:する|できる|し|す|る)?ことで/.test(t.slice(idx + len, idx + len + 8));
     const guard = () => { if (pi !== practiceState.viewingIndex) { showToast('この自動処理は、その効果を持つプレイヤーの視点に切り替えてから実行してください', true); return false; } return true; };
     let m;
+    // 「相手は相手の手札を1枚破棄する」「相手は自身の手札1枚を破棄する」(相手が選ぶ) / 「相手の手札を1枚見ないで破棄する」(無作為)
+    const ohm = /相手は、?(?:相手の|自身の)手札(?:を)?(\d+)枚(?:を)?破棄する|相手の手札を(\d+)枚見ないで破棄する/.exec(t);
+    if (ohm) {
+      const n = +(ohm[1] || ohm[2]), blind = !!ohm[2];
+      out.push({ textPos: ohm.index, label: blind ? `🎲 相手の手札を${n}枚見ないで破棄(無作為)` : `🗑 相手が相手の手札を${n}枚破棄(相手が選ぶ)`, run: () => {
+        if (!guard()) return;
+        const op = practiceState.players[1 - pi];
+        if (!op.hand.length) { showToast('相手の手札がありません', true); return; }
+        const done = (idxs) => {
+          snapshotPracticeState();
+          const nums = spliceMany(op.hand, idxs).map(cardEntryNum);
+          nums.forEach(x => op.trash.push(x));
+          cardDetailModal.classList.remove('open');
+          renderPracticeBoard(); renderEffectPanel();
+          showToast(`🗑 相手の手札から${nums.map(x => `「${miniCardName(x)}」`).join('')}を破棄しました${blind ? '(無作為)' : ''}`);
+        };
+        if (blind) {
+          const pool = op.hand.map((_, i) => i);
+          const idxs = [];
+          for (let k = 0; k < Math.min(n, pool.length); k++) idxs.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+          done(idxs);
+          return;
+        }
+        openCardMultiPicker({ title: `🗑「${e.cardName}」: 相手が手札から破棄するカード`, sub: `(相手が${n}枚選ぶ)`,
+          entries: op.hand.map(x => ({ num: cardEntryNum(x), ok: true })), max: n, min: Math.min(n, op.hand.length),
+          actions: [{ label: '破棄する', primary: true, onClick: (idxs) => done(idxs) }] });
+      } });
+    }
+    // ≪セーブ≫(16-20)「このカードを自分のテイマー1体の下に置ける」: 【消滅時】などでトラッシュに行ったこのカードを、テイマーの下の一番下に表向きで
+    const svm = /≪セーブ≫(?!の記述)/.exec(t);
+    if (svm) {
+      out.push({ textPos: svm.index, label: '🎙 ≪セーブ≫: このカードを自分のテイマーの下へ', run: () => {
+        if (!guard()) return;
+        const p = practiceState.players[pi];
+        const ti = p.trash.map(cardEntryNum).lastIndexOf(e.cardNumber);
+        if (ti < 0) { showToast(`「${e.cardName}」がトラッシュにありません`, true); return; }
+        const tamers = battleStacksOf(pi).filter(st => { const c = getStackTopCard(st); return c && c.category === 'tamer' && !isDigimonLikeStack(st); });
+        if (!tamers.length) { showToast('下に置ける自分のテイマーがいません', true); return; }
+        const put = (st) => {
+          snapshotPracticeState();
+          const i = p.trash.map(cardEntryNum).lastIndexOf(e.cardNumber);
+          if (i < 0) return;
+          p.trash.splice(i, 1);
+          st.cards.unshift(e.cardNumber);
+          renderPracticeBoard(); renderEffectPanel();
+          showToast(`🎙 ≪セーブ≫: 「${e.cardName}」を「${stackLabel(st)}」の下に置きました`);
+        };
+        if (tamers.length === 1) { put(tamers[0]); return; }
+        startFieldPick({ title: `🎙 ≪セーブ≫: 「${e.cardName}」を下に置くテイマーをタップ`, candidates: tamers, extra: [], max: 1,
+          onDone: (sel) => { if (sel[0]) put(sel[0]); }, onCancel: () => renderPracticeBoard() });
+      } });
+    }
     // P-089/RB1-014/RB1-016「この効果で破棄した1枚ごとに、相手のデジモンかテイマーの下から選んで1枚破棄できる」
     const ubm = /(?:(この効果で破棄した(?:カード)?1枚)ごとに、)?相手の(デジモンかテイマー|デジモン|テイマー)の下から選んで(\d+)枚破棄(する|できる)/.exec(t);
     if (ubm && notCost(ubm.index, ubm[0].length - ubm[4].length)) {
@@ -16102,7 +16154,11 @@
   // 「登場コスト合計14まで、相手のデジモンをデッキの下に戻す」
   // 上限が増える「相手のデジモン1体ごとに、このDP消滅効果の上限+2000」「進化元の「ベムモン」1枚ごとに、この効果で選べる登場コスト合計の上限+1」も数える
   function parseTotalRemovals(text) {
-    const t = engineStripNotes(text || '');
+    // 「DPの合計が6000以下になるように相手のデジモンを選び、選んだデジモン全てを消滅させる」(BT9-094 ほか)
+    // 「DP合計このデジモンのDPまで、相手のデジモンを消滅させる」(LM-021): 上限はこのデジモンのDP
+    const t = engineStripNotes(text || '')
+      .replace(/(DP|登場コスト|Lv\.)の合計が(\d+)以下になるように相手のデジモンを選び、選んだデジモン全てを/g, '$1合計$2以下になるように、相手のデジモンを')
+      .replace(/DP合計このデジモンのDPまで、相手の/g, 'DP合計0まで、相手の');
     const out = [];
     const re = /(登場コスト|DP|Lv\.)合計(\d+)(?:まで|以下になるように)、?(?:(?:[^。]*?)なら)?相手の(デジモン(?:とテイマー)?|テイマー)(?:を選び、選んだ(?:デジモン|カード)(?:とテイマー)?全て)?を(消滅させる|デッキの(?:下|上)に戻す|手札に戻す)/g;
     let m;
@@ -16110,7 +16166,7 @@
       const key = m[1] === '登場コスト' ? 'cost' : m[1] === 'DP' ? 'dp' : 'lv';
       const act = /消滅/.test(m[4]) ? { type: 'destroy' } : /手札/.test(m[4]) ? { type: 'move', dest: 'hand' } : { type: 'move', dest: /上/.test(m[4]) ? 'deckTop' : 'deckBottom' };
       const up = /([^、。]+?)(\d+)(枚|体)ごとに、この(?:DP消滅)?効果(?:で選べる|の)(?:登場コスト合計の|DPの|Lv\.の)?(?:上限|登場コスト(?:合計)?(?:の)?上限)\+(\d+)/.exec(t);
-      out.push({ key, label: m[1], base: parseInt(m[2], 10), kinds: m[3], act, verb: m[4],
+      out.push({ key, label: m[1], base: parseInt(m[2], 10), kinds: m[3], act, verb: m[4], holderDP: /DP合計このデジモンのDPまで/.test(text || ''),
         up: up ? { what: up[1].replace(/^.*?、/, '').trim(), n: parseInt(up[2], 10), unit: up[3], add: parseInt(up[4], 10) } : null });
     }
     // BT8-070「このデジモンの進化元に、赤のカードがあるなら相手のデジモンを、黒のカードがあるなら相手のテイマーを、あわせて登場コスト合計6まで選び、選んだカード全てを消滅させる」
@@ -16129,10 +16185,13 @@
     if (!practiceState) return [];
     return parseTotalRemovals(e.text).map(tr => {
       const actJa = tr.act.type === 'destroy' ? '消滅' : tr.act.dest === 'hand' ? '手札に戻す' : 'デッキの下へ';
-      return { label: `🧮 ${tr.label}合計${tr.base}${tr.up ? '+α' : ''}まで、相手の${tr.kinds}を${actJa}`, run: () => {
+      const holderDP = tr.holderDP && holderStack && findStackOwnerAndZone(holderStack) ? getEffectiveDP(holderStack) : null;
+      const baseShown = tr.holderDP ? (holderDP != null ? `${holderDP}(このデジモンのDP)` : 'このデジモンのDP') : tr.base;
+      return { label: `🧮 ${tr.label}合計${baseShown}${tr.up ? '+α' : ''}まで、相手の${tr.kinds}を${actJa}`, run: () => {
         if (e.ownerIndex !== practiceState.viewingIndex) { showToast('この自動処理は、その効果を持つプレイヤーの視点に切り替えてから実行してください', true); return; }
+        if (tr.holderDP && holderDP == null) { showToast('このデジモンが場にいないため、DPの上限が分かりません', true); return; }
         const opi = 1 - e.ownerIndex;
-        let budget = tr.base, upNote = '';
+        let budget = tr.holderDP ? holderDP : tr.base, upNote = '';
         if (tr.up) {
           let k = null;
           try { k = extraCountSubject({ what: tr.up.what, n: tr.up.n, unit: tr.up.unit }, holderStack || { cards: [] }, e.ownerIndex); } catch (er) { k = null; }
