@@ -4020,7 +4020,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.99.10</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.99.11</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -6170,7 +6170,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.99.10`);
+    log(`DigiCA Tool build v0.99.11`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -15631,6 +15631,26 @@
         nums.forEach(x => op.trash.push(x));
         renderPracticeBoard();
         showToast(`相手のセキュリティを上から${nums.length}枚破棄しました`);
+      } });
+    }
+    // 「相手のセキュリティがN枚になるように上から破棄する」「お互いはそれぞれセキュリティがN枚になるように上から破棄する」: 残す枚数から破棄する枚数を決める
+    const ske = /(相手の|お互いはそれぞれ)セキュリティが(\d+)枚になるように上から破棄(する|し)/g;
+    while ((m = ske.exec(t))) {
+      if (!notCost(m.index, m[0].length - m[3].length)) continue;
+      const both = m[1] !== '相手の', keep = +m[2];
+      out.push({ label: `🛡 ${both ? 'お互いの' : '相手の'}セキュリティが${keep}枚になるように破棄`, run: () => {
+        if (!guard()) return;
+        const sides = both ? [pi, 1 - pi] : [1 - pi];
+        const cnt = sides.map(s => Math.max(0, practiceState.players[s].security.length - keep));
+        if (cnt.every(x => x === 0)) { showToast(`セキュリティはすでに${keep}枚以下なので、破棄しません`); return; }
+        snapshotPracticeState();
+        const msg = sides.map((s, k) => {
+          const pl = practiceState.players[s];
+          pl.security.splice(0, cnt[k]).map(cardEntryNum).forEach(x => pl.trash.push(x));
+          return `${s === pi ? '自分' : '相手'}${cnt[k]}枚`;
+        });
+        renderPracticeBoard();
+        showToast(`セキュリティを${keep}枚になるように破棄しました(${msg.join('・')})`);
       } });
     }
     // (自分|相手|お互い)のデッキの上からN枚破棄する
