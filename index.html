@@ -4020,7 +4020,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.99.14</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.99.15</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -6170,7 +6170,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.99.14`);
+    log(`DigiCA Tool build v0.99.15`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -6905,7 +6905,7 @@
     if ((m = /^進化元が(\d+)枚以上ある$/.exec(qual))) return mats.length >= +m[1];
     if ((m = /^進化元に((?:「[^」]+」\/?)+)が(?:(\d+)枚以上)?ある$/.exec(qual))) {
       const names = (m[1].match(/「([^」]+)」/g) || []).map(x => x.slice(1, -1));
-      const k = mats.filter(e => !cardEntryFaceDown(e) && names.some(n => cardHasName(cardIndexByNumber.get(cardEntryNum(e)), n) || (miniCardName(cardEntryNum(e)) || '').includes(n) || extraTraitsOf(cardIndexByNumber.get(cardEntryNum(e))).some(t => t === n))).length;
+      const k = mats.filter(e => !cardEntryFaceDown(e) && names.some(n => cardHasName(cardIndexByNumber.get(cardEntryNum(e)), n) || extraTraitsOf(cardIndexByNumber.get(cardEntryNum(e))).some(t => t === n))).length;
       return k >= (m[2] ? +m[2] : 1);
     }
     if ((m = /^特徴に((?:「[^」]+」\/?)+)を持つ$/.exec(qual))) {
@@ -8286,7 +8286,7 @@
     }
     if ((m = /^このデジモンの進化元に((?:「[^」]+」\/?)+)が(\d+)枚以上ある$/.exec(c))) {
       const names = (m[1].match(/「([^」]+)」/g) || []).map(x => x.slice(1, -1));
-      return stack.cards.slice(0, -1).filter(e => !cardEntryFaceDown(e) && names.some(n => (miniCardName(cardEntryNum(e)) || '').includes(n))).length >= +m[2];
+      return stack.cards.slice(0, -1).filter(e => !cardEntryFaceDown(e) && names.some(n => cardHasName(cardIndexByNumber.get(cardEntryNum(e)), n))).length >= +m[2];
     }
     if (/^このデジモンが進化元を持たない$/.test(c)) return stack.cards.length <= 1;
     if ((m = /^このデジモンの名称が((?:「[^」]+」(?:\/|か)?)+)$/.exec(c))) return (m[1].match(/「([^」]+)」/g) || []).map(x => x.slice(1, -1)).some(n => cardHasName(top, n));
@@ -8304,7 +8304,8 @@
     if (/^このデジモンがアクティブ状態$/.test(c)) return !stack.rested;
     if ((m = /^このデジモンの進化元に((?:「[^」]+」(?:\/|か)?)+)がある$/.exec(c))) {
       const names = (m[1].match(/「([^」]+)」/g) || []).map(x => x.slice(1, -1));
-      return stack.cards.slice(0, -1).some(e => !cardEntryFaceDown(e) && names.some(n => (miniCardName(cardEntryNum(e)) || '').includes(n)));
+      // 「「X抗体」がある」は名称が「X抗体」のカードだけ(「ギルモンX抗体」は含まない)
+      return stack.cards.slice(0, -1).some(e => !cardEntryFaceDown(e) && names.some(n => cardHasName(cardIndexByNumber.get(cardEntryNum(e)), n)));
     }
     if ((m = /^このデジモンの進化元が(\d+)枚(以上|以下)(?:ある)?$/.exec(c))) { const k = stack.cards.length - 1; return m[2] === '以上' ? k >= +m[1] : k <= +m[1]; }
     if ((m = /^このデジモンの進化元に、?(.+?)が(ある|ない)$/.exec(c))) {
@@ -13922,7 +13923,12 @@
     const out = [];
     // 代償の部分(「〜ことで」の前)は除く
     let body = text;
-    extractEffectCosts(text).slice().sort((a, b) => b.from - a.from).forEach(c => { body = body.slice(0, c.from) + '\u0002'.repeat(Math.max(0, c.to - c.from)) + body.slice(c.to); });
+    // (代償の文は「〜ことで、」までを消す。文の終わりまで消すと、後ろの「≪1ドロー≫し、自分の手札1枚を破棄する」まで消えてしまう: EX13-073)
+    extractEffectCosts(text).slice().sort((a, b) => b.from - a.from).forEach(c => {
+      const k = c.digiburst ? -1 : body.indexOf('ことで、', c.from);
+      const end = k >= 0 && k < c.to ? k + 4 : c.to;
+      body = body.slice(0, c.from) + '\u0002'.repeat(Math.max(0, end - c.from)) + body.slice(end);
+    });
     body = body.replace(/^(?:[【［\[][^】］\]]*[】］\]])+/, '').replace(/（[^）]*）/g, '');
     // 「≪1ドロー≫し、自分の手札1枚を破棄する」: ドローのあとの動きも1つの文として読む
     body = body.replace(/(≪\d+ドロー≫)し、/g, '$1。');
@@ -15559,7 +15565,7 @@
     }
     // 「(このデジモン|〜自分のデジモン1体|そのデジモン)で(レストせずに)(相手のデジモンに/プレイヤーに)アタックする/できる」
     // (付与された「【自分のメインフェイズ開始時】このデジモンでアタックする」、【自分のターン終了時】のアタックなど)
-    const atk = /(?<!「[^」]*)(このデジモン|そのデジモン|([^、。]{0,60}?)自分のデジモン1体)で(レストせずに)?(相手のデジモンに|(?:相手)?プレイヤーに)?アタック(する|できる)/.exec(t);
+    const atk = /(?<!「[^」]*)(このデジモン|そのデジモン|([^、。]{0,60}?)自分のデジモン1体)で(レストせずに?)?(相手のデジモンに|(?:相手)?プレイヤーに)?アタック(する|できる)/.exec(t);
     if (atk && !/「\u0003|の効果を(得|与え)/.test(t.slice(atk.index, atk.index + 60)) && !/[」』]を得る/.test(t.slice(atk.index + atk[0].length, atk.index + atk[0].length + 6))) {
       const noRest = !!atk[3];
       const only = atk[4] ? (/プレイヤー/.test(atk[4]) ? 'player' : 'digimon') : null;
@@ -15672,12 +15678,20 @@
       } });
     }
     // 相手のデジモンの進化元を選んでN枚破棄する
-    const mre = /相手のデジモン(?:1体)?の進化元を、?選んで(\d+)枚破棄/g;
+    // 「相手のデジモン1体の進化元を自分のテイマーの色2色ごとに、選んで1枚破棄する」(ST21-04): 数えた分だけ
+    const mre = /相手のデジモン(?:1体)?の進化元を、?(?:([^、。]{1,30}?)ごとに、)?選んで(\d+)枚破棄/g;
     while ((m = mre.exec(t))) {
       if (!notCost(m.index, m[0].length)) continue;
-      const n = parseInt(m[1], 10);
-      out.push({ label: `🧩 相手のデジモンの進化元を選んで${n}枚破棄`, run: () => {
+      const n0 = parseInt(m[2], 10), per = m[1] ? cleanPerPhrase(m[1]) : null;
+      out.push({ label: `🧩 相手のデジモンの進化元を${per ? `(${per}ごとに)` : ''}選んで${n0}枚破棄`, run: () => {
         if (!guard()) return;
+        let n = n0;
+        if (per) {
+          const k = countPerUnit(per, pi, holderStack, null);
+          if (k == null) showToast(`「${per}」を数えられませんでした。${n0}枚として処理します`, true);
+          else if (k <= 0) { showToast(`${per}が0なので、破棄しません`); return; }
+          else { n = n0 * k; showToast(`${per}が${k}なので、${n}枚まで選びます`); }
+        }
         const op = practiceState.players[1 - pi];
         const cands = [...op.battle, ...(op.raising ? [op.raising] : [])].filter(st => isDigimonLikeStack(st) && st.cards.length > 1);
         if (!cands.length) { showToast('進化元を持つ相手のデジモンがいません', true); return; }
@@ -21031,7 +21045,7 @@
     const src = /進化元に((?:「[^」]+」(?:\/|か)?)+)がある/.exec(c);
     if (src) {
       const names = (src[1].match(/「([^」]+)」/g) || []).map(x => x.slice(1, -1));
-      const ok = st.cards.slice(0, -1).some(e => { const cc = cardIndexByNumber.get(cardEntryNum(e)); return cc && names.some(n => cardNameHas(cc, n)); });
+      const ok = st.cards.slice(0, -1).some(e => { const cc = cardIndexByNumber.get(cardEntryNum(e)); return cc && names.some(n => cardHasName(cc, n)); });
       if (!ok) return false;
       c = c.replace(src[0], '');
     }
@@ -21244,6 +21258,14 @@
       const rs = [evalEffectCondition(a, holder, pi, ctx), evalEffectCondition(c.slice(andM.index + andM[0].length), holder, pi, ctx)];
       if (rs.includes(false)) return false;
       return rs.every(r => r === true) ? true : null;
+    }
+    // 「Aがいるか、Bが3色以上」(ST20-10/ST21-10): どちらか。「AかBを持つ自分のデジモンがいる」(主語の並記)は分けない
+    const orM = /(がいる|がある|がいない|がない)か、?(?=.)/.exec(c);
+    if (orM) {
+      const a = c.slice(0, orM.index + orM[1].length), b = c.slice(orM.index + orM[0].length);
+      const rs = [evalEffectCondition(a, holder, pi, ctx), evalEffectCondition(b, holder, pi, ctx)];
+      if (rs.includes(true)) return true;
+      return rs.every(r => r === false) ? false : null;
     }
     try {
       if (holder && getStackTopCard(holder)) return evalStackCondition(c, holder, pi);
