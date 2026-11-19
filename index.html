@@ -4020,7 +4020,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.99.17</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.99.18</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -6170,7 +6170,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.99.17`);
+    log(`DigiCA Tool build v0.99.18`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -7907,7 +7907,7 @@
           if (e.ownerIndex !== practiceState.viewingIndex) { showToast('この自動処理は、その効果を持つプレイヤーの視点に切り替えてから実行してください', true); return; }
           const p = practiceState.players[e.ownerIndex];
           // 進化先の候補(「このデジモン」「育成エリアの」「〜のデジモン1体」)
-          const own = [...p.battle, ...(p.raising ? [p.raising] : [])].filter(st => isDigimonLikeStack(st) || (/テイマー/.test(ev.subj) && (getStackTopCard(st) || {}).category === 'tamer'));
+          const own = [...p.battle, ...(p.raising && /育成エリア/.test(ev.subj || '') ? [p.raising] : [])].filter(st => isDigimonLikeStack(st) || (/テイマー/.test(ev.subj) && (getStackTopCard(st) || {}).category === 'tamer'));
           let fixed = null, targets = own;
           if (ev.who === 'self' && holderStack && findStackOwnerAndZone(holderStack)) { fixed = holderStack; targets = [holderStack]; }
           else if (ev.who === 'raising' && p.raising) { fixed = p.raising; targets = [p.raising]; }
@@ -7994,7 +7994,7 @@
               if ((mz.who === 'self' || (mz.who === 'holderOrPick' && holderStack && isDigimonLikeStack(holderStack))) && holderStack && findStackOwnerAndZone(holderStack)) fixed = holderStack;
               else if (mz.who === 'raising' && p.raising) fixed = p.raising;
               if (fixed) { place(picked, fixed); return; }
-              const own = [...p.battle, ...(p.raising ? [p.raising] : [])];
+              const own = [...p.battle, ...(p.raising && /育成エリア/.test(mz.subj || '') ? [p.raising] : [])];
               const cond = { filters: parseSubjectFilters(mz.subj), colors: parseSubjectColors(mz.subj) };
               const cands = own.filter(st => isDigimonLikeStack(st) && cardMatchesSubject(getStackTopCard(st), cond));
               startFieldPick({
@@ -15697,7 +15697,8 @@
           else { n = n0 * k; showToast(`${per}が${k}なので、${n}枚まで選びます`); }
         }
         const op = practiceState.players[1 - pi];
-        const cands = [...op.battle, ...(op.raising ? [op.raising] : [])].filter(st => isDigimonLikeStack(st) && st.cards.length > 1);
+        // 育成エリアのデジモンは、育成エリアを指定している効果でしか選べない(3-4-7-5)
+        const cands = op.battle.filter(st => isDigimonLikeStack(st) && st.cards.length > 1);
         if (!cands.length) { showToast('進化元を持つ相手のデジモンがいません', true); return; }
         startFieldPick({
           title: `進化元を${n}枚破棄する相手のデジモンをタップ`, candidates: cands, max: 1,
