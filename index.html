@@ -4020,7 +4020,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.99.16</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.99.17</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -6170,7 +6170,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.99.16`);
+    log(`DigiCA Tool build v0.99.17`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -15575,8 +15575,11 @@
       out.push({ label: `⚔️ ${who}で${noRest ? 'レストせずに' : ''}${toWhere}アタック${atk[5] === 'する' ? 'する' : ''}`, run: () => {
         if (pi !== practiceState.viewingIndex) { showToast('このデジモンの持ち主の視点に切り替えてから実行してください', true); return; }
         if (attackState) { showToast('アタック中です。今のアタックが終わってから実行してください', true); return; }
+        const blocked = (st) => hasLock(st, 'noAttack') || (!noRest && hasLock(st, 'noRest')) || (only === 'player' && !!attackPlayerBlockReason(st))
+          || prohibitionsOn(st, 'attack').length > 0 || (!noRest && prohibitionsOn(st, 'rest').length > 0);
         const go = (st) => {
           if (!noRest && st.rested) { showToast(`「${stackLabel(st)}」はレストしているのでアタックできません`, true); return; }
+          if (blocked(st)) { showToast(`🔒「${stackLabel(st)}」はアタックできない状態です(レストできない・アタックできない)`, true); return; }
           declareAttack(st, false, { noRest, only, label: '⚔️ 効果' });
         };
         if (who === 'このデジモン') {
@@ -15585,7 +15588,8 @@
           go(holderStack);
           return;
         }
-        const cands = battleStacksOf(pi).filter(st => isDigimonLikeStack(st) && (noRest || !st.rested) && (!filter || stackMatchesFilterText(st, filter, null) !== false));
+        // 「アタックできない」「レストできない」(レストせずにアタックする効果以外)が付いているデジモンは選べない
+        const cands = battleStacksOf(pi).filter(st => isDigimonLikeStack(st) && (noRest || !st.rested) && !blocked(st) && (!filter || stackMatchesFilterText(st, filter, null) !== false));
         if (!cands.length) { showToast(`アタックできる${filter ? `「${filter}」の` : ''}デジモンがいません`, true); return; }
         if (cands.length === 1) { go(cands[0]); return; }
         startFieldPick({ title: `⚔️ アタックするデジモンをタップ${filter ? `(${filter})` : ''}`, candidates: cands, onDone: (sel) => { if (sel[0]) go(sel[0]); } });
@@ -23069,7 +23073,8 @@
     }
     // 🚫「このデジモンはアタックできない」「レストできない」(レストせずにアタックする効果以外は、レストできなければアタックできない)
     if (!o.prohibChecked) {
-      const pl = [...prohibitionsOn(stack, 'attack'), ...(o.noRest ? [] : prohibitionsOn(stack, 'rest'))];
+      const lk = [...(hasLock(stack, 'noAttack') ? [{ srcName: 'ロック', text: '🔒アタックできない' }] : []), ...(!o.noRest && hasLock(stack, 'noRest') ? [{ srcName: 'ロック', text: '🔒レストできない' }] : [])];
+      const pl = [...lk, ...prohibitionsOn(stack, 'attack'), ...(o.noRest ? [] : prohibitionsOn(stack, 'rest'))];
       if (pl.length) { confirmProhibited(pl, 'アタックする', () => declareAttack(stack, true, Object.assign({}, o, { prohibChecked: true }))); return; }
     }
     const attackerOwner = practiceState.players[practiceState.viewingIndex];
