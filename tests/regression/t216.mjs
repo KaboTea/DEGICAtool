@@ -14,6 +14,12 @@ o.atk = await run('自分のデジモン1体でアタックする。', { noAttac
 o.ok_atk = o.atk === 'atk:BT1-015';
 o.noRest = await run('自分のデジモン1体でレストせずアタックできる。', { noRest: true });
 o.ok_noRest = o.noRest === 'pick:BT1-010,BT1-015';
+// 登場したターンのデジモン(≪速攻≫なし)は選べない
+o.entry = await ev(`(() => { const P=practiceState.players[${pi}]; practiceState.viewingIndex=${pi}; attackState=null;
+  P.battle=[{cards:['BT1-010'], enteredTurn:practiceState.turn.count},{cards:['BT1-015'], enteredTurn:-5},{cards:['BT2-087']}]; renderPracticeBoard();
+  const h=getEffectHandlers({ownerIndex:${pi}, stackUid:ensureStackUid(P.battle[2]), cardNumber:'BT2-087', cardName:'x', field:'effect', lineIndex:0, text:'自分のデジモン1体でアタックする。', timing:'x', event:'t'}).find(h=>/アタック/.test(h.label));
+  h.run(); const r = attackState ? 'atk:'+getStackTopCard(attackState.attackerStack).number : fieldPickMode ? 'pick' : 'none'; cancelTargetModes(); attackState=null; return r; })()`);
+o.ok_entry = o.entry === 'atk:BT1-015';
 const ng = Object.entries(o).filter(([k, x]) => k.startsWith('ok_') && x !== true).map(([k]) => k);
 console.log(JSON.stringify(o));
 await browser.close(); console.log(ng.length ? ng : errs);
