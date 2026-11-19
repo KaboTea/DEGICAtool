@@ -4020,7 +4020,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.99.18</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.99.19</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -6170,7 +6170,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.99.18`);
+    log(`DigiCA Tool build v0.99.19`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -8228,15 +8228,39 @@
       if (/とき、/.test(body)) return; // 誘発して一時的に得るものは対象外
       let m = /^(.+?)(?:の)?(?:間|なら)、このデジモン(?:は|に)((?:≪[^≫]+≫(?:と|、)?)+)を得る/.exec(body);
       // 「特徴に「X抗体」/〜を持つこのデジモンは≪連携≫と≪再起動≫を得る」(三叉路の魔女 BT24-086 の進化元効果): このデジモン自身の条件
-      if (!m) { const m2 = /^((?:特徴|名称)に.+?を(?:持つ|含む)|.+?の記述がある)このデジモン(?:は|に)((?:≪[^≫]+≫(?:と|、)?)+)を得る/.exec(body); if (m2) m = [m2[0], 'このデジモンが' + m2[1], m2[2]]; }
+      // 「進化元を持つ相手のデジモンがいない間、特徴に「氷雪型」を持つこのデジモンは(、)≪貫通≫と≪Sアタック+1≫を得る」(EX7-021/EX11-016/EX8-023): 場の条件 + このデジモン自身の条件
+      let cond2 = null;
+      if (!m) { const m3 = /^(.+?)(?:の)?(?:間|なら)、((?:特徴|名称)に.+?を(?:持つ|含む))このデジモン(?:は|に)、?((?:≪[^≫]+≫(?:と|、)?)+)を得る/.exec(body); if (m3) { m = [m3[0], m3[1], m3[3]]; cond2 = 'このデジモンが' + m3[2]; } }
+      if (!m) { const m2 = /^((?:特徴|名称)に.+?を(?:持つ|含む)|.+?の記述がある)このデジモン(?:は|に)、?((?:≪[^≫]+≫(?:と|、)?)+)を得る/.exec(body); if (m2) m = [m2[0], 'このデジモンが' + m2[1], m2[2]]; }
       if (!m) return;
       const names = (m[2].match(/≪([^≫]+)≫/g) || []).map(k => k.slice(1, -1).replace(/《[^》]*》/g, '').replace(/[+\-－＋]\d+$/, ''));
-      out.push({ prefix: parsed.prefix, labels: parsed.labels, cond: m[1].split('。').pop().replace(/の$/, '').trim(), names });
+      out.push({ prefix: parsed.prefix, labels: parsed.labels, cond: m[1].split('。').pop().replace(/の$/, '').trim(), cond2, names, raw: (m[2].match(/≪([^≫]+)≫/g) || []).map(k => k.slice(1, -1).replace(/《[^》]*》/g, '')) });
     });
     COND_KW_CACHE.set(text, out);
     return out;
   }
   let condKwBusy = false;
+  // 条件付きで得ている≪Sアタック+1≫などの数(EX7-021「〜いない間、特徴に「氷雪型」を持つこのデジモンは≪貫通≫と≪Sアタック+1≫を得る」)
+  function conditionalNumericBonus(stack, re) {
+    if (condKwBusy || !practiceState || !stack) return 0;
+    const f = findStackOwnerAndZone(stack);
+    if (!f) return 0;
+    const pi = practiceState.players.indexOf(f.player);
+    condKwBusy = true;
+    let sum = 0;
+    try {
+      getStackEffectSources(stack).forEach(src => parseConditionalKeywordLines(src.text).forEach(cl => {
+        const ks = (cl.raw || []).map(k => re.exec(k)).filter(Boolean);
+        if (!ks.length) return;
+        if (!lineAllowedInZone({ prefix: cl.prefix }, f.zone)) return;
+        if (cl.labels.includes('自分のターン') && practiceState.turn.playerIndex !== pi) return;
+        if (cl.labels.includes('相手のターン') && practiceState.turn.playerIndex === pi) return;
+        if (evalStackCondition(cl.cond, stack, pi) !== true || (cl.cond2 && evalStackCondition(cl.cond2, stack, pi) !== true)) return;
+        ks.forEach(k => { sum += parseInt(k[1], 10); });
+      }));
+    } finally { condKwBusy = false; }
+    return sum;
+  }
   function conditionalKeywordOn(stack, keyword) {
     if (condKwBusy || !practiceState || !stack) return false;
     const f = findStackOwnerAndZone(stack);
@@ -8249,7 +8273,7 @@
         if (!lineAllowedInZone({ prefix: cl.prefix }, f.zone)) return false;
         if (cl.labels.includes('自分のターン') && practiceState.turn.playerIndex !== pi) return false;
         if (cl.labels.includes('相手のターン') && practiceState.turn.playerIndex === pi) return false;
-        return evalStackCondition(cl.cond, stack, pi) === true;
+        return evalStackCondition(cl.cond, stack, pi) === true && (!cl.cond2 || evalStackCondition(cl.cond2, stack, pi) === true);
       }));
     } finally { condKwBusy = false; }
   }
@@ -8415,7 +8439,7 @@
   function effectiveSAttackBonus(stack) {
     if (stack.sAttackBonus !== undefined) return stack.sAttackBonus;
     const own = getInnateSAttackBonus(getStackTopCard(stack)) || 0;
-    return own + getLinkedNumericBonus(stack, S_ATTACK_PATTERNS) + securityStaticNumericBonus(stack, /^(?:Sアタック|セキュリティアタック)([+\-]\d+)$/) + fieldStaticSAttackBonus(stack);
+    return own + getLinkedNumericBonus(stack, S_ATTACK_PATTERNS) + securityStaticNumericBonus(stack, /^(?:Sアタック|セキュリティアタック)([+\-]\d+)$/) + fieldStaticSAttackBonus(stack) + conditionalNumericBonus(stack, /^(?:Sアタック|セキュリティアタック)([+\-]\d+)$/);
   }
   function effectiveLinkLimitBonus(stack) {
     if (stack.linkLimitBonus !== undefined) return stack.linkLimitBonus;
@@ -8832,10 +8856,25 @@
     // 「【進化時】で始まる行の中に≪進撃≫/《進撃》が含まれる」ことを条件にする。
     // (「赤のカードがあるとき、≪進撃≫」等の条件付きも一部含まれてしまうが、選択肢が
     //  出るだけで強制ではないため、条件成立の判断はプレイヤーの自己判定に委ねる)
-    return text.split('\n').some(line => {
+    if (text.split('\n').some(line => {
       const t = line.trim();
       return t.startsWith('【進化時】') && /[≪《]進撃[≫》]/.test(t);
-    });
+    })) return true;
+    // 松田啓人(EX2-056)「自分のデジモンが名称に「デュークモン」か「グラウモン」を含むデジモンに進化するとき、このターンの間、そのデジモンは「【進化時】≪進撃≫」を得る」
+    return grantedAdvanceOnEvolve(stack);
+  }
+  function grantedAdvanceOnEvolve(stack) {
+    const f = practiceState && findStackOwnerAndZone(stack);
+    if (!f || f.zone !== 'battle') return false;
+    const pi = practiceState.players.indexOf(f.player);
+    const top = getStackTopCard(stack);
+    return battleStacksOf(pi).some(h => getStackEffectSources(h).some(src => src.text.split('\n').some(line => {
+      const parsed = parseEffectLine(line);
+      if (parsed.labels.length && !engineTurnLabelOk(parsed.labels, pi)) return false;
+      const m = /自分のデジモンが(.+?)に進化するとき、(?:このターンの間、)?そのデジモンは「【進化時】[^」]*[≪《]進撃[≫》]/.exec(engineStripNotes(parsed.text || line));
+      if (!m) return false;
+      return cardMatchesSubject(top, { filters: parseSubjectFilters(m[1]), colors: parseSubjectColors(m[1]) });
+    })));
   }
   function toggleAdvance(stack) {
     const next = !hasAdvanceKeyword(stack);
@@ -11173,8 +11212,8 @@
   // 盤面で起きた出来事(レスト/登場/進化/消滅/アタック/ブロック/アクティブ/セキュリティ減少/
   // バトル勝利)と主語(このデジモン/自分の/相手の/他の、デジモン/テイマー)が合うものを候補にする。
   // 名称・特徴などの細かい条件までは判定しないため、合わないものは「発揮しない」で外す前提。
-  const ENGINE_WHEN_RE = /([^、。】\]］]*?)((?:登場|進化|消滅)(?:\/(?:登場|進化|消滅))*した|アタックした|レストした|ブロックした|アクティブになった|バトルに勝った|減った|消滅させた|リンクした|使用した|変更された|ブロックされた)とき/g;
-  const ENGINE_EVENT_LABEL = { battleKill: 'バトルで消滅させたとき', link: 'リンクしたとき', optionUse: 'オプションを使用したとき', retarget: 'アタックの対象が変更されたとき', blocked: 'ブロックされたとき', play: '登場したとき', evolve: '進化したとき', destroy: '消滅したとき', attack: 'アタックしたとき', rest: 'レストしたとき', block: 'ブロックしたとき', active: 'アクティブになったとき', battleWin: 'バトルに勝ったとき', secLoss: 'セキュリティが減ったとき' };
+  const ENGINE_WHEN_RE = /([^、。】\]］]*?)((?:登場|進化|消滅)(?:\/(?:登場|進化|消滅))*した|アタックした|レストした|ブロックした|アクティブになった|バトルに勝った|減った|消滅させた|リンクした|使用した|変更された|ブロックされた|破棄された)とき/g;
+  const ENGINE_EVENT_LABEL = { battleKill: 'バトルで消滅させたとき', link: 'リンクしたとき', optionUse: 'オプションを使用したとき', retarget: 'アタックの対象が変更されたとき', blocked: 'ブロックされたとき', matDiscard: '進化元が破棄されたとき', play: '登場したとき', evolve: '進化したとき', destroy: '消滅したとき', attack: 'アタックしたとき', rest: 'レストしたとき', block: 'ブロックしたとき', active: 'アクティブになったとき', battleWin: 'バトルに勝ったとき', secLoss: 'セキュリティが減ったとき' };
   function engineStripNotes(text) {
     return text.replace(/（[^）]*）/g, '').replace(/\([^)]*\)/g, '');
   }
@@ -11198,6 +11237,8 @@
       else if (/使用した/.test(verb)) { if (/オプション/.test(subject)) kinds.push('optionUse'); }
       else if (/変更された/.test(verb)) { if (/アタックの対象/.test(subject)) kinds.push('retarget'); }
       else if (/ブロックされた/.test(verb)) kinds.push('blocked');
+      // 「相手のデジモンの進化元が(効果で)破棄されたとき」(それ以外の「このカードが〜破棄されたとき」は別の仕組み)
+      else if (/破棄された/.test(verb)) { if (/デジモンの(?:裏向きの)?進化元が/.test(subject)) kinds.push('matDiscard'); }
       else {
         if (/登場/.test(verb)) kinds.push('play');
         if (/進化/.test(verb)) kinds.push('evolve');
@@ -11537,6 +11578,16 @@
       }
     }
     return null;
+  }
+  // 「(〜間、)(特徴に「氷雪型」を持つ)このデジモンはアクティブ状態の相手のデジモンにもアタックできる」(EX11-002 など)を今満たしているか
+  function canAttackActiveDigimon(stack) {
+    const r = selfStaticRestriction(stack, /(?:((?:特徴|名称)に[^、。]+?を(?:持つ|含む)))?このデジモンは、?アクティブ状態の相手のデジモンにもアタックでき/);
+    if (!r) return false;
+    const f = findStackOwnerAndZone(stack);
+    const pi = practiceState.players.indexOf(f.player);
+    if (r.m[1] && evalStackCondition('このデジモンが' + r.m[1], stack, pi) !== true) return false;
+    const cond = (r.cond || '').replace(/(?:の)?(?:間|なら)$/, '').trim();
+    return !cond || evalStackCondition(cond, stack, pi) === true;
   }
   // 手札の card をこのデジモンの上に進化させられないなら、その理由を返す(進化できない系のロック/常在効果)
   function evolveBlockReason(stack, card) {
@@ -11990,6 +12041,14 @@
         found.push(...collectStackTriggers(cur.stack, cur.pi, cur.zone, ['リンク時'], { fields: ['link'], onlyCardNumber: num, event: 'リンク' }));
       });
       if (addedLinks.length && cur.zone === 'battle') events.push(evOf('link', cur, uid));
+      // 「相手のデジモンの進化元が(効果で)破棄されたとき」: 場に残っているデジモンの進化元がトラッシュへ行った(場を離れるときの進化元はルールなので除く)
+      if (cur.zone === 'battle' && old.mats && cur.mats && prev.zones && snap.zones && snap.zones[cur.pi] && prev.zones[cur.pi]) {
+        const lostMats = multisetMinus(old.mats, cur.mats);
+        if (lostMats.length) {
+          const addT = multisetMinus(snap.zones[cur.pi].trash, prev.zones[cur.pi].trash);
+          if (lostMats.some(n => addT.includes(n))) events.push(evOf('matDiscard', cur, uid));
+        }
+      }
     });
     snap.security.forEach((n, pi) => {
       if (prev.security[pi] != null && n < prev.security[pi]) events.push({ kind: 'secLoss', pi });
@@ -23108,8 +23167,10 @@
     // 「プレイヤーにアタックできない」「相手のデジモンにアタックできない」(ロック/このデジモンの常在効果)
     const noPlayer = attackPlayerBlockReason(attackState.attackerStack);
     const noDigimon = attackDigimonBlockReason(attackState.attackerStack);
-    const restedTargets = noDigimon ? [] : enemyDigimon.filter(s => s.rested);
-    const activeTargets = noDigimon ? enemyDigimon : enemyDigimon.filter(s => !s.rested);
+    // 「アクティブ状態の相手のデジモンにもアタックできる」を満たしていれば、アクティブのデジモンも最初から候補にする
+    const activeOk = !noDigimon && canAttackActiveDigimon(attackState.attackerStack);
+    const restedTargets = noDigimon ? [] : enemyDigimon.filter(s => s.rested || activeOk);
+    const activeTargets = noDigimon ? enemyDigimon : activeOk ? [] : enemyDigimon.filter(s => !s.rested);
     const toPlayer = () => {
       attackState.targetType = 'player';
       attackState.targetStack = null;
