@@ -4020,7 +4020,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.99.21</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.99.22</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -6170,7 +6170,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.99.21`);
+    log(`DigiCA Tool build v0.99.22`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -11212,8 +11212,8 @@
   // 盤面で起きた出来事(レスト/登場/進化/消滅/アタック/ブロック/アクティブ/セキュリティ減少/
   // バトル勝利)と主語(このデジモン/自分の/相手の/他の、デジモン/テイマー)が合うものを候補にする。
   // 名称・特徴などの細かい条件までは判定しないため、合わないものは「発揮しない」で外す前提。
-  const ENGINE_WHEN_RE = /([^、。】\]］]*?)((?:登場|進化|消滅)(?:\/(?:登場|進化|消滅))*した|アタックした|レストした|ブロックした|アクティブになった|バトルに勝った|減った|消滅させた|リンクした|使用した|変更された|ブロックされた|破棄された)とき/g;
-  const ENGINE_EVENT_LABEL = { battleKill: 'バトルで消滅させたとき', link: 'リンクしたとき', optionUse: 'オプションを使用したとき', retarget: 'アタックの対象が変更されたとき', blocked: 'ブロックされたとき', matDiscard: '進化元が破棄されたとき', play: '登場したとき', evolve: '進化したとき', destroy: '消滅したとき', attack: 'アタックしたとき', rest: 'レストしたとき', block: 'ブロックしたとき', active: 'アクティブになったとき', battleWin: 'バトルに勝ったとき', secLoss: 'セキュリティが減ったとき' };
+  const ENGINE_WHEN_RE = /([^、。】\]］]*?)((?:登場|進化|消滅)(?:\/(?:登場|進化|消滅))*した|アタックした|レストした|ブロックした|アクティブになった|バトルに勝った|減った|消滅させた|リンクした|使用した|変更された|ブロックされた|破棄された|増えた|離れた)とき/g;
+  const ENGINE_EVENT_LABEL = { battleKill: 'バトルで消滅させたとき', link: 'リンクしたとき', optionUse: 'オプションを使用したとき', retarget: 'アタックの対象が変更されたとき', blocked: 'ブロックされたとき', matDiscard: '進化元が破棄されたとき', handInc: '手札が増えたとき', handDiscard: '手札が破棄されたとき', underDiscard: 'テイマーの下のカードが破棄されたとき', matInc: '進化元が増えたとき', leave: 'バトルエリアを離れたとき', play: '登場したとき', evolve: '進化したとき', destroy: '消滅したとき', attack: 'アタックしたとき', rest: 'レストしたとき', block: 'ブロックしたとき', active: 'アクティブになったとき', battleWin: 'バトルに勝ったとき', secLoss: 'セキュリティが減ったとき' };
   function engineStripNotes(text) {
     return text.replace(/（[^）]*）/g, '').replace(/\([^)]*\)/g, '');
   }
@@ -11238,7 +11238,15 @@
       else if (/変更された/.test(verb)) { if (/アタックの対象/.test(subject)) kinds.push('retarget'); }
       else if (/ブロックされた/.test(verb)) kinds.push('blocked');
       // 「相手のデジモンの進化元が(効果で)破棄されたとき」(それ以外の「このカードが〜破棄されたとき」は別の仕組み)
-      else if (/破棄された/.test(verb)) { if (/デジモンの(?:裏向きの)?進化元が/.test(subject)) kinds.push('matDiscard'); }
+      else if (/破棄された/.test(verb)) {
+        if (/テイマーの下の/.test(subject)) kinds.push('underDiscard');
+        else if (/手札が/.test(subject)) kinds.push('handDiscard');
+        else if (/デジモンの(?:裏向きの)?進化元が/.test(subject)) kinds.push('matDiscard');
+      }
+      // 「相手の手札が効果で増えたとき」「このデジモンの進化元が効果で増えたとき」
+      else if (/増えた/.test(verb)) { if (/手札が/.test(subject)) kinds.push('handInc'); else if (/進化元が/.test(subject)) kinds.push('matInc'); }
+      // 「自分のデジモンがバトルエリアを離れたとき」
+      else if (/離れた/.test(verb)) { if (/バトルエリアを$/.test(subject)) kinds.push('leave'); }
       else {
         if (/登場/.test(verb)) kinds.push('play');
         if (/進化/.test(verb)) kinds.push('evolve');
@@ -11344,12 +11352,38 @@
       if (ev.num && actorFilters.length && !cardMatchesSubject(cardIndexByNumber.get(ev.num), { filters: actorFilters, colors: parseSubjectColors(actor) })) return false;
       return true;
     }
+    // 「自分の効果で」「自分のデジモンの効果で」「相手の効果で」: だれの効果で起きたか(ev.by: 処理中の効果の持ち主)
+    const byM = /(自分|相手)(?:のデジモン)?の効果で/.exec(cl.subject);
+    if (byM && ev.by != null && (byM[1] === '自分') !== (ev.by === holderPi)) return false;
+    if (/効果で/.test(cl.subject) && (ev.kind === 'handInc' || ev.kind === 'matInc') && ev.by == null) return false;
+    // 手札: 「相手の手札が」「自分の手札が」「自分/相手の手札が」「手札が」(どちらでも)
+    if (ev.kind === 'handInc' || ev.kind === 'handDiscard') {
+      const sm = /(自分\/相手|自分|相手)?の?手札が/.exec(cl.subject);
+      const side = sm && sm[1];
+      if (side === '自分') return ev.pi === holderPi;
+      if (side === '相手') return ev.pi !== holderPi;
+      return true;
+    }
+    // 「このテイマーの下のカードが」「自分のテイマーの下のカードが」
+    if (ev.kind === 'underDiscard') {
+      if (/このテイマーの下/.test(cl.subject)) return ev.uid === holderUid;
+      if (/相手のテイマーの下/.test(cl.subject)) return ev.pi !== holderPi;
+      return ev.pi === holderPi;
+    }
     if (ev.kind === 'secLoss') {
       if (cl.own && !cl.opp) return ev.pi === holderPi;
       if (cl.opp && !cl.own) return ev.pi !== holderPi;
       return true;
     }
     if (cl.byEffect && (ev.kind === 'play' || ev.kind === 'evolve') && ev.byEffect === false) return false;
+    if ((ev.kind === 'matInc' || ev.kind === 'matDiscard') && byM) {
+      // 「自分の効果でこのデジモンの進化元が」: 「自分の」はだれの効果かの話なので、どちら側のデジモンかは残りの部分で決める
+      const rest = cl.subject.replace(/(自分|相手)(?:のデジモン)?の効果で/, '');
+      if (/この(デジモン|テイマー)/.test(rest)) return ev.uid === holderUid;
+      if (/自分の/.test(rest) && ev.pi !== holderPi) return false;
+      if (/相手の/.test(rest) && ev.pi === holderPi) return false;
+      return !ev.num || cardMatchesSubject(cardIndexByNumber.get(ev.num), Object.assign({}, cl, { filters: parseSubjectFilters(rest), colors: parseSubjectColors(rest) }));
+    }
     if (cl.self) return ev.uid === holderUid;
     if (cl.other && ev.uid === holderUid) return false;
     if (cl.own && !cl.opp && ev.pi !== holderPi) return false;
@@ -11968,6 +12002,8 @@
 
     const immediate = [];
     const events = []; // 「〜したとき」推定用の出来事
+    // 今処理している効果の持ち主(「効果で〜」の判定用)。効果を処理していなければ null
+    const effBy = (() => { const q = getEffectQueue(); return q.current ? q.current.ownerIndex : null; })();
     const evOf = (kind, cur, uid) => ({ kind, pi: cur.pi, uid, category: cur.category, num: cur.top, byEffect: cur.stack && cur.stack.entryInfo ? !!cur.stack.entryInfo.byEffect : null });
     // 「ジョグレス進化していた」「効果で登場していた」「トラッシュから進化していた」などの判定用に、登場/進化の仕方を記録する
     const qNow = getEffectQueue();
@@ -12046,12 +12082,30 @@
         const lostMats = multisetMinus(old.mats, cur.mats);
         if (lostMats.length) {
           const addT = multisetMinus(snap.zones[cur.pi].trash, prev.zones[cur.pi].trash);
-          if (lostMats.some(n => addT.includes(n))) events.push(evOf('matDiscard', cur, uid));
+          if (lostMats.some(n => addT.includes(n))) events.push(Object.assign(evOf(cur.category === 'tamer' ? 'underDiscard' : 'matDiscard', cur, uid), { by: effBy }));
         }
       }
+      // 「進化元が効果で増えたとき」: 一番上は同じまま、下のカードが増えた(進化は除く)
+      if (cur.zone === 'battle' && old.mats && cur.mats && cur.top === old.top && cur.mats.length > old.mats.length && effBy != null && cur.category !== 'tamer')
+        events.push(Object.assign(evOf('matInc', cur, uid), { by: effBy }));
     });
     snap.security.forEach((n, pi) => {
       if (prev.security[pi] != null && n < prev.security[pi]) events.push({ kind: 'secLoss', pi });
+    });
+    // 手札が(効果で)増えた / 手札が破棄された(手札からトラッシュへ)。ドローフェイズのドローは効果ではない
+    if (prev.zones && snap.zones) snap.zones.forEach((z, pi) => {
+      const pz = prev.zones[pi];
+      if (!pz) return;
+      if (z.hand.length > pz.hand.length && effBy != null && snap.phase !== 'draw') events.push({ kind: 'handInc', pi, by: effBy });
+      const gone = multisetMinus(pz.hand, z.hand), addT = multisetMinus(z.trash, pz.trash);
+      if (gone.some(n => addT.includes(n))) events.push({ kind: 'handDiscard', pi, by: effBy });
+    });
+    // バトルエリアを離れた(消滅・手札/デッキに戻る・下に置かれるなど)
+    prev.stacks.forEach((old, uid) => {
+      if (old.zone !== 'battle' || old.isOption || old.category === 'tamer') return;
+      const cur = snap.stacks.get(uid);
+      if (cur && cur.zone === 'battle') return;
+      events.push({ kind: 'leave', pi: old.pi, uid, category: old.category, num: old.top });
     });
     if (effectPanelEnabled && snap.blockerUid && snap.blockerUid !== prev.blockerUid) {
       const b = snap.stacks.get(snap.blockerUid);
