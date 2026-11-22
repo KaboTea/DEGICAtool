@@ -42,6 +42,18 @@ await setup(`P.battle=[{cards:['BT1-009','BT27-068']},{cards:['BT1-010']}]; P.ha
 await act(`P.hand.push(P.battle[1].cards.pop()); P.battle.splice(1,1)`);
 o.leave = await q('BT27-068');
 o.ok_leave = o.leave === true;
+// 6 効果の処理中に(トラッシュから)進化した: 進化の1ドローは「手札が効果で増えた」にしない(自分の手札: BT7-029「効果で自分の手札が増えたとき」)
+const lv4 = await ev(`[...cardIndexByNumber.values()].find(c=>c.category==='digimon' && c.level===4 && c.color.length===1 && c.color[0]==='red' && !/とき|【/.test((c.effect||'')+(c.inherited||''))).number`);
+const lv3 = await ev(`[...cardIndexByNumber.values()].find(c=>c.category==='digimon' && c.level===3 && c.color.length===1 && c.color[0]==='red' && !/とき|【/.test((c.effect||'')+(c.inherited||''))).number`);
+await setup(`P.battle=[{cards:['BT1-009','BT7-029']},{cards:['${lv3}']}]; P.hand=[]; P.trash=['${lv4}']; P.library=Array(10).fill('BT1-010')`);
+await inEffect(pi);
+await ev(`(() => { practiceState.memory=0; enterEvolveMode(0, '${lv4}', false, {source:'trash', effectName:'テスト', costRule:{type:'free'}}); performEvolve(practiceState.players[${pi}].battle[1]); })()`);
+await page.waitForTimeout(150);
+await page.evaluate(() => { const b = document.querySelector('#evolveRouteModal.open .evolve-route-item:not(.eri-pay)'); b && b.click(); });
+await page.waitForTimeout(300);
+o.evoDraw = await ev(`practiceState.players[${pi}].hand.length+' '+getStackTopCard(practiceState.players[${pi}].battle[1]).number`);
+o.evoTrig = await q('BT7-029');
+o.ok_evoDraw = o.evoDraw === '1 ' + lv4 && o.evoTrig === false;
 const ng = Object.entries(o).filter(([k, x]) => k.startsWith('ok_') && x !== true).map(([k]) => k);
 console.log(JSON.stringify(o));
 await browser.close(); console.log(ng.length ? ng : errs);

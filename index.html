@@ -4020,7 +4020,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.99.22</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.99.23</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -6170,7 +6170,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.99.22`);
+    log(`DigiCA Tool build v0.99.23`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -12096,7 +12096,11 @@
     if (prev.zones && snap.zones) snap.zones.forEach((z, pi) => {
       const pz = prev.zones[pi];
       if (!pz) return;
-      if (z.hand.length > pz.hand.length && effBy != null && snap.phase !== 'draw') events.push({ kind: 'handInc', pi, by: effBy });
+      // 進化したときの1ドロー(ルール)と、バースト進化でテイマーが手札に戻るのは効果ではないので数えない
+      const evolves = events.filter(x => x.kind === 'evolve' && x.pi === pi).length;
+      const added = multisetMinus(z.hand, pz.hand);
+      const burstBack = evolves ? [...prev.stacks.entries()].filter(([u, o]) => o.pi === pi && o.category === 'tamer' && !snap.stacks.has(u) && added.includes(o.top)).length : 0;
+      if (added.length - evolves - burstBack > 0 && effBy != null && snap.phase !== 'draw') events.push({ kind: 'handInc', pi, by: effBy });
       const gone = multisetMinus(pz.hand, z.hand), addT = multisetMinus(z.trash, pz.trash);
       if (gone.some(n => addT.includes(n))) events.push({ kind: 'handDiscard', pi, by: effBy });
     });
