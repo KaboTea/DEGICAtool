@@ -4020,7 +4020,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.99.25</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.99.26</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -6170,7 +6170,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.99.25`);
+    log(`DigiCA Tool build v0.99.26`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -10161,8 +10161,8 @@
       return `
       <div class="deck-list-item cmp-row${on ? ' on' : ''}" data-i="${i}" style="cursor:pointer;${x.ok === false ? 'opacity:.6;' : ''}">
         <span class="cmp-check">${on ? '✔' : ''}</span>
-        <img src="${escapeHtml(miniCardImg(x.num))}" alt="" class="cmp-img" data-i="${i}" style="width:34px;border-radius:3px;" onerror="this.style.opacity=0">
-        <span class="dli-name"><span class="cmp-nm">${escapeHtml(miniCardName(x.num))}</span>${x.tag || x.ok === false ? `<span class="cmp-tag">${x.tag ? escapeHtml(x.tag) : ''}${x.ok === false ? '(条件外)' : ''}</span>` : ''}</span>
+        ${x.hidden ? `<span class="card-back cmp-img" style="width:34px;flex:none;border-radius:3px;"></span>` : `<img src="${escapeHtml(miniCardImg(x.num))}" alt="" class="cmp-img" data-i="${i}" style="width:34px;border-radius:3px;" onerror="this.style.opacity=0">`}
+        <span class="dli-name"><span class="cmp-nm">${escapeHtml(x.hidden ? (x.hiddenLabel || '裏向きのカード') : miniCardName(x.num))}</span>${x.tag || x.ok === false ? `<span class="cmp-tag">${x.tag ? escapeHtml(x.tag) : ''}${x.ok === false ? '(条件外)' : ''}</span>` : ''}</span>
       </div>`;
     };
     const render = () => {
@@ -15604,6 +15604,38 @@
         openCardMultiPicker({ title: `🗑「${e.cardName}」: 相手が手札から破棄するカード`, sub: `(相手が${n}枚選ぶ)`,
           entries: op.hand.map(x => ({ num: cardEntryNum(x), ok: true })), max: n, min: Math.min(n, op.hand.length),
           actions: [{ label: '破棄する', primary: true, onClick: (idxs) => done(idxs) }] });
+      } });
+    }
+    // 「相手は自身の手札/セキュリティを選んで1枚破棄する」(BT27-083): 手札とセキュリティを1つの一覧で。裏向きのセキュリティは名前を出さない
+    const hsm = /相手は、?(?:自身の|相手の)手札\/セキュリティを選んで(\d+)枚破棄する/.exec(t);
+    if (hsm) {
+      const n = +hsm[1];
+      out.push({ textPos: hsm.index, label: `🗑 相手が手札かセキュリティから${n}枚破棄(相手が選ぶ)`, run: () => {
+        if (!guard()) return;
+        const op = practiceState.players[1 - pi];
+        const entries = [
+          ...op.hand.map((x, k) => ({ num: cardEntryNum(x), ok: true, tag: '手札', zone: 'hand', idx: k })),
+          ...op.security.map((x, k) => cardEntryFaceUp(x)
+            ? { num: cardEntryNum(x), ok: true, tag: `セキュリティ 上から${k + 1}枚目(表向き)`, zone: 'security', idx: k }
+            : { num: cardEntryNum(x), ok: true, hidden: true, hiddenLabel: `セキュリティ 上から${k + 1}枚目`, zone: 'security', idx: k }),
+        ];
+        if (!entries.length) { showToast('相手の手札もセキュリティもありません', true); return; }
+        openCardMultiPicker({ title: `🗑「${e.cardName}」: 相手が破棄するカード`, sub: `(相手が手札かセキュリティから${n}枚選ぶ)`,
+          entries, max: n, min: Math.min(n, entries.length),
+          actions: [{ label: '破棄する', primary: true, onClick: (idxs) => {
+            snapshotPracticeState();
+            const picked = idxs.map(i => entries[i]).sort((a, b) => b.idx - a.idx); // 後ろから抜く(同じカードが2枚あっても位置がずれない)
+            const names = [];
+            picked.forEach(x => {
+              const arr = x.zone === 'hand' ? op.hand : op.security;
+              arr.splice(x.idx, 1);
+              op.trash.push(x.num);
+              names.push(x.zone === 'hand' ? `手札の「${miniCardName(x.num)}」` : `セキュリティの「${miniCardName(x.num)}」`);
+            });
+            cardDetailModal.classList.remove('open');
+            renderPracticeBoard(); renderEffectPanel();
+            showToast(`🗑 相手の${names.join('・')}を破棄しました`);
+          } }] });
       } });
     }
     // ≪セーブ≫(16-20)「このカードを自分のテイマー1体の下に置ける」: 【消滅時】などでトラッシュに行ったこのカードを、テイマーの下の一番下に表向きで
