@@ -4020,7 +4020,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.99.24</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.99.25</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -6170,7 +6170,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.99.24`);
+    log(`DigiCA Tool build v0.99.25`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -12834,7 +12834,7 @@
         if (m[7] === 'の進化元を') {
           // 「相手のデジモン1体の進化元を上から2枚破棄する」
           // 「〜の進化元を、下から2枚まで破棄」「〜の進化元を、(X)1体ごとに、上から2枚破棄」(4-26-2: 数の分だけ上から)
-          if ((am = /^、?(?:([^、。]{1,50}?)ごとに、?)?(上|下)から(\d+)枚(まで)?破棄/.exec(rest))) action = { type: 'matTrash', from: am[2] === '上' ? 'top' : 'bottom', n: parseInt(am[3], 10), upTo: !!am[4], per: am[1] ? cleanPerPhrase(am[1]) : null };
+          if ((am = /^、?(?:([^、。]{1,50}?)ごとに、?)?(上か下|上|下)から(\d+)枚(まで)?破棄/.exec(rest))) action = { type: 'matTrash', from: am[2] === '上か下' ? 'either' : am[2] === '上' ? 'top' : 'bottom', n: parseInt(am[3], 10), upTo: !!am[4], per: am[1] ? cleanPerPhrase(am[1]) : null };
           else if (/^、?全て破棄/.test(rest)) action = { type: 'matTrash', from: 'top', n: 99 };
         }
         // 「相手のデジモン1体を、ターン終了まで、DP-3000」のように期間が対象のあとに来る形も読む
@@ -13078,6 +13078,15 @@
       runTargetAction(Object.assign({}, ta, { action: Object.assign({}, a, { perResolved: true, n: k == null ? a.n : a.n * k }) }), e, targets);
       return;
     }
+    // 「進化元を上か下から1枚破棄する」(BT27-020): 上からか下からかを選ぶ
+    if (a.type === 'matTrash' && a.from === 'either') {
+      openDecisionUi(`🎯 ${names} の進化元を、上と下のどちらから${a.n}枚破棄しますか?`, [
+        { label: `上から${a.n}枚`, primary: true, onClick: () => runTargetAction(Object.assign({}, ta, { action: Object.assign({}, a, { from: 'top' }) }), e, targets) },
+        { label: `下から${a.n}枚`, onClick: () => runTargetAction(Object.assign({}, ta, { action: Object.assign({}, a, { from: 'bottom' }) }), e, targets) },
+        { label: '破棄しない', onClick: () => renderPracticeBoard() },
+      ]);
+      return;
+    }
     if (a.type === 'matTrash' && a.upTo && !a.nChosen && a.n < 99) {
       // 「N枚まで」: 何枚破棄するかを選ぶ
       openDecisionUi(`🎯 ${names} の進化元を何枚破棄しますか?(${a.from === 'top' ? '上' : '下'}から${a.n}枚まで)`, [
@@ -13266,7 +13275,7 @@
       : a.type === 'move' ? MOVE_LABEL[a.dest] + (a.faceUp ? '(表向き)' : '')
       : a.type === 'trash' ? '破棄'
       : a.type === 'lock' ? '🔒' + a.locks.map(k => LOCK_LABELS[k]).join('・')
-      : a.type === 'matTrash' ? (a.n >= 99 ? '進化元を全て破棄' : `進化元を${a.per ? `${a.per}ごとに` : ''}${a.from === 'top' ? '上' : '下'}から${a.n}枚${a.upTo ? 'まで' : ''}破棄`) : '';
+      : a.type === 'matTrash' ? (a.n >= 99 ? '進化元を全て破棄' : `進化元を${a.per ? `${a.per}ごとに` : ''}${a.from === 'either' ? '上か下' : a.from === 'top' ? '上' : '下'}から${a.n}枚${a.upTo ? 'まで' : ''}破棄`) : '';
     if (a.type === 'matTrash') return `${(ta.prefix || '').replace(/【[^】]*】/g, '').replace(/[［\[][^］\]]*[］\]]/g, '').replace(/^[・\s]+/, '').trim()}${ta.phrase}の${what}`;
     const pre = (ta.prefix || '').replace(/【[^】]*】/g, '').replace(/[［\[][^］\]]*[］\]]/g, '').replace(/^[・\s]+/, '').trim();
     const dur = a.type === 'dp' && DURATION_LABELS[ta.duration] ? `(${DURATION_LABELS[ta.duration]})` : '';
