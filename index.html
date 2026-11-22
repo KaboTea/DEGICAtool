@@ -4020,7 +4020,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.99.28</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.99.29</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -6170,7 +6170,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.99.28`);
+    log(`DigiCA Tool build v0.99.29`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -14406,7 +14406,7 @@
         return;
       }
       // 育成エリアの(このデジモン / Lv.N以上の自分のデジモン1体)をバトルエリアに移動させる
-      if ((m = /^(このデジモン|育成エリアの(.*?)自分のデジモン1体)をバトルエリアに移動させる$/.exec(cost))) {
+      if ((m = /^(このデジモン|育成エリアの(.*?)自分のデジモン1体)をバトルエリアに移動(?:させる|する|できる)$/.exec(cost))) {
         const self = m[1] === 'このデジモン', filter = (m[2] || '').replace(/の$/, '');
         out.push({ isCost: true, label: `💸 代償: ${self ? 'このデジモン' : '育成エリアのデジモン'}をバトルエリアに移動`, run: () => {
           if (!guard()) return;
@@ -15678,6 +15678,60 @@
         showToast(`🛡 ${sdq[1]}のセキュリティを上から${nums.length}枚デッキの${ud}に戻しました`);
       } });
     }
+    // 「(Lv.3以下の)相手のデジモン1体を他の相手のデジモンの進化元の下(か、相手のテイマーの下)に置く」(BT11-088/BT12-083/EX10-056/BT11-109)
+    // 一番上のカードだけが動き、下のカードとリンクカードは破棄(4-6-7, 4-6-8)
+    const oum = /(?:([^、。]*?)の)?相手のデジモン1体を、?他の相手のデジモン(?:1体)?の進化元の下(か、?(?:相手の)?テイマーの下)?に置(く|ける)/.exec(t);
+    if (oum && notCost(oum.index, oum[0].length - oum[3].length)) {
+      const condRaw = (oum[1] || '').replace(/^.*(?:とき|なら|その後)、/, '').trim();
+      const lvm = /^Lv\.(\d+)以下$/.exec(condRaw);
+      const bonusM = /([^、。]*?)ごとに、この効果で選べるLv\.\+(\d+)/.exec(t);
+      const toTamer = !!oum[2];
+      out.push({ textPos: oum.index, label: `📥 ${condRaw ? condRaw + 'の' : ''}相手のデジモン1体を他の相手のデジモンの進化元の下${toTamer ? '/テイマーの下' : ''}へ`, run: () => {
+        if (!guard()) return;
+        const op = practiceState.players[1 - pi];
+        let maxLv = lvm ? +lvm[1] : null;
+        if (maxLv != null && bonusM) { const k = countPerUnit(cleanPerPhrase(bonusM[1]), pi, holderStack, null, e); if (k != null) maxLv += k * +bonusM[2]; else showToast(`「${bonusM[1]}」を数えられませんでした。Lv.${maxLv}以下で選びます(必要なら増やして考えてください)`, true); }
+        const okSrc = (st) => isDigimonLikeStack(st) && (maxLv == null ? (!condRaw || stackMatchesFilterText(st, condRaw, null) !== false) : ((getStackTopCard(st) || {}).level || 0) <= maxLv);
+        const srcs = battleStacksOf(1 - pi).filter(okSrc);
+        if (!srcs.length) { showToast(`置ける相手のデジモンがいません${maxLv != null ? `(Lv.${maxLv}以下)` : ''}`, true); return; }
+        startFieldPick({ title: `📥 下に置く相手のデジモンをタップ${maxLv != null ? `(Lv.${maxLv}以下)` : ''}`, candidates: srcs, max: 1, cancelLabel: 'やめる', onDone: (sel) => {
+          const src = sel[0];
+          if (!src) return;
+          const dests = battleStacksOf(1 - pi).filter(st => st !== src && (isDigimonLikeStack(st) || (toTamer && (getStackTopCard(st) || {}).category === 'tamer')));
+          if (!dests.length) { showToast('下に置ける先(他の相手のデジモン/テイマー)がいません', true); return; }
+          startFieldPick({ title: `📥 「${stackLabel(src)}」を置く先をタップ(他の相手のデジモン${toTamer ? 'かテイマー' : ''})`, candidates: dests, max: 1, cancelLabel: 'やめる', onDone: (sel2) => {
+            const dst = sel2[0];
+            if (!dst) return;
+            snapshotPracticeState();
+            (src.links || []).splice(0).forEach(x => op.trash.push(cardEntryNum(x)));
+            op.battle.splice(op.battle.indexOf(src), 1);
+            const topEnt = src.cards.pop();
+            src.cards.splice(0).map(cardEntryNum).forEach(x => { op.trash.push(x); checkOverflow(x, op); });
+            unshiftUnderByEffect(dst, cardEntryNum(topEnt));
+            renderPracticeBoard(); renderEffectPanel();
+            showToast(`📥「${miniCardName(cardEntryNum(topEnt))}」を「${stackLabel(dst)}」の下に置きました(下のカードとリンクカードは破棄)`);
+          } });
+        } });
+      } });
+    }
+    // 「相手の手札1枚を見ないで選び、相手のデジモンの進化元の下かテイマーの下に置く」(EX10-059)
+    const ohu = /相手の手札1枚を見ないで選び、相手のデジモンの進化元の下かテイマーの下に置く/.exec(t);
+    if (ohu) out.push({ textPos: ohu.index, label: '📥 相手の手札1枚(ランダム)を相手のデジモン/テイマーの下へ', run: () => {
+      if (!guard()) return;
+      const op = practiceState.players[1 - pi];
+      if (!op.hand.length) { showToast('相手の手札がありません', true); return; }
+      const dests = battleStacksOf(1 - pi).filter(st => isDigimonLikeStack(st) || (getStackTopCard(st) || {}).category === 'tamer');
+      if (!dests.length) { showToast('置ける先(相手のデジモン/テイマー)がいません', true); return; }
+      startFieldPick({ title: '📥 相手の手札から置く先をタップ(相手のデジモンの進化元の下かテイマーの下)', candidates: dests, max: 1, cancelLabel: 'やめる', onDone: (sel) => {
+        const dst = sel[0];
+        if (!dst) return;
+        snapshotPracticeState();
+        const num = op.hand.splice(Math.floor(Math.random() * op.hand.length), 1)[0];
+        unshiftUnderByEffect(dst, num);
+        renderPracticeBoard(); renderEffectPanel();
+        showToast(`📥 相手の手札からランダムに「${miniCardName(num)}」を「${stackLabel(dst)}」の下に置きました`);
+      } });
+    } });
     // 「相手は自身の手札/セキュリティを選んで1枚破棄する」(BT27-083): 手札とセキュリティを1つの一覧で。裏向きのセキュリティは名前を出さない
     const hsm = /相手は、?(?:自身の|相手の)手札\/セキュリティを選んで(\d+)枚破棄する/.exec(t);
     if (hsm) {
@@ -15847,6 +15901,22 @@
         if (!cands.length) { showToast(`アタックできる${filter ? `「${filter}」の` : ''}デジモンがいません`, true); return; }
         if (cands.length === 1) { go(cands[0]); return; }
         startFieldPick({ title: `⚔️ アタックするデジモンをタップ${filter ? `(${filter})` : ''}`, candidates: cands, onDone: (sel) => { if (sel[0]) go(sel[0]); } });
+      } });
+    }
+    // 「相手のデジモン1体を選べる。相手は、選んだデジモンをアタックさせる」(BT13-077 など)/「相手は、相手のデジモン1体をアタックさせる」(EX3-024)
+    const oam = /相手は、?(選んだデジモン|相手のデジモン1体)をアタックさせる/.exec(t);
+    if (oam && notCost(oam.index, oam[0].length)) {
+      const ownerPicks = oam[1] === '選んだデジモン';
+      out.push({ textPos: oam.index, label: `⚔️ 相手のデジモン1体${ownerPicks ? 'を選んで' : 'で'}アタックさせる`, run: () => {
+        if (attackState) { showToast('アタック中です。今のアタックが終わってから実行してください', true); return; }
+        const op = 1 - pi;
+        const blocked = (st) => st.rested || (st.enteredTurn === practiceState.turn.count && !hasQuickKeyword(st)) || hasLock(st, 'noAttack') || hasLock(st, 'noRest')
+          || prohibitionsOn(st, 'attack').length > 0 || prohibitionsOn(st, 'rest').length > 0;
+        const cands = battleStacksOf(op).filter(st => isDigimonLikeStack(st) && !blocked(st));
+        if (!cands.length) { showToast('アタックできる相手のデジモンがいません(レスト中・登場したターン・アタックできない など)', true); return; }
+        // アタックするのは相手。アタック先は相手が選ぶので、相手の視点にしてからアタックを始める
+        const go = (st) => { practiceState.viewingIndex = op; renderPracticeBoard(); declareAttack(st, false, { label: `⚔️「${e.cardName}」の効果` }); };
+        startFieldPick({ title: `⚔️ アタックさせる相手のデジモンをタップ${ownerPicks ? '' : '(相手が選ぶ)'}`, candidates: cands, onDone: (sel) => { if (sel[0]) go(sel[0]); } });
       } });
     }
     // 「このカードを(自分の)セキュリティの下に表向きで置く」
