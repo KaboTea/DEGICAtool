@@ -4020,7 +4020,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.99.23</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.99.24</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -6170,7 +6170,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.99.23`);
+    log(`DigiCA Tool build v0.99.24`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -7700,7 +7700,7 @@
         if (!op.security.length) { showToast('相手のセキュリティがありません', true); return; }
         snapshotPracticeState();
         const nums = op.security.splice(0, n).map(cardEntryNum);
-        op.hand.push(...nums);
+        pushHandByEffect(op, ...nums);
         renderPracticeBoard();
         showToast(`相手のセキュリティを上から${nums.length}枚、相手の手札に加えました`);
       } });
@@ -7718,7 +7718,7 @@
         snapshotPracticeState();
         const nums = idx.map(i => cardEntryNum(p.security[i]));
         idx.slice().reverse().forEach(i => p.security.splice(i, 1));
-        p.hand.push(...nums);
+        pushHandByEffect(p, ...nums);
         renderPracticeBoard();
         showToast(`${ud}向きのセキュリティを上から${nums.length}枚、手札に加えました`);
       } });
@@ -7735,7 +7735,7 @@
           if (!p.security.length) { showToast('セキュリティがありません', true); return; }
           snapshotPracticeState();
           const nums = (fromBottom ? p.security.splice(Math.max(0, p.security.length - n), n) : p.security.splice(0, n)).map(cardEntryNum);
-          p.hand.push(...nums);
+          pushHandByEffect(p, ...nums);
           renderPracticeBoard();
           showToast(`セキュリティの${ud}から${nums.length}枚を手札に加えました`);
         },
@@ -7760,7 +7760,7 @@
             actions: [{ label: '手札に加える', primary: true, onClick: (idxs) => {
               snapshotPracticeState();
               const nums = takeZoneCards(idxs.map(i => list[i]));
-              p.hand.push(...nums);
+              pushHandByEffect(p, ...nums);
               renderPracticeBoard();
               showToast(`${nums.map(n => `「${miniCardName(n)}」`).join('')}を手札に加えました${tz.zones.some(z => z === 'security') ? '(必要ならセキュリティをシャッフルしてください)' : ''}`);
             } }],
@@ -9068,7 +9068,7 @@
     snapshotPracticeState();
     stack.rested = true;
     const drawn = owner.player.library.shift();
-    stack.cards.unshift(drawn); // 進化元の一番下に裏向きで追加
+    unshiftUnderByEffect(stack, drawn); // 進化元の一番下に裏向きで追加
     renderPracticeBoard();
     showToast('🎓 ≪トレーニング≫: デッキの上から1枚を進化元の下に裏向きで置きました');
   }
@@ -10226,8 +10226,9 @@
     return parts.some(pt => { try { return revealCondMatches(card, pt); } catch (e) { return true; } });
   }
   // まとめて進化元の下に置く(進化元の一番下に、選んだ順で)
-  function placeCardsUnderStack(target, numbers, faceDown) {
+  function placeCardsUnderStack(target, numbers, faceDown, manual) {
     for (let i = numbers.length - 1; i >= 0; i--) target.cards.unshift(faceDown ? { n: numbers[i], d: true } : numbers[i]);
+    if (!manual && numbers.length) noteEffectMatGain(target);
   }
 
   // A face-down pile (deck, digi-egg deck, security, opponent's hand): shows an
@@ -12086,8 +12087,8 @@
         }
       }
       // 「進化元が効果で増えたとき」: 一番上は同じまま、下のカードが増えた(進化は除く)
-      if (cur.zone === 'battle' && old.mats && cur.mats && cur.top === old.top && cur.mats.length > old.mats.length && effBy != null && cur.category !== 'tamer')
-        events.push(Object.assign(evOf('matInc', cur, uid), { by: effBy }));
+      if (cur.zone === 'battle' && old.mats && cur.mats && cur.top === old.top && cur.mats.length > old.mats.length && effectMatGain.has(uid) && cur.category !== 'tamer')
+        events.push(Object.assign(evOf('matInc', cur, uid), { by: effectMatGain.get(uid) != null ? effectMatGain.get(uid) : effBy }));
     });
     snap.security.forEach((n, pi) => {
       if (prev.security[pi] != null && n < prev.security[pi]) events.push({ kind: 'secLoss', pi });
@@ -12096,14 +12097,12 @@
     if (prev.zones && snap.zones) snap.zones.forEach((z, pi) => {
       const pz = prev.zones[pi];
       if (!pz) return;
-      // 進化したときの1ドロー(ルール)と、バースト進化でテイマーが手札に戻るのは効果ではないので数えない
-      const evolves = events.filter(x => x.kind === 'evolve' && x.pi === pi).length;
-      const added = multisetMinus(z.hand, pz.hand);
-      const burstBack = evolves ? [...prev.stacks.entries()].filter(([u, o]) => o.pi === pi && o.category === 'tamer' && !snap.stacks.has(u) && added.includes(o.top)).length : 0;
-      if (added.length - evolves - burstBack > 0 && effBy != null && snap.phase !== 'draw') events.push({ kind: 'handInc', pi, by: effBy });
+      // 効果のボタンで手札に入れたときだけ(noteEffectHandGain)。進化の1ドローなどのルールの処理や手動の操作は数えない
+      if (effectHandGain[pi] > 0 && multisetMinus(z.hand, pz.hand).length > 0) events.push({ kind: 'handInc', pi, by: effectHandGainBy[pi] != null ? effectHandGainBy[pi] : effBy });
       const gone = multisetMinus(pz.hand, z.hand), addT = multisetMinus(z.trash, pz.trash);
       if (gone.some(n => addT.includes(n))) events.push({ kind: 'handDiscard', pi, by: effBy });
     });
+    effectHandGain = [0, 0]; effectHandGainBy = [null, null]; effectMatGain = new Map();
     // バトルエリアを離れた(消滅・手札/デッキに戻る・下に置かれるなど)
     prev.stacks.forEach((old, uid) => {
       if (old.zone !== 'battle' || old.isOption || old.category === 'tamer') return;
@@ -12550,6 +12549,30 @@
   }
 
   // 効果のプレイヤーがデッキからN枚引く(≪Nドロー≫)
+  // 「効果で手札が増えたとき」用: 効果のボタンでドローした・手札に加えた・手札に戻したときだけ数える
+  // (ドローフェイズのドロー、進化の1ドロー、バースト進化で戻るテイマー、手動の操作は数えない)
+  let effectHandGain = [0, 0], effectHandGainBy = [null, null];
+  function noteEffectHandGain(pi) {
+    if (pi !== 0 && pi !== 1) return;
+    const q = getEffectQueue();
+    effectHandGain[pi]++;
+    effectHandGainBy[pi] = q.current ? q.current.ownerIndex : null;
+  }
+  // 「進化元が効果で増えたとき」用: 効果のボタンで下に置いたスタックだけ数える(進化・ジョグレス・手動の操作は数えない)
+  let effectMatGain = new Map();
+  function noteEffectMatGain(stack) {
+    if (!stack) return;
+    const q = getEffectQueue();
+    effectMatGain.set(ensureStackUid(stack), q.current ? q.current.ownerIndex : null);
+  }
+  function unshiftUnderByEffect(stack, ...entries) {
+    stack.cards.unshift(...entries);
+    if (entries.length) noteEffectMatGain(stack);
+  }
+  function pushHandByEffect(player, ...nums) {
+    player.hand.push(...nums);
+    if (nums.length) noteEffectHandGain(practiceState.players.indexOf(player));
+  }
   function drawCardsFor(pi, n, label) {
     if (!practiceState || !(n > 0)) return;
     const p = practiceState.players[pi];
@@ -12557,7 +12580,7 @@
     let drawn = 0;
     for (let i = 0; i < n; i++) {
       if (!p.library.length) break;
-      p.hand.push(p.library.shift());
+      pushHandByEffect(p, p.library.shift());
       drawn++;
     }
     renderPracticeBoard();
@@ -13677,7 +13700,7 @@
       if (i < 0) { showToast('トラッシュにこのカードがありません', true); return; }
       snapshotPracticeState();
       p.trash.splice(i, 1);
-      if (dest === 'hand') p.hand.push(e.cardNumber);
+      if (dest === 'hand') pushHandByEffect(p, e.cardNumber);
       else p.battle.push({ cards: [e.cardNumber], rested: false, enteredTurn: practiceState.turn.count });
       renderPracticeBoard();
       showToast(dest === 'hand' ? `✋ 「${e.cardName}」を手札に戻しました` : `📥 「${e.cardName}」をトラッシュから${/バトルエリアに置/.test(t) ? 'バトルエリアに置き' : '登場させ'}ました`);
@@ -13863,7 +13886,7 @@
           // spliceMany は位置順で返すので、選んだ順に並べ直す
           const order = picked.map(x => x.num);
           const pl = f.player;
-          if (o.dest === 'hand') pl.hand.push(...order);
+          if (o.dest === 'hand') pushHandByEffect(pl, ...order);
           else if (o.dest === 'deckBottom') pl.library.push(...order);
           else if (o.dest === 'deckTop') pl.library.unshift(...order.slice().reverse());
           else if (o.dest === 'secBottom') pl.security.push(...order.map(x => o.faceUp ? { n: x, u: true } : x));
@@ -14134,7 +14157,7 @@
           if (p.security.length < n) { showToast('セキュリティが足りません', true); return; }
           snapshotPracticeState();
           const nums = (ud === '下' ? p.security.splice(p.security.length - n, n) : p.security.splice(0, n)).map(cardEntryNum);
-          if (toHand) p.hand.push(...nums);
+          if (toHand) pushHandByEffect(p, ...nums);
           else nums.forEach(x => p.trash.push(x)); // セキュリティからの破棄は≪オーバーフロー≫の対象外(4-18-1)
           showToast(`代償: セキュリティを${ud}から${nums.length}枚${toHand ? '手札に加えました' : '破棄しました'}`);
           paid();
@@ -14275,7 +14298,7 @@
                   if (f.player.raising === st) f.player.raising = null; else f.player.battle.splice(f.player.battle.indexOf(st), 1);
                   const topEnt = st.cards.pop();
                   trashNums(st.cards.splice(0).map(cardEntryNum), f.player);
-                  holder.cards.unshift(cardEntryNum(topEnt));
+                  unshiftUnderByEffect(holder, cardEntryNum(topEnt));
                 });
                 done(); return;
               }
@@ -14321,7 +14344,7 @@
           if (!P0.security.length) { showToast('セキュリティがありません', true); return; }
           snapshotPracticeState();
           const num = cardEntryNum(P0.security.shift());
-          P0.hand.push(num);
+          pushHandByEffect(P0, num);
           showToast(`代償: セキュリティの「${miniCardName(num)}」を手札に加えました`);
           paid();
         } });
@@ -14461,7 +14484,7 @@
             const top = cardEntryNum(st.cards.pop());
             trashNums(st.cards.splice(0).map(cardEntryNum), P0); trashPlain((st.links || []).splice(0), P0);
             P0.battle.splice(P0.battle.indexOf(st), 1);
-            holder.cards.unshift(top);
+            unshiftUnderByEffect(holder, top);
             showToast(`代償: 「${miniCardName(top)}」の進化元を破棄し、このデジモンの進化元の下に置きました`);
             paid();
           };
@@ -14488,7 +14511,7 @@
             P0.battle.splice(P0.battle.indexOf(holder), 1);
             const fromTrash = idxs.map(i => cardEntryNum(P0.trash[i]));
             spliceMany(P0.trash, idxs);
-            st.cards.unshift(tamerTop, ...fromTrash);
+            unshiftUnderByEffect(st, tamerTop, ...fromTrash);
             showToast(`代償: このテイマーと${fromTrash.map(x => `「${miniCardName(x)}」`).join('')}を「${stackLabel(st)}」の進化元の下に置きました`);
             paid();
           };
@@ -14521,7 +14544,7 @@
                   trashNums(st.cards.splice(0).map(cardEntryNum), P0); trashPlain((st.links || []).splice(0), P0);
                   P0.battle.splice(P0.battle.indexOf(st), 1);
                 });
-                dst.cards.unshift(...tops);
+                unshiftUnderByEffect(dst, ...tops);
                 showToast(`代償: ${tops.map(x => `「${miniCardName(x)}」`).join('')}を「${stackLabel(dst)}」の進化元の下に置きました`);
                 paid();
               };
@@ -14571,7 +14594,7 @@
               const picked = sel.map(k => list[k]);
               const nums = [];
               new Set(picked.map(x => x.st)).forEach(st => nums.push(...takeLinksAt(st, picked.filter(x => x.st === st).map(x => x.i))));
-              if (toSrc) holder.cards.unshift(...nums); else trashPlain(nums, P0);
+              if (toSrc) unshiftUnderByEffect(holder, ...nums); else trashPlain(nums, P0);
               showToast(`代償: ${nums.map(x => `「${miniCardName(x)}」`).join('')}を${toSrc ? '進化元の下に置きました' : '破棄しました'}`);
               paid();
             } }] });
@@ -14588,7 +14611,7 @@
           const srcIdx = holder.cards.slice(0, -1).map((x, i) => i);
           if (!srcIdx.length) { showToast('進化元がありません', true); return; }
           const put = (idxs) => {
-            const go = (t) => { snapshotPracticeState(); const nums = spliceMany(holder.cards, idxs); t.cards.unshift(...nums); showToast(`代償: 進化元${nums.length}枚を「${stackLabel(t)}」の下に置きました`); paid(); };
+            const go = (t) => { snapshotPracticeState(); const nums = spliceMany(holder.cards, idxs); unshiftUnderByEffect(t, ...nums); showToast(`代償: 進化元${nums.length}枚を「${stackLabel(t)}」の下に置きました`); paid(); };
             if (tamers.length === 1) { go(tamers[0]); return; }
             startFieldPick({ title: '💸 代償: カードを置くテイマーをタップ', candidates: tamers, extra: [], max: 1, onDone: (sel) => { if (sel.length) go(sel[0]); }, onCancel: () => renderPracticeBoard() });
           };
@@ -14614,7 +14637,7 @@
             let nums;
             if (fromSec) { if (P0.security.length < n) { showToast('セキュリティが足りません', true); return; } nums = P0.security.splice(0, n).map(cardEntryNum); }
             else { if (!findStackOwnerAndZone(holder)) { showToast('このカードはもう場にありません', true); return; } nums = [cardEntryNum(holder.cards.pop())]; trashNums(holder.cards.splice(0).map(cardEntryNum), P0); P0.battle.splice(P0.battle.indexOf(holder), 1); }
-            t.cards.unshift(...nums.map(x => (faceDown ? { n: x, d: true } : x)));
+            unshiftUnderByEffect(t, ...nums.map(x => (faceDown ? { n: x, d: true } : x)));
             showToast(`代償: ${nums.length}枚を「${stackLabel(t)}」の下に${faceDown ? '裏向きで' : ''}置きました`);
             paid();
           };
@@ -14792,7 +14815,7 @@
               const f = findStackOwnerAndZone(st);
               if (!f) { showToast('置き先が場にいません', true); return; }
               const entries = nums.map(x => (faceDown ? { n: x, d: true } : x));
-              if (onTop) st.cards.splice(st.cards.length - 1, 0, ...entries); else st.cards.unshift(...entries);
+              if (onTop) { st.cards.splice(st.cards.length - 1, 0, ...entries); noteEffectMatGain(st); } else unshiftUnderByEffect(st, ...entries);
               showToast(`代償: ${nums.length}枚を「${stackLabel(st)}」の${toTamer ? '下' : '進化元'}に置きました`);
               paid(nums);
             };
@@ -15228,7 +15251,7 @@
             const links = (holder.links || []).splice(0);
             [...under, ...links].forEach(x => { P.trash.push(x); checkOverflow(x, P); });
             if (owner.zone === 'raising') P.raising = null; else P.battle.splice(P.battle.indexOf(holder), 1);
-            target.cards.unshift(cardEntryNum(top));
+            unshiftUnderByEffect(target, cardEntryNum(top));
             showToast(`代償: 「${miniCardName(cardEntryNum(top))}」を「${stackLabel(target)}」の進化元の下に置きました${under.length + links.length ? `(下にあった${under.length + links.length}枚は破棄)` : ''}`);
             paid();
           };
@@ -15259,10 +15282,10 @@
               const ent = st.cards.pop();
               const num = cardEntryNum(ent);
               moved.push(num);
-              if (dest === 'bottom') { st.cards.unshift(ent); continue; }
+              if (dest === 'bottom') { unshiftUnderByEffect(st, ent); continue; }
               if (dest === 'secTop') P.security.unshift(faceUp ? { n: num, u: true } : num);
               else if (dest === 'secBottom') P.security.push(faceUp ? { n: num, u: true } : num);
-              else if (dest === 'hand') P.hand.push(num);
+              else if (dest === 'hand') pushHandByEffect(P, num);
               else P.trash.push(num);
               checkOverflow(num, P);
             }
@@ -15295,7 +15318,7 @@
           const place = (st) => {
             snapshotPracticeState();
             const [num] = found[0].splice(found[1], 1).map(cardEntryNum);
-            st.cards.unshift(num);
+            unshiftUnderByEffect(st, num);
             showToast(`代償: 「${miniCardName(num)}」を「${stackLabel(st)}」の進化元の下に置きました`);
             paid();
           };
@@ -15327,7 +15350,7 @@
                 snapshotPracticeState();
                 const nums = [];
                 tamers.forEach(t => { const ix = picked.filter(x => x.st === t).map(x => x.i); nums.push(...spliceMany(t.cards, ix).map(cardEntryNum)); });
-                st.cards.unshift(...nums);
+                unshiftUnderByEffect(st, ...nums);
                 showToast(`代償: ${nums.length}枚を「${stackLabel(st)}」の進化元の下に置きました`);
                 paid();
               };
@@ -15357,7 +15380,7 @@
           snapshotPracticeState();
           const [num] = found[1].splice(found[2], 1).map(cardEntryNum);
           if (act === '破棄する') trashPlain([num], P0);
-          else if (act === '手札に戻す') P0.hand.push(num);
+          else if (act === '手札に戻す') pushHandByEffect(P0, num);
           else if (m[2] === '下') P0.library.push(num); else P0.library.unshift(num);
           showToast(`代償: 「${miniCardName(num)}」を${act === '破棄する' ? '破棄しました' : act.replace(/す$/, 'しました')}`);
           paid();
@@ -15589,7 +15612,7 @@
           const i = p.trash.map(cardEntryNum).lastIndexOf(e.cardNumber);
           if (i < 0) return;
           p.trash.splice(i, 1);
-          st.cards.unshift(e.cardNumber);
+          unshiftUnderByEffect(st, e.cardNumber);
           renderPracticeBoard(); renderEffectPanel();
           showToast(`🎙 ≪セーブ≫: 「${e.cardName}」を「${stackLabel(st)}」の下に置きました`);
         };
@@ -16356,7 +16379,7 @@
         if (i < 0) { showToast('そのカードはもうセキュリティにありません', true); return; }
         snapshotPracticeState();
         P.security.splice(i, 1);
-        P.hand.push(cardEntryNum(pick.entry));
+        pushHandByEffect(P, cardEntryNum(pick.entry));
         let rc = 0;
         for (let k = 0; k < recN && P.library.length; k++) { P.security.unshift(P.library.shift()); rc++; }
         doShuffle();
@@ -16628,7 +16651,7 @@
             if (i >= 0) P.battle.splice(i, 1);
             // テイマーの下に重ねられていたカードは破棄(4-6-8)
             holderStack.cards.slice(0, -1).forEach(en => P.trash.push(cardEntryNum(en)));
-            st.cards.unshift(cardEntryNum(holderStack.cards[holderStack.cards.length - 1]));
+            unshiftUnderByEffect(st, cardEntryNum(holderStack.cards[holderStack.cards.length - 1]));
             renderPracticeBoard();
             showToast(`🧠 ≪マインドリンク≫: 「${tamer.name}」を「${stackLabel(st)}」の進化元の下に置きました`);
           };
@@ -16830,7 +16853,7 @@
       const entry = faceUp ? { n: e.cardNumber, u: 1 } : e.cardNumber;
       if (dest === 'secTop') P.security.unshift(entry); else if (dest === 'secBottom') P.security.push(entry);
       else if (dest === 'deckTop') P.library.unshift(e.cardNumber); else if (dest === 'deckBottom') P.library.push(e.cardNumber);
-      else P.hand.push(e.cardNumber);
+      else pushHandByEffect(P, e.cardNumber);
       renderPracticeBoard();
       showToast(`「${e.cardName}」を${DEST_JA[dest]}に${faceUp ? '表向きで' : ''}置きました`);
     } }];
@@ -18774,7 +18797,7 @@
       snapshotPracticeState();
       if (source === 'hand') self.hand.splice(index, 1);
       else if (source === 'trash') self.trash.splice(index, 1);
-      targetStack.cards.unshift(faceDown ? { n: number, d: true } : number);
+      targetStack.cards.unshift(faceDown ? { n: number, d: true } : number); if (getEffectQueue().current) noteEffectMatGain(targetStack); // 手札の「進化元」メニュー(手動)は効果の処理中だけ数える
       exitMaterialTargetMode();
       renderPracticeBoard();
       showToast(`「${card.name}」を進化元に追加しました(${faceDown ? '裏向き' : '表向き'})`);
@@ -18949,7 +18972,7 @@
     }
     snapshotPracticeState();
     const num = self.library.shift();
-    targetStack.cards.unshift({ n: num, d: true });
+    unshiftUnderByEffect(targetStack, { n: num, d: true });
     exitDeckToTamerMode();
     renderPracticeBoard();
     showToast('デッキの上からテイマーの下に裏向きで入れました');
@@ -21944,7 +21967,7 @@
           const idx = parseInt(btn.dataset.idx, 10);
           const dest = btn.dataset.dest;
           const [number] = revealed.splice(idx, 1);
-          if (dest === 'hand') self.hand.push(number);
+          if (dest === 'hand') pushHandByEffect(self, number);
           else if (dest === 'top') self.library.unshift(number);
           else if (dest === 'bottom') self.library.push(number);
           else self.trash.push(number);
@@ -22041,7 +22064,7 @@
         const d = bulkBtn.dataset.dest;
         const all = revealed.splice(0, revealed.length);
         if (d === 'top') { for (let i = all.length - 1; i >= 0; i--) self.library.unshift(all[i]); }
-        else all.forEach(n => { if (d === 'trash') self.trash.push(n); else if (d === 'hand') self.hand.push(n); else self.library.push(n); });
+        else all.forEach(n => { if (d === 'trash') self.trash.push(n); else if (d === 'hand') pushHandByEffect(self, n); else self.library.push(n); });
         renderPracticeBoard();
         render();
       }));
@@ -22055,7 +22078,7 @@
         const done = () => { spec.taken[si]++; };
         if (st.act === 'hand' || st.act === 'trash' || st.act === 'secTop' || st.act === 'secBottom') {
           revealed.splice(idx, 1);
-          if (st.act === 'hand') self.hand.push(number);
+          if (st.act === 'hand') pushHandByEffect(self, number);
           else if (st.act === 'trash') self.trash.push(number);
           else sendCardToDestination(self, number, st.act, false);
           done();
@@ -22080,7 +22103,7 @@
         if (st.act === 'use') {
           // オプションの使用: 手札に加えてから、手札からの使用と同じ流れで使う
           revealed.splice(idx, 1);
-          self.hand.push(number);
+          pushHandByEffect(self, number);
           done();
           cardDetailModal.classList.remove('open');
           reopen();
@@ -22103,7 +22126,7 @@
           const card = cardIndexByNumber.get(number);
           const place = (target, faceDown) => {
             snapshotPracticeState();
-            target.cards.unshift(faceDown ? { n: number, d: true } : number);
+            unshiftUnderByEffect(target, faceDown ? { n: number, d: true } : number);
             renderPracticeBoard();
             showToast(`「${card ? card.name : '?'}」を「${stackLabel(target)}」の${isTamer ? '下' : '進化元の下'}に置きました${faceDown ? '(裏向き)' : ''}`);
             reopen();
@@ -22448,7 +22471,7 @@
               askFaceOrientation((faceDown) => {
                 snapshotPracticeState();
                 const moved = spliceMany(arr, idxs).map(cardEntryNum);
-                placeCardsUnderStack(sel[0], moved, faceDown);
+                placeCardsUnderStack(sel[0], moved, faceDown, !getEffectQueue().current);
                 renderPracticeBoard();
                 showToast(`${moved.length}枚を「${stackLabel(sel[0])}」の進化元の下に置きました`);
               });
@@ -22478,7 +22501,7 @@
   // destination: 'hand' | 'trash' | 'deckTop' | 'deckBottom' | 'secTop' | 'secBottom'
   // faceUp: セキュリティへ送る場合のみ有効。true なら表向きで入れる(通常は裏向き)。
   function sendCardToDestination(player, number, destination, faceUp) {
-    if (destination === 'hand') player.hand.push(number);
+    if (destination === 'hand') { player.hand.push(number); if (getEffectQueue().current) noteEffectHandGain(practiceState.players.indexOf(player)); }
     else if (destination === 'trash') player.trash.push(number);
     else if (destination === 'deckTop') player.library.unshift(number);
     else if (destination === 'deckBottom') player.library.push(number);
@@ -22489,7 +22512,7 @@
       // ≪セーブ≫: テイマーの下の一番下に置く(16-21-6と同様の重なり順)。
       const target = pendingTamerSaveTarget;
       pendingTamerSaveTarget = null;
-      if (target) target.cards.unshift(number);
+      if (target) { target.cards.unshift(number); if (getEffectQueue().current) noteEffectMatGain(target); }
       else player.trash.push(number); // 対象を特定できなかった場合の保険(通常発生しない)
       return; // 4-18-4: 重ねられているカードの下に置かれる場合、≪オーバーフロー≫の対象外
     }
@@ -22497,7 +22520,7 @@
       // ≪セーブ≫以外の効果で、テイマーの下に裏向きで置く
       const target = pendingTamerSaveTarget;
       pendingTamerSaveTarget = null;
-      if (target) target.cards.unshift({ n: number, d: true });
+      if (target) { target.cards.unshift({ n: number, d: true }); if (getEffectQueue().current) noteEffectMatGain(target); }
       else player.trash.push(number);
       return;
     }
@@ -23878,7 +23901,7 @@
       // 行き先を決めた後の再描画で、次のカードのチェックが先走って出ないよう、いったんステップを外す(この後で決め直す)
       lastAttackStepFn = null;
       snapshotPracticeState();
-      if (destination === 'hand') defOwner.hand.push(top);
+      if (destination === 'hand') pushHandByEffect(defOwner, top);
       else if (destination === 'battle') defOwner.battle.push({ cards: [top], rested: false });
       // 【セキュリティ】効果で登場(テイマー・デジモン): 登場時効果は通常どおり誘発する
       else if (destination === 'play') defOwner.battle.push({ cards: [top], rested: false, enteredTurn: practiceState.turn.count, pendingEntry: { fromZone: 'security', byEffect: true } });

@@ -13,12 +13,18 @@ const tamer = (n) => `{cards:['${n}']}`;
 
 // 1 相手の手札が効果で増えた(BT27-089 テイマー): 効果の処理中なら出る / 効果でなければ出ない
 await setup(`P.battle=[${tamer('BT27-089')}]; O.hand=[]; O.library=Array(10).fill('BT1-010')`);
-await inEffect(pi); await act(`O.hand.push(O.library.shift())`);
+await inEffect(pi); await act(`drawCardsFor(1-${pi}, 1)`);
 o.handInc = await q('BT27-089');
+// 効果の処理中でも、手で手札に入れた(効果のボタンではない)ときは出ない
 await setup(`P.battle=[${tamer('BT27-089')}]; O.hand=[]`);
-await act(`O.hand.push(O.library.shift())`);
+await inEffect(pi); await act(`O.hand.push(O.library.shift())`);
 o.handIncNoEff = await q('BT27-089');
 o.ok_handInc = o.handInc === true && o.handIncNoEff === false;
+// 1b 効果で相手のデジモンを手札に戻した(バウンス)
+await setup(`P.battle=[${tamer('BT27-089')}]; O.hand=[]; O.battle=[{cards:['BT1-010']}]`);
+await inEffect(pi); await act(`removeCardFromStackAt(O.battle[0], 0, 'hand', undefined, () => renderPracticeBoard())`);
+o.bounce = await q('BT27-089');
+o.ok_bounce = o.bounce === true;
 // 2 相手の手札が破棄された(BT27-085)/ 自分の手札では出ない
 await setup(`P.battle=[{cards:['BT1-009','BT27-085']}]; O.hand=['BT1-010','BT1-015']; O.trash=[]; P.hand=['BT1-010']; P.trash=[]`);
 await act(`O.trash.push(O.hand.pop())`);
@@ -34,9 +40,13 @@ o.under = await q('BT27-067');
 o.ok_under = o.under === true;
 // 4 このデジモンの進化元が効果で増えた(BT27-031)/ 進化(一番上が変わる)では出ない
 await setup(`P.battle=[{cards:['BT1-009','BT27-031']}]`);
-await inEffect(pi); await act(`P.battle[0].cards.unshift('BT1-010')`);
+await inEffect(pi); await act(`placeCardsUnderStack(P.battle[0], ['BT1-010'], false)`);
 o.matInc = await q('BT27-031');
-o.ok_matInc = o.matInc === true;
+// 効果の処理中でも、手で下に入れた(効果のボタンではない)ときは出ない
+await setup(`P.battle=[{cards:['BT1-009','BT27-031']}]`);
+await inEffect(pi); await act(`P.battle[0].cards.unshift('BT1-010')`);
+o.matIncManual = await q('BT27-031');
+o.ok_matInc = o.matInc === true && o.matIncManual === false;
 // 5 自分のデジモンがバトルエリアを離れた(BT27-068)
 await setup(`P.battle=[{cards:['BT1-009','BT27-068']},{cards:['BT1-010']}]; P.hand=[]`);
 await act(`P.hand.push(P.battle[1].cards.pop()); P.battle.splice(1,1)`);
