@@ -4020,7 +4020,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.99.29</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.99.30</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -6170,7 +6170,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.99.29`);
+    log(`DigiCA Tool build v0.99.30`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -16731,8 +16731,11 @@
       const key = m[1] === '登場コスト' ? 'cost' : m[1] === 'DP' ? 'dp' : 'lv';
       const act = /消滅/.test(m[4]) ? { type: 'destroy' } : /手札/.test(m[4]) ? { type: 'move', dest: 'hand' } : { type: 'move', dest: /上/.test(m[4]) ? 'deckTop' : 'deckBottom' };
       const up = /([^、。]+?)(\d+)(枚|体)ごとに、この(?:DP消滅)?効果(?:で選べる|の)(?:登場コスト合計の|DPの|Lv\.の)?(?:上限|登場コスト(?:合計)?(?:の)?上限)\+(\d+)/.exec(t);
+      // 「このデジモンのDP8000ごとに、このDP消滅効果の上限+4000」(ST25-05)など、「N枚/体ごと」でない数え方は countPerUnit で数える
+      const up2 = up ? null : /([^、。]+?)ごとに、この(?:DP消滅)?効果(?:で選べる|の)(?:登場コスト合計の|DPの|Lv\.の)?(?:上限|登場コスト(?:合計)?(?:の)?上限)\+(\d+)/.exec(t);
       out.push({ key, label: m[1], base: parseInt(m[2], 10), kinds: m[3], act, verb: m[4], holderDP: /DP合計このデジモンのDPまで/.test(text || ''),
-        up: up ? { what: up[1].replace(/^.*?、/, '').trim(), n: parseInt(up[2], 10), unit: up[3], add: parseInt(up[4], 10) } : null });
+        up: up ? { what: up[1].replace(/^.*?、/, '').trim(), n: parseInt(up[2], 10), unit: up[3], add: parseInt(up[4], 10) }
+          : up2 ? { per: cleanPerPhrase(up2[1].replace(/^.*?。/, '').trim()), add: parseInt(up2[2], 10) } : null });
     }
     // BT8-070「このデジモンの進化元に、赤のカードがあるなら相手のデジモンを、黒のカードがあるなら相手のテイマーを、あわせて登場コスト合計6まで選び、選んだカード全てを消滅させる」
     const cg = /このデジモンの進化元に、([赤青黄緑黒紫白])のカードがあるなら相手のデジモンを、([赤青黄緑黒紫白])のカードがあるなら相手のテイマーを、あわせて(登場コスト|DP|Lv\.)合計(\d+)まで選び、選んだカード全てを(消滅させる)/.exec(t);
@@ -16757,7 +16760,12 @@
         if (tr.holderDP && holderDP == null) { showToast('このデジモンが場にいないため、DPの上限が分かりません', true); return; }
         const opi = 1 - e.ownerIndex;
         let budget = tr.holderDP ? holderDP : tr.base, upNote = '';
-        if (tr.up) {
+        if (tr.up && tr.up.per) {
+          let k = null;
+          try { k = countPerUnit(tr.up.per, e.ownerIndex, holderStack, null, e); } catch (er) { k = null; }
+          if (k == null) upNote = `(上限の増える分「${tr.up.per}ごとに+${tr.up.add}」は数えられないので、選ぶときに足してください)`;
+          else { const add = k * tr.up.add; budget += add; upNote = `(上限+${add}: ${tr.up.per}が${k})`; }
+        } else if (tr.up) {
           let k = null;
           try { k = extraCountSubject({ what: tr.up.what, n: tr.up.n, unit: tr.up.unit }, holderStack || { cards: [] }, e.ownerIndex); } catch (er) { k = null; }
           if (k == null) upNote = `(上限の増える分「${tr.up.what}${tr.up.n}${tr.up.unit}ごとに+${tr.up.add}」は数えられないので、選ぶときに足してください)`;
