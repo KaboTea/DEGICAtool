@@ -3915,8 +3915,9 @@
     body.pt-mode .detail-modal .modal:is(:has(.deck-list-item), :has(.rg-row)):not(:has(.detail-img-col)):not(:has(.cmp-wrap)) .rg-list { grid-template-columns: minmax(0, 1fr); }
     /* カードを選ぶ画面: 中身の量に合わせた高さ(下から)。選んだ枚数は1行、ボタンは横いっぱいに大きく */
     body.pt-mode .detail-modal .modal:has(.cmp-wrap) { height: auto; display: flex; flex-direction: column; padding-top: 10px; }
-    body.pt-mode .detail-modal .modal:has(.cmp-wrap) .detail-body { flex: 0 1 auto; min-height: 0; display: flex; }
-    body.pt-mode .cmp-wrap { display: flex; flex-direction: column; height: auto; max-height: 100%; min-height: 0; }
+    /* 縦に並べて、カードの一覧だけが縮んでスクロールするようにする(横並びだと一覧が縮まず、画面の外にはみ出してスクロールできなかった) */
+    body.pt-mode .detail-modal .modal:has(.cmp-wrap) .detail-body { flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; }
+    body.pt-mode .cmp-wrap { display: flex; flex-direction: column; height: auto; flex: 0 1 auto; max-height: 100%; min-height: 0; }
     body.pt-mode .cmp-wrap .cmp-head .d-title { font-size: 13.5px; line-height: 1.35; padding-right: 110px; }
     body.pt-mode .cmp-wrap .cmp-head .d-number { font-size: 11px; margin: 3px 0 6px; }
     body.pt-mode .cmp-wrap .cmp-bar { flex-direction: row; align-items: center; margin: 0 0 6px; padding: 0; border: none; gap: 8px; }
@@ -4020,7 +4021,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.99.33</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.99.34</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -6170,7 +6171,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.99.33`);
+    log(`DigiCA Tool build v0.99.34`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -15777,6 +15778,15 @@
         renderPracticeBoard(); renderEffectPanel();
         showToast(`📥 相手の手札からランダムに「${miniCardName(num)}」を「${stackLabel(dst)}」の下に置きました`);
       } });
+    } });
+    // 「そのアタックを終了する/できる/させる」(BT13-088 ほか): 今のアタックを終わらせる(セキュリティチェックやバトルは行わない)
+    const eam = /(その|この)アタックを終了(する|できる|させる)/.exec(t);
+    if (eam && notCost(eam.index, eam[0].length)) out.push({ textPos: eam.index, label: '⛔ そのアタックを終了する', run: () => {
+      if (!attackState) { showToast('アタック中ではありません', true); return; }
+      snapshotPracticeState();
+      endAttack();
+      showToast(`⛔「${e.cardName}」の効果でアタックを終了しました`);
+      renderEffectPanel();
     } });
     // 「相手は自身の手札/セキュリティを選んで1枚破棄する」(BT27-083): 手札とセキュリティを1つの一覧で。裏向きのセキュリティは名前を出さない
     const hsm = /相手は、?(?:自身の|相手の)手札\/セキュリティを選んで(\d+)枚破棄する/.exec(t);
