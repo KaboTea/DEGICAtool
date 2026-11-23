@@ -4020,7 +4020,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.99.32</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.99.33</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -6170,7 +6170,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.99.32`);
+    log(`DigiCA Tool build v0.99.33`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -11205,6 +11205,21 @@
     return res;
   }
   // 盤面全体(両プレイヤーのバトルエリア+育成エリア)から、プレイヤーごとに指定タイミングを集める
+  // ≪急襲≫≪ヴォルテクス≫≪エグゼキュート≫≪オーバークロック≫(と使える≪進撃≫)は「自分のターン終了時」に誘発する効果。
+  // 相手の【相手のターン終了時】と同時に誘発したら、ターンプレイヤーの効果を先に処理する(15-4-3-5)ので、効果パネルに並べる
+  function collectKeywordEndAttackTriggers(pi) {
+    const p = practiceState.players[pi];
+    return p.battle.filter(st => isDigimonLikeStack(st) && specialAttackOptions(st).length).map(st => {
+      const top = getStackTopCard(st);
+      const kws = ['急襲', 'ヴォルテクス', 'エグゼキュート', 'オーバークロック'].filter(k => hasInnateOrLinkedKeyword(st, k));
+      if (hasAdvanceKeyword(st) && isAdvanceAvailableNow(st)) kws.push('進撃');
+      return {
+        ownerIndex: pi, stackUid: ensureStackUid(st), cardNumber: top ? top.number : '', cardName: top ? top.name : '?',
+        field: 'keyword', lineIndex: -1, timing: 'ターン終了時', event: 'ターン終了', kwAttack: true,
+        text: `【ターン終了時】${kws.map(k => `≪${k}≫`).join('')} このデジモンでアタックできる。`,
+      };
+    });
+  }
   function collectBurstEndTriggers(pi) {
     const p = practiceState.players[pi];
     return p.battle.filter(st => st.burstEvolved).map(st => {
@@ -12043,6 +12058,7 @@
       // バースト進化したデジモンは、そのターンの終了時に重ねられているカードを上から1枚破棄する(ターン終了時の効果として、
       // 他のターン終了時の効果と順番を選べるように効果パネルに出す)
       found.push(...collectBurstEndTriggers(tp));
+      found.push(...collectKeywordEndAttackTriggers(tp));
       // 保留処理(18-1): 期限が来た予約をターン終了時の効果と一緒に出す
       found.push(...collectDueDeferred(snap.turnCount));
     }
@@ -17309,6 +17325,11 @@
     return withRecovery([...getEffectHandlersBase(e), ...extra()]);
   }
   function getEffectHandlersBase(e) {
+    if (e.kwAttack) {
+      const f = findStackByUid(e.stackUid);
+      if (!f) return [];
+      return specialAttackOptions(f.stack).map(o => ({ label: o.label, run: () => { o.onClick(); } }));
+    }
     if (e.burst) {
       const f = findStackByUid(e.stackUid);
       if (!f || !f.stack.burstEvolved) return [];
