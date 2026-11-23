@@ -8,4 +8,7 @@ const r = await ev(`(() => { const P=practiceState.players[${pi}], O=practiceSta
   if(!h) return 'nobtn'; h.run(); return 'ok'; })()`);
 const b = (await banner()) + ' / toast=' + (await ev('toastEl.textContent')); await ev('cancelTargetModes()');
 console.log(r, b);
-await browser.close(); console.log(/19000/.test(b) ? errs : ['ng']);
+// ST25-06「ターン終了まで、自分のデジモン1体は相手のオプションの効果を受けず、DP+3000」: 耐性とDP+の2つのボタン
+const k = await ev(`(() => { const P=practiceState.players[${pi}]; P.battle=[{cards:['ST25-06']}]; return getEffectHandlers({ownerIndex:${pi}, stackUid:ensureStackUid(P.battle[0]), cardNumber:'ST25-06', cardName:'x', field:'effect', lineIndex:1, text:'このテイマーをレストさせることで、ターン終了まで、自分のデジモン1体は相手のオプションの効果を受けず、DP+3000。', timing:'自分のターン', event:'t'}).map(h=>h.label).join(' / '); })()`);
+console.log(k);
+await browser.close(); console.log(/19000/.test(b) && /DP\+3000/.test(k) && /耐性/.test(k) ? errs : ['ng']);
