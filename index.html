@@ -4021,7 +4021,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.99.34</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.99.35</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -6171,7 +6171,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.99.34`);
+    log(`DigiCA Tool build v0.99.35`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -8330,6 +8330,8 @@
     const top = getStackTopCard(stack);
     if (!top) return null;
     let m;
+    // 「このデジモンが「ジェムモン」の記述がある」(BT27-014 の進化元効果「「ジェムモン」の記述があるこのデジモンは≪急襲≫を得る」)
+    if ((m = /^このデジモンが(.+の記述がある)$/.exec(c))) return revealCondMatches(top, m[1] + 'カード');
     // 「Aがいる間か、Bがある」「Aがいるか、Bがある」: どちらか
     const orParts = c.split(/(?:の)?間か、|(?<=いる|ある|いない|ない)か、?(?!どうか)/);
     if (orParts.length > 1) {
