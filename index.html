@@ -4021,7 +4021,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.99.36</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.99.37</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -6171,7 +6171,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.99.36`);
+    log(`DigiCA Tool build v0.99.37`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -8872,6 +8872,7 @@
             const defenderOwner = practiceState.players[1 - practiceState.viewingIndex];
             snapshotPracticeState();
             attackState = {
+              queueFloor: getEffectQueue().batchSeq || 0,
               attackerStack: stack, attackerOwner: self, defenderOwner, targetType: 'player', targetStack: null,
               renkeiCount: 0, renkeiBonusDP: 0, sAttackManualDelta: 0,
               preAttackHistoryLength: practiceHistory.length - 1,
@@ -12229,6 +12230,7 @@
       // 「アタック終了時」など、今残っている効果を処理し終えてから発揮するもの
       const valid = q.pending.filter(isEffectEntryValid);
       if (valid.length) batchNo = Math.min(...valid.map(e => e.batch)) - 0.5;
+      if (opts.floor != null) batchNo = Math.max(batchNo, opts.floor + 0.5);
     }
     const stamp = (e, bonus) => Object.assign(e, { id: 'ef' + (++q.idSeq), batch: (bonus ? q.batchSeq + bonus : batchNo) });
     entries.forEach(e => q.pending.push(stamp(e)));
@@ -12289,9 +12291,13 @@
     return true;
   }
   // 次に発揮できる効果のグループ(最後に誘発したもの優先、その中ではターンプレイヤー優先)
+  // アタック中で、アタックが始まる前から発揮待ちだった効果か(アタックが終わるまで出さない)
+  function effectHeldByAttack(e) {
+    return !!(attackState && attackState.queueFloor != null && e.batch <= attackState.queueFloor);
+  }
   function getSelectableEffects() {
     const q = getEffectQueue();
-    const valid = q.pending.filter(isEffectEntryValid);
+    const valid = q.pending.filter(e => isEffectEntryValid(e) && !effectHeldByAttack(e));
     if (!valid.length) return [];
     const maxBatch = Math.max(...valid.map(e => e.batch));
     const top = valid.filter(e => e.batch === maxBatch);
@@ -17344,7 +17350,8 @@
     if (e.kwAttack) {
       const f = findStackByUid(e.stackUid);
       if (!f) return [];
-      return specialAttackOptions(f.stack).map(o => ({ label: o.label, run: () => { o.onClick(); } }));
+      // アタックが始まったら、この効果(≪急襲≫など)は「処理中」から外す。アタックが終わるまで、前から発揮待ちの効果は出ない
+      return specialAttackOptions(f.stack).map(o => ({ label: o.label, run: () => { o.onClick(); if (attackState && getEffectQueue().current === e) finishCurrentEffect(false); } }));
     }
     if (e.burst) {
       const f = findStackByUid(e.stackUid);
@@ -17554,19 +17561,23 @@
         showToast(`「${cur.cardName}」はレスト状態(またはレストできない)のため、この効果は発揮できません`, true);
       }
     }
-    const validPending = q.pending.filter(isEffectEntryValid);
+    const allValid = q.pending.filter(isEffectEntryValid);
+    // アタック中は、アタックが始まる前から発揮待ちだった効果(≪急襲≫と同時に誘発した相手の【相手のターン終了時】など)を出さない。
+    // アタックの5つのタイミングを終えて≪急襲≫などが解決してから出す(11-1-3, 15-4-3-5)
+    const validPending = allValid.filter(e => !effectHeldByAttack(e));
     if (!q.current && !validPending.length) {
       // 発揮できなくなった効果だけが残っている場合はここで片付ける
-      if (q.pending.length) q.pending = [];
+      if (q.pending.length && !allValid.length) q.pending = [];
       panel.hidden = true;
       return;
     }
     // 発揮できる効果が1つだけなら、「発揮する/しない」を聞かずに処理中にする(処理中の画面でも「発揮しない」を選べる)
-    if (!q.current && validPending.length === 1) {
+    if (!q.current && validPending.length === 1 && allValid.length === 1) {
       q.pending = validPending;
       selectEffect(validPending[0].id);
       return;
     }
+    if (!q.current && validPending.length === 1) { selectEffect(validPending[0].id); return; }
     panel.hidden = false;
     const tp = practiceState.turn.playerIndex;
     const sideOf = (e) => (e.ownerIndex === practiceState.viewingIndex ? 'self' : 'opp');
@@ -23496,6 +23507,7 @@
     snapshotPracticeState();
     if (!o.noRest) stack.rested = true;
     attackState = {
+      queueFloor: getEffectQueue().batchSeq || 0,
       attackerStack: stack, attackerOwner, defenderOwner, targetType: null, targetStack: null,
       renkeiCount: 0, renkeiBonusDP: 0, sAttackManualDelta: 0,
       preAttackHistoryLength: practiceHistory.length - 1,
@@ -24266,6 +24278,7 @@
     // ≪エグゼキュート≫(16-38-4): 「このアタック終了時、このデジモンは消滅する」保留処理。
     const stackToVanish = (attackState && attackState.executeSelfDestruct) ? attackState.attackerStack : null;
     const endedAttacker = attackState && attackState.triggersFired ? attackState.attackerStack : null;
+    const attackFloor = attackState ? attackState.queueFloor : null;
     attackState = null;
     lastAttackStepFn = null;
     closeZonePopup();
@@ -24276,7 +24289,8 @@
       const af = findStackOwnerAndZone(endedAttacker);
       if (af && af.zone === 'battle') {
         const list = collectStackTriggers(endedAttacker, practiceState.players.indexOf(af.player), 'battle', ['アタック終了時'], { event: 'アタック終了' });
-        if (list.length) { enqueueEffects(list, [], { lowPriority: true }); renderEffectPanel(); }
+        // アタック終了時の効果は、アタックの前から発揮待ちだった効果(相手の【相手のターン終了時】など)より先
+        if (list.length) { enqueueEffects(list, [], { lowPriority: true, floor: attackFloor }); renderEffectPanel(); }
       }
     }
     if (stackToVanish && findStackOwnerAndZone(stackToVanish)) {
