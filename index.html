@@ -4021,7 +4021,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.99.37</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.99.38</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -6171,7 +6171,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.99.37`);
+    log(`DigiCA Tool build v0.99.38`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -15800,6 +15800,36 @@
       showToast(`⛔「${e.cardName}」の効果でアタックを終了しました`);
       renderEffectPanel();
     } });
+    // 「特徴「アリシオン」を持つ青の自分のデジモン1体を選び、進化元枚数が選んだデジモンより少ない相手のデジモン1体に選んだデジモンでアタックする。
+    //   この効果では、アクティブ状態の相手のデジモンにもアタックできる。」(ED01-10 の≪ディレイ≫)
+    const sdam = /(?:([^、。]*?)の)?自分のデジモン1体を選び、([^、。]*?)の?相手のデジモン1体に選んだデジモンでアタックする/.exec(t);
+    if (sdam && notCost(sdam.index, sdam[0].length)) {
+      const activeOk = /アクティブ状態の相手のデジモンにもアタックできる/.test(t);
+      out.push({ textPos: sdam.index, label: '⚔️ 自分のデジモンを選んで、相手のデジモンにアタック', run: () => {
+        if (!guard()) return;
+        if (attackState) { showToast('アタック中です。今のアタックが終わってから実行してください', true); return; }
+        const c1 = (sdam[1] || '').split(/[\n・）)]/).pop().trim(), c2 = (sdam[2] || '').trim();
+        const blocked = (st) => st.rested || (st.enteredTurn === practiceState.turn.count && !hasQuickKeyword(st)) || hasLock(st, 'noAttack') || hasLock(st, 'noRest')
+          || prohibitionsOn(st, 'attack').length > 0 || prohibitionsOn(st, 'rest').length > 0;
+        const mine = battleStacksOf(pi).filter(st => isDigimonLikeStack(st) && !blocked(st) && (!c1 || stackMatchesFilterText(st, c1, null) !== false));
+        if (!mine.length) { showToast(`アタックできる自分のデジモンがいません${c1 ? `(${c1})` : ''}`, true); return; }
+        startFieldPick({ title: `⚔️ アタックする自分のデジモンをタップ${c1 ? `(${c1})` : ''}`, candidates: mine, max: 1, cancelLabel: 'やめる', onDone: (sel) => {
+          const me = sel[0];
+          if (!me) return;
+          // 「進化元枚数が選んだデジモンより少ない」など、選んだデジモンと比べる条件
+          const lessMat = /進化元枚数が選んだデジモンより少ない/.test(c2);
+          const rest2 = c2.replace(/進化元枚数が選んだデジモンより少ない/, '').trim();
+          const opp = battleStacksOf(1 - pi).filter(st => isDigimonLikeStack(st) && (activeOk || st.rested)
+            && (!lessMat || st.cards.length < me.cards.length) && (!rest2 || stackMatchesFilterText(st, rest2, null) !== false));
+          if (!opp.length) { showToast(`アタックできる相手のデジモンがいません${c2 ? `(${c2})` : ''}`, true); return; }
+          startFieldPick({ title: `⚔️ アタックする相手のデジモンをタップ${c2 ? `(${c2})` : ''}${activeOk ? '・アクティブも可' : ''}`, candidates: opp, max: 1, cancelLabel: 'やめる', onDone: (sel2) => {
+            if (!sel2[0]) return;
+            practiceState.viewingIndex = pi; renderPracticeBoard();
+            declareAttack(me, false, { label: `⚔️「${e.cardName}」の効果`, targetStack: sel2[0] });
+          } });
+        } });
+      } });
+    }
     // 「相手は自身の手札/セキュリティを選んで1枚破棄する」(BT27-083): 手札とセキュリティを1つの一覧で。裏向きのセキュリティは名前を出さない
     const hsm = /相手は、?(?:自身の|相手の)手札\/セキュリティを選んで(\d+)枚破棄する/.exec(t);
     if (hsm) {
@@ -23516,6 +23546,13 @@
     cardDetailModal.classList.remove('open');
     renderPracticeBoard();
     if (o.label) showToast(`${o.label}: 「${stackLabel(stack)}」でアタックを宣言しました${o.noRest ? '(レストしない)' : ''}`);
+    // 効果でアタック先が決まっているとき(ED01-10「〜の相手のデジモン1体に選んだデジモンでアタックする」)
+    if (o.targetStack && attackState.defenderOwner.battle.includes(o.targetStack)) {
+      attackState.targetType = 'digimon';
+      attackState.targetStack = o.targetStack;
+      showAttackTriggerStep();
+      return;
+    }
     // 「プレイヤーにアタックできる」: 対象選びは出さずにそのままプレイヤーへ
     if (o.only === 'player' && !attackPlayerBlockReason(stack)) {
       attackState.targetType = 'player';
