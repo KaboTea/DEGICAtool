@@ -4021,7 +4021,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.99.39</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.99.40</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -6171,7 +6171,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.99.39`);
+    log(`DigiCA Tool build v0.99.40`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -16243,6 +16243,33 @@
             h.run = () => { if (!e.segRun) e.segRun = {}; e.segRun[i] = true; run0(); const q = getEffectQueue(); if (q.current === e) renderEffectPanel(); };
           });
         }
+      }
+    } catch (err) { console.warn(err); }
+    // 「Aする。この効果でAしなかったなら、Bする」「Aできる。そうしなかったなら、B」: AとBはどちらか一方だけ。
+    // Aのボタンで盤面が動いたら(1手戻すの履歴が増えたら)Bを押せなくし、Bを実行したらAを押せなくする
+    try {
+      const txt = engineStripNotes(e.text || '');
+      const nm = /(?:この効果で[^。、]{0,20}なかった|(?:そう)?しなかった)(?:なら|場合)、/.exec(txt);
+      if (nm) {
+        const aStart = txt.lastIndexOf('。', txt.lastIndexOf('。', nm.index - 1) - 1) + 1; // 「〜しなかったなら」の1つ前の文から
+        const bEnd = (() => { const k = txt.indexOf('。', nm.index); return k < 0 ? txt.length : k; })();
+        const posOf = (h) => h.textPos != null ? h.textPos : labelPosInText(h.label, txt);
+        const groupOf = (h) => { if (h.isCost) return null; const p = posOf(h); return p >= aStart && p < nm.index ? 'A' : p > nm.index && p <= bEnd ? 'B' : null; };
+        const hist = () => practiceHistory.length;
+        const doneSide = (side) => e.exclClick && e.exclClick[side] != null && hist() > e.exclClick[side];
+        handlers.forEach(h => {
+          const g = groupOf(h);
+          if (!g) return;
+          const other = g === 'A' ? 'B' : 'A';
+          if (doneSide(other)) {
+            h.condNg = g === 'A' ? '後ろの処理を実行済み' : 'この効果で実行済み';
+            h.ngMsg = g === 'A' ? '「〜しなかったなら」の後ろの処理を実行したので、前の処理はできません' : '前の処理を実行したので、「〜しなかったなら」の後ろの処理はできません';
+            h.run = () => showToast(h.ngMsg, true);
+            return;
+          }
+          const run0 = h.run;
+          h.run = () => { if (!e.exclClick) e.exclClick = {}; if (e.exclClick[g] == null || !doneSide(g)) e.exclClick[g] = hist(); run0(); setTimeout(() => { const q = getEffectQueue(); if (q.current === e) renderEffectPanel(); }, 0); };
+        });
       }
     } catch (err) { console.warn(err); }
     // メモリー±・ドローは1回押したら「✔済」にする(もう一度押すには2回タップ)。数を選ぶボタンは除く
