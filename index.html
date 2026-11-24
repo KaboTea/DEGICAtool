@@ -4021,7 +4021,7 @@
   <div class="brand">
     <span class="dot"></span>
     <h1 class="mono">DIGICA TOOL</h1>
-    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.99.38</span>
+    <span class="mono" id="appVersion" style="font-size:10px;color:var(--text-dim);">v0.99.39</span>
   </div>
   <div class="status-readout mono">
     <span>DB: <span class="val" id="statDbCount">未取得</span></span>
@@ -6171,7 +6171,7 @@
     diffTable.classList.remove('active');
     logEl.innerHTML = '';
     progressFill.style.width = '0%';
-    log(`DigiCA Tool build v0.99.38`);
+    log(`DigiCA Tool build v0.99.39`);
 
     try {
       log('heroi.cc の bulk-data 一覧を取得中...');
@@ -8226,7 +8226,7 @@
   }
   // 「バトルで消滅しない」: ⛨耐性の付与か、表向きの［セキュリティ］常在効果
   function hasBattleDestroyImmunity(stack) {
-    return hasResist(stack, 'noBattleDestroy') || securityStaticRulesFor(stack).some(r => r.resist === 'noBattleDestroy');
+    return hasResist(stack, 'noBattleDestroy') || securityStaticRulesFor(stack).some(r => r.resist === 'noBattleDestroy') || conditionalKeywordOn(stack, '__バトルで消滅しない');
   }
   function getSecurityStaticDPBonus(stack) {
     return securityStaticRulesFor(stack).reduce((sum, r) => sum + (r.perFaceDownMat ? r.dp * stack.cards.slice(0, -1).filter(cardEntryFaceDown).length : r.dp), 0);
@@ -8245,14 +8245,15 @@
     (text || '').split('\n').forEach(line => {
       const parsed = parseEffectLine(line);
       if (parsed.labels.some(l => !/^(自分のターン|相手のターン|お互いのターン)$/.test(l))) return;
-      const body = engineStripNotes(parsed.text).replace(/^(【[^】]+】)+/, '');
+      // 「〜間、特徴「氷雪型」を持つこのデジモンはバトルで消滅しない」(ST26-01 の進化元効果)も、≪…≫を得るのと同じ形で読む
+      const body = engineStripNotes(parsed.text).replace(/^(【[^】]+】)+/, '').replace(/このデジモンは、?(バトル(?:以外)?で消滅しない)/, 'このデジモンは≪__$1≫を得る');
       if (/とき、/.test(body)) return; // 誘発して一時的に得るものは対象外
       let m = /^(.+?)(?:の)?(?:間|なら)、このデジモン(?:は|に)((?:≪[^≫]+≫(?:と|、)?)+)を得る/.exec(body);
       // 「特徴に「X抗体」/〜を持つこのデジモンは≪連携≫と≪再起動≫を得る」(三叉路の魔女 BT24-086 の進化元効果): このデジモン自身の条件
       // 「進化元を持つ相手のデジモンがいない間、特徴に「氷雪型」を持つこのデジモンは(、)≪貫通≫と≪Sアタック+1≫を得る」(EX7-021/EX11-016/EX8-023): 場の条件 + このデジモン自身の条件
       let cond2 = null;
-      if (!m) { const m3 = /^(.+?)(?:の)?(?:間|なら)、((?:特徴|名称)に.+?を(?:持つ|含む))このデジモン(?:は|に)、?((?:≪[^≫]+≫(?:と|、)?)+)を得る/.exec(body); if (m3) { m = [m3[0], m3[1], m3[3]]; cond2 = 'このデジモンが' + m3[2]; } }
-      if (!m) { const m2 = /^((?:特徴|名称)に.+?を(?:持つ|含む)|.+?の記述がある)このデジモン(?:は|に)、?((?:≪[^≫]+≫(?:と|、)?)+)を得る/.exec(body); if (m2) m = [m2[0], 'このデジモンが' + m2[1], m2[2]]; }
+      if (!m) { const m3 = /^(.+?)(?:の)?(?:間|なら)、((?:特徴|名称)に?.+?を(?:持つ|含む))このデジモン(?:は|に)、?((?:≪[^≫]+≫(?:と|、)?)+)を得る/.exec(body); if (m3) { m = [m3[0], m3[1], m3[3]]; cond2 = 'このデジモンが' + m3[2]; } }
+      if (!m) { const m2 = /^((?:特徴|名称)に?.+?を(?:持つ|含む)|.+?の記述がある)このデジモン(?:は|に)、?((?:≪[^≫]+≫(?:と|、)?)+)を得る/.exec(body); if (m2) m = [m2[0], 'このデジモンが' + m2[1], m2[2]]; }
       if (!m) return;
       const names = (m[2].match(/≪([^≫]+)≫/g) || []).map(k => k.slice(1, -1).replace(/《[^》]*》/g, '').replace(/[+\-－＋]\d+$/, ''));
       out.push({ prefix: parsed.prefix, labels: parsed.labels, cond: m[1].split('。').pop().replace(/の$/, '').trim(), cond2, names, raw: (m[2].match(/≪([^≫]+)≫/g) || []).map(k => k.slice(1, -1).replace(/《[^》]*》/g, '')) });
@@ -9548,6 +9549,7 @@
     noReturn: '手札/デッキに戻らない',
     noDestroyByEffect: '効果で消滅しない',
     noBattleDestroy: 'バトルで消滅しない',
+    noNonBattleDestroy: 'バトル以外で消滅しない',
     noBeBlocked: 'ブロックされない',
     noBeAttacked: 'アタックされない',
     noRetarget: 'アタックの対象を変更されない',
@@ -9640,7 +9642,7 @@
     if (src && src.category === 'digimon') keys.push('immuneOppDigimon');
     if (src && src.category === 'option') keys.push('immuneOppOption');
     const a = action || {};
-    if (a.type === 'destroy') keys.push('noDestroyByEffect');
+    if (a.type === 'destroy') keys.push('noDestroyByEffect', 'noNonBattleDestroy');
     if (a.type === 'move' && ['hand', 'deckTop', 'deckBottom'].includes(a.dest)) keys.push('noReturn');
     if (a.type === 'dp' && a.amount < 0) keys.push('noDpMinus');
     if (a.type === 'degen') keys.push('noDegen');
@@ -9680,6 +9682,7 @@
       if (/(手札|デッキ)[^、。]{0,6}に?戻らず|戻らない/.test(sent)) types.push('noReturn');
       if (/効果では?消滅しない/.test(sent)) types.push('noDestroyByEffect');
       if (/バトルでは?消滅しない/.test(sent)) types.push('noBattleDestroy');
+      if (/バトル以外で消滅しない/.test(sent)) types.push('noNonBattleDestroy');
       if (/ブロックされ(ない|ず)/.test(sent)) types.push('noBeBlocked');
       if (/アタックされ(ない|ず)/.test(sent)) types.push('noBeAttacked');
       if (/アタックの対象(は|を)変更されない/.test(sent)) types.push('noRetarget');
@@ -13209,7 +13212,7 @@
       return;
     }
     if (a.type === 'destroy') {
-      targets.forEach(s => warnIfResistant(s, ['noDestroyByEffect'], '消滅'));
+      targets.forEach(s => warnIfResistant(s, ['noDestroyByEffect', 'noNonBattleDestroy'], '消滅'));
       resolveDestructionQueue(targets.slice(), () => { renderPracticeBoard(); });
       return;
     }
@@ -24627,7 +24630,7 @@
       mk('退化', () => { const why = degenBlockReason(stack); if (why) { showToast(why, true); return; } confirmIfResistant(stack, ['noDegen'], '退化', () => manualDegen1(stack)); });
     }
     mk('一番上を移動▾', (e) => openHierarchicalDestinationPicker(e, '一番上のカードを送る', (dest) => confirmIfResistant(stack, ['hand', 'deckTop', 'deckBottom'].includes(dest) ? ['noReturn'] : [], '移動', () => removeCardFromStackAt(stack, topIndex, dest)), { excludeBattle: true, excludeTrash: true, ownerPlayer: (findStackOwnerAndZone(stack) || {}).player }));
-    mk('消滅', () => confirmIfResistant(stack, ['noDestroyByEffect'], '消滅', () => resolveDestructionQueue([stack], () => {})));
+    mk('消滅', () => confirmIfResistant(stack, ['noDestroyByEffect', 'noNonBattleDestroy'], '消滅', () => resolveDestructionQueue([stack], () => {})));
     if (stack.cards.length > 1) mk('一番上だけ移動▾', (e) => openMoveTopOnlyPicker(e, stack));
     if (isDigimonLikeStack(stack) || (oppTopCardObj && oppTopCardObj.category === 'tamer')) {
       mk('🔒 ロック', (e) => openLockMenu(e, stack));
