@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<defs>
+ <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#16233f"/><stop offset="1" stop-color="#0a1222"/></linearGradient>
+ <radialGradient id="egg" cx="0.36" cy="0.3" r="0.85"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#d3dded"/></radialGradient>
+ <linearGradient id="c1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3b82f6"/><stop offset="1" stop-color="#1d4ed8"/></linearGradient>
+ <clipPath id="t"><path d="M80,0 L432,0 L410,278 L370,246 L330,278 L290,246 L250,278 L210,246 L170,278 L130,246 L90,278 Z"/></clipPath>
+ <clipPath id="b"><path d="M80,520 L432,520 L410,278 L370,246 L330,278 L290,246 L250,278 L210,246 L170,278 L130,246 L90,278 Z"/></clipPath>
+ <g id="shell">
+  <path d="M256,70 C350,70 410,200 410,300 C410,400 342,460 256,460 C170,460 102,400 102,300 C102,200 162,70 256,70 Z" fill="url(#egg)" stroke="#0a1222" stroke-width="9"/>
+  <circle cx="190" cy="160" r="16" fill="#3b82f6"/><circle cx="318" cy="140" r="12" fill="#fbbf24"/>
+  <circle cx="175" cy="360" r="24" fill="#fbbf24"/><circle cx="300" cy="330" r="16" fill="#3b82f6"/>
+  <circle cx="335" cy="405" r="20" fill="#fbbf24"/><circle cx="232" cy="420" r="13" fill="#3b82f6"/>
+ </g>
+</defs>
+<rect width="512" height="512" fill="url(#bg)"/>
+<g transform="translate(256 292.4) scale(0.84) translate(-256 -265)">
+ <g transform="translate(256 230.0) rotate(-3)">
+  <rect x="-100" y="-100.0" width="200" height="200" rx="18" fill="url(#c1)" stroke="#9cc3ff" stroke-width="6"/>
+  <text x="0" y="27" text-anchor="middle" font-family="'DejaVu Sans Mono',monospace" font-weight="800" font-size="76" fill="#fff" letter-spacing="-3">DG</text>
+ </g>
+ <use href="#shell" clip-path="url(#b)"/>
+ <g transform="rotate(-6 110 262) translate(0 -64)"><use href="#shell" clip-path="url(#t)"/></g>
+</g>
+</svg>
